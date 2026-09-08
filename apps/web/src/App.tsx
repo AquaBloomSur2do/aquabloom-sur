@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Home } from './pages/Home';
 import { NotFound } from './pages/NotFound';
 
-export function App() {
+function App() {
   return (
     <BrowserRouter>
       <Routes>
