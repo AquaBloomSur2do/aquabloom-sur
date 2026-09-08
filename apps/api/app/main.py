@@ -1,9 +1,22 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="AquaBloom Sur API")
+# Definición de etiquetas para organizar Swagger
+tags_metadata = [
+    {"name": "System", "description": "Operaciones del sistema y estado de salud."},
+    {"name": "Auth", "description": "Autenticación y gestión de usuarios."},
+    {"name": "Catalog", "description": "Catálogo de lagos y estaciones."}
+]
 
-# Habilitar CORS para que el frontend React de tus compañeros pueda conectarse
+app = FastAPI(
+    title="AquaBloom Sur API",
+    description="API para la plataforma de estimación de clorofila-a.",
+    version="1.0.0",
+    openapi_tags=tags_metadata,
+    servers=[{"url": "http://localhost:8000", "description": "Servidor Local"}]
+)
+
+# Habilitar CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
