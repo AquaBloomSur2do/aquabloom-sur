@@ -12,6 +12,13 @@ export interface RequestOptions {
   signal?: AbortSignal;
 }
 
+export interface ApiError {
+  code: string;
+  message: string;
+  details?: unknown;
+  request_id?: string | null;
+}
+
 async function request<T = any>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', token, headers = {}, body, signal } = options;
   const url = path.startsWith('http') ? path : `${BASE_URL}/${path.replace(/^\/+/, '')}`;
@@ -36,28 +43,36 @@ async function request<T = any>(path: string, options: RequestOptions = {}): Pro
   }
 
   const res = await fetch(url, init);
-  const contentType = res.headers.get('content-type') ?? '';
-
-  let data: any = null;
-  if (contentType.includes('application/json')) {
-    try {
-      data = await res.json();
-    } catch (e) {
-      data = null;
-    }
-  } else {
-    data = await res.text();
-  }
 
   if (!res.ok) {
-    const msg = data && (data.message || data.error)
-      ? (data.message || data.error)
-      : (typeof data === 'string' ? data : JSON.stringify(data));
+    const data = await res.json().catch(() => null);
 
-    throw new Error(`API request failed (${res.status}): ${msg}`);
+    if (data && data.code && data.message) {
+      return Promise.reject(data);
+    }
+
+    const errorObj: ApiError = {
+      code: `HTTP_ERROR_${res.status}`,
+      message: 'Error inesperado al consultar la API',
+      details: data || res.statusText,
+      request_id: null,
+    };
+
+    return Promise.reject(errorObj);
   }
 
-  return data as T;
+  if (res.status === 204) {
+    return {} as T;
+  }
+
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    const data = await res.json().catch(() => null);
+    return data as T;
+  }
+
+  const text = await res.text().catch(() => null);
+  return (text as unknown) as T;
 }
 
 export const apiClient = {
