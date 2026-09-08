@@ -16,6 +16,10 @@ app.add_middleware(
 def read_root():
     return {"message": "API inicializada correctamente"}
 
-@app.get("/health")
+@app.get("/api/v1/health")
 def health_check():
-    return {"status": "ok", "service": "AquaBloom Sur API"}
+    return {
+        "service": "AquaBloom Sur API",
+        "version": "1.0.0",
+        "status": "ok"
+    }
