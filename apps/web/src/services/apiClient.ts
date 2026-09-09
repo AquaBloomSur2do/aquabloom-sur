@@ -2,7 +2,7 @@
 
 const BASE_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/g, '');
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
 
 export interface RequestOptions {
   method?: HttpMethod;
