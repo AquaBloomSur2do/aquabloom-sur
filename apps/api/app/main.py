@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="AquaBloom Sur API")
 
+
 # Habilitar CORS para que el frontend React de tus compañeros pueda conectarse
 app.add_middleware(
     CORSMiddleware,
@@ -16,6 +17,7 @@ app.add_middleware(
 def read_root():
     return {"message": "API inicializada correctamente"}
 
+
 @app.get("/api/v1/health", tags=["System"])
 def health_check():
     return {
@@ -23,3 +25,4 @@ def health_check():
         "version": "1.0.0",
         "status": "ok"
     }
+
