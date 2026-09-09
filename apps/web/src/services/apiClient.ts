@@ -8,7 +8,7 @@ export interface RequestOptions {
   method?: HttpMethod;
   token?: string;
   headers?: Record<string, string>;
-  body?: any;
+  body?: unknown;
   signal?: AbortSignal;
 }
 
@@ -19,7 +19,20 @@ export interface ApiError {
   request_id?: string | null;
 }
 
-async function request<T = any>(path: string, options: RequestOptions = {}): Promise<T> {
+function isApiError(value: unknown): value is ApiError {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    typeof record.code === 'string' &&
+    typeof record.message === 'string'
+  );
+}
+
+async function request<T = unknown>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', token, headers = {}, body, signal } = options;
   const url = path.startsWith('http') ? path : `${BASE_URL}/${path.replace(/^\/+/, '')}`;
 
@@ -45,16 +58,16 @@ async function request<T = any>(path: string, options: RequestOptions = {}): Pro
   const res = await fetch(url, init);
 
   if (!res.ok) {
-    const data = await res.json().catch(() => null);
+    const data: unknown = await res.json().catch(() => null);
 
-    if (data && data.code && data.message) {
+    if (isApiError(data)) {
       return Promise.reject(data);
     }
 
     const errorObj: ApiError = {
       code: `HTTP_ERROR_${res.status}`,
       message: 'Error inesperado al consultar la API',
-      details: data || res.statusText,
+      details: data ?? res.statusText,
       request_id: null,
     };
 
@@ -67,25 +80,25 @@ async function request<T = any>(path: string, options: RequestOptions = {}): Pro
 
   const contentType = res.headers.get('content-type') ?? '';
   if (contentType.includes('application/json')) {
-    const data = await res.json().catch(() => null);
+    const data: unknown = await res.json().catch(() => null);
     return data as T;
   }
 
   const text = await res.text().catch(() => null);
-  return (text as unknown) as T;
+  return text as unknown as T;
 }
 
 export const apiClient = {
   request,
-  get: <T = any>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
+  get: <T = unknown>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
     request<T>(path, { ...opts, method: 'GET' }),
-  post: <T = any>(path: string, body?: any, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+  post: <T = unknown, TBody = unknown>(path: string, body?: TBody, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
     request<T>(path, { ...opts, method: 'POST', body }),
-  put: <T = any>(path: string, body?: any, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+  put: <T = unknown, TBody = unknown>(path: string, body?: TBody, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
     request<T>(path, { ...opts, method: 'PUT', body }),
-  patch: <T = any>(path: string, body?: any, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+  patch: <T = unknown, TBody = unknown>(path: string, body?: TBody, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
     request<T>(path, { ...opts, method: 'PATCH', body }),
-  del: <T = any>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
+  del: <T = unknown>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
     request<T>(path, { ...opts, method: 'DELETE' }),
 };
 
