@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Definición de etiquetas para organizar Swagger
+# definición de etiquetas para organizar Swagger
 tags_metadata = [
     {"name": "System", "description": "Operaciones del sistema y estado de salud."},
     {"name": "Auth", "description": "Autenticación y gestión de usuarios."},
