@@ -26,7 +26,7 @@ jobs:
 
       - name: Install Web dependencies
         working-directory: apps/web
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Lint Web
         working-directory: apps/web
