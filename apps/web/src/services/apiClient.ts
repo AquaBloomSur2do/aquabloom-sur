@@ -2,13 +2,13 @@
 
 const BASE_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/g, '');
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
 
 export interface RequestOptions {
   method?: HttpMethod;
   token?: string;
   headers?: Record<string, string>;
-  body?: any;
+  body?: unknown;
   signal?: AbortSignal;
 }
 
@@ -19,7 +19,7 @@ export interface ApiError {
   request_id?: string | null;
 }
 
-async function request<T = any>(path: string, options: RequestOptions = {}): Promise<T> {
+async function request<T = unknown>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', token, headers = {}, body, signal } = options;
   const url = path.startsWith('http') ? path : `${BASE_URL}/${path.replace(/^\/+/, '')}`;
 
@@ -77,15 +77,15 @@ async function request<T = any>(path: string, options: RequestOptions = {}): Pro
 
 export const apiClient = {
   request,
-  get: <T = any>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
+  get: <T = unknown>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
     request<T>(path, { ...opts, method: 'GET' }),
-  post: <T = any>(path: string, body?: any, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+  post: <T = unknown>(path: string, body?: unknown, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
     request<T>(path, { ...opts, method: 'POST', body }),
-  put: <T = any>(path: string, body?: any, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+  put: <T = unknown>(path: string, body?: unknown, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
     request<T>(path, { ...opts, method: 'PUT', body }),
-  patch: <T = any>(path: string, body?: any, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+  patch: <T = unknown>(path: string, body?: unknown, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
     request<T>(path, { ...opts, method: 'PATCH', body }),
-  del: <T = any>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
+  del: <T = unknown>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
     request<T>(path, { ...opts, method: 'DELETE' }),
 };
 
