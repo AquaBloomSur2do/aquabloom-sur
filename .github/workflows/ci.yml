@@ -1,56 +1,63 @@
-﻿name: CI
+﻿name: CI Pipeline
 
 on:
   pull_request:
-    branches: [ main ]
-  push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
-  build-and-lint:
+  web-ci:
+    name: Validar Web
     runs-on: ubuntu-latest
-
+    defaults:
+      run:
+        working-directory: ./apps/web
     steps:
-      - name: Checkout repository
+      - name: Checkout del código
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
+        
+      - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-
-      - name: Enable Corepack & Setup pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@9 --activate
-
-      - name: Install Web dependencies
-        working-directory: apps/web
-        run: pnpm install --frozen-lockfile
-
-      - name: Lint Web
-        working-directory: apps/web
+          
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+          
+      - name: Instalar dependencias
+        run: pnpm install
+        
+      - name: Ejecutar Linter
         run: pnpm run lint
-
-      - name: Build Web
-        working-directory: apps/web
+        
+      - name: Compilar
         run: pnpm run build
 
-      - name: Setup Python
+  api-ci:
+    name: Validar API
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./apps/api
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+        
+      - name: Configurar Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-
-      - name: Install API dependencies
-        working-directory: apps/api
+          python-version: "3.12"
+          
+      - name: Instalar dependencias
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt ruff
-
-      - name: Lint API
-        working-directory: apps/api
-        run: python -m ruff check app
-
-      - name: Build API
-        working-directory: apps/api
-        run: python -m compileall -q app
+          pip install -r requirements.txt
+          pip install ruff
+          
+      - name: Ejecutar Linter
+        run: ruff check .
+        
+      - name: Compilar
+        run: python -m compileall .
+              
