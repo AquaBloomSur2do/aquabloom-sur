@@ -1,10 +1,22 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="AquaBloom Sur API")
+# Metadatos de las etiquetas para Swagger
+tags_metadata = [
+    {"name": "System", "description": "Endpoints del sistema."},
+    {"name": "Auth", "description": "Autenticación de usuarios."},
+    {"name": "Catalog", "description": "Catálogo de lagos y estaciones."}
+]
 
+app = FastAPI(
+    title="AquaBloom Sur API",
+    description="API REST para el manejo de usuarios, control de roles y catálogo de lagos.",
+    version="v1",
+    servers=[{"url": "http://localhost:8000"}],
+    openapi_tags=tags_metadata
+)
 
-# Habilitar CORS para que el frontend React de tus compañeros pueda conectarse
+# Habilitar CORS para que el frontend React 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,12 +29,10 @@ app.add_middleware(
 def read_root():
     return {"message": "API inicializada correctamente"}
 
-
 @app.get("/api/v1/health", tags=["System"])
 def health_check():
     return {
         "service": "AquaBloom Sur API",
-        "version": "1.0.0",
+        "version": "v1",
         "status": "ok"
     }
-
