@@ -1,21 +1,37 @@
+import logging
+
 from supabase import Client, create_client
 
 from app.config import settings
 
-# Instancia directa y única del cliente (Make it Work)
-supabase: Client = create_client(
-    supabase_url=settings.SUPABASE_URL,
-    supabase_key=settings.SUPABASE_KEY
-)
+logger = logging.getLogger(__name__)
+
+def get_supabase_client() -> Client | None:
+    """Crea el cliente evaluando los atributos reales de Settings sin detener la API."""
+    try:
+        # Extracción dinámica previendo inconsistencias en Pydantic Settings
+        url = getattr(settings, "SUPABASE_URL", getattr(settings, "supabase_url", None))
+        key = getattr(settings, "SUPABASE_SERVICE_KEY", getattr(settings, "supabase_key", None))
+
+        if not url or not key:
+            logger.warning("Credenciales de Supabase ausentes o mal nombradas en el entorno.")
+            return None
+
+        return create_client(supabase_url=url, supabase_key=key)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Fallo crítico al inicializar cliente Supabase: {e}")
+        return None
+
+# Instancia segura
+supabase = get_supabase_client()
 
 def check_supabase_connection() -> dict:
-    """
-    Ejecuta una consulta mínima de solo lectura para validar la conexión.
-    Falla de forma controlada si hay error de credenciales o red.
-    """
+    """Diagnóstico explícito sin exponer claves ni trazas sensibles."""
+    if not supabase:
+        return {"status": "error", "detail": "Cliente inactivo por falta de credenciales."}
+    
     try:
-        # Consulta ligera: extrae un solo ID de la tabla perfiles (creada en S2-013)
         supabase.table("profiles").select("id").limit(1).execute()
         return {"status": "ok", "connection": "successful"}
-    except Exception as e:  # noqa: BLE001
-        return {"status": "error", "detail": str(e)}
+    except Exception:  # noqa: BLE001
+        return {"status": "error", "detail": "Fallo de red o permisos insuficientes."}
