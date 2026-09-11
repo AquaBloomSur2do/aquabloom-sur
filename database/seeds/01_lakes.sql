@@ -1,9 +1,8 @@
 -- Datos semilla mínimos para los cinco lagos principales
-INSERT INTO public.lakes (lake_id, name, region, geom, crs, status, metadata) 
+INSERT INTO public.lakes (name, region, description, geom, status) 
 VALUES
-  (gen_random_uuid(), 'Lago Panguipulli', 'Los Ríos', ST_GeomFromText('POINT(-72.1167 -39.7167)', 4326), 'EPSG:4326', 'active', '{"test_geometry": true, "unofficial": true, "action": "reemplazar_posteriormente"}'),
-  (gen_random_uuid(), 'Lago Villarrica', 'La Araucanía', ST_GeomFromText('POINT(-72.1000 -39.2667)', 4326), 'EPSG:4326', 'active', '{"test_geometry": true, "unofficial": true, "action": "reemplazar_posteriormente"}'),
-  (gen_random_uuid(), 'Lago Calafquén', 'Los Ríos/La Araucanía', ST_GeomFromText('POINT(-72.1333 -39.5333)', 4326), 'EPSG:4326', 'active', '{"test_geometry": true, "unofficial": true, "action": "reemplazar_posteriormente"}'),
-  (gen_random_uuid(), 'Lago Riñihue', 'Los Ríos', ST_GeomFromText('POINT(-72.3000 -39.8167)', 4326), 'EPSG:4326', 'active', '{"test_geometry": true, "unofficial": true, "action": "reemplazar_posteriormente"}'),
-  (gen_random_uuid(), 'Lago Ranco', 'Los Ríos', ST_GeomFromText('POINT(-72.3833 -40.2000)', 4326), 'EPSG:4326', 'active', '{"test_geometry": true, "unofficial": true, "action": "reemplazar_posteriormente"}');
-  
+  ('Lago Panguipulli', 'Los Ríos', 'Geometría preliminar no oficial, pendiente de reemplazo.', ST_GeomFromText('POLYGON((-72.15 -39.68, -72.08 -39.68, -72.08 -39.75, -72.15 -39.75, -72.15 -39.68))', 4326), 'active'),
+  ('Lago Villarrica', 'La Araucanía', 'Geometría preliminar no oficial, pendiente de reemplazo.', ST_GeomFromText('POLYGON((-72.15 -39.22, -72.05 -39.22, -72.05 -39.30, -72.15 -39.30, -72.15 -39.22))', 4326), 'active'),
+  ('Lago Calafquén', 'Los Ríos/La Araucanía', 'Geometría preliminar no oficial, pendiente de reemplazo.', ST_GeomFromText('POLYGON((-72.18 -39.50, -72.08 -39.50, -72.08 -39.58, -72.18 -39.58, -72.18 -39.50))', 4326), 'active'),
+  ('Lago Riñihue', 'Los Ríos', 'Geometría preliminar no oficial, pendiente de reemplazo.', ST_GeomFromText('POLYGON((-72.35 -39.78, -72.25 -39.78, -72.25 -39.85, -72.35 -39.85, -72.35 -39.78))', 4326), 'active'),
+  ('Lago Ranco', 'Los Ríos', 'Geometría preliminar no oficial, pendiente de reemplazo.', ST_GeomFromText('POLYGON((-72.43 -40.15, -72.33 -40.15, -72.33 -40.25, -72.43 -40.25, -72.43 -40.15))', 4326), 'active');
