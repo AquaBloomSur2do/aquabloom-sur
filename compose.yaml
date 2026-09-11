@@ -1,32 +1,49 @@
 ﻿services:
-  frontend:
-    build: ./apps/web
-    ports:
-      - "5173:5173"
-    volumes:
-      - ./apps/web:/app
-      - /app/node_modules
-    environment:
-      - WATCH=true
-
   api:
-    build: ./apps/api
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./apps/api:/app
+    build:
+      context: ./apps/api
+    restart: unless-stopped
     environment:
-      - PORT=8000
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+    ports:
+      - "5000:8000"
+    networks:
+      - aquabloom-net
+
+  web:
+    build:
+      context: ./apps/web
+    restart: unless-stopped
+    environment:
+      - VITE_API_URL=${VITE_API_URL}
+    ports:
+      - "3000:5173"
+    networks:
+      - aquabloom-net
+    depends_on:
+      - api
 
   db:
-    image: supabase/postgres:15.1.0.117
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_DB=${POSTGRES_DB}
     ports:
       - "5432:5432"
-    environment:
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - aquabloom-net
+
+networks:
+  aquabloom-net:
+    driver: bridge
 
 volumes:
   pgdata:
