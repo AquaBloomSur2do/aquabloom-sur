@@ -28,7 +28,7 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"message": "API inicializada correctamente"}
+    return {"message": f"API inicializada en ambiente: {settings.environment}"}
 
 @app.get("/api/v1/health", tags=["System"])
 def health_check():
