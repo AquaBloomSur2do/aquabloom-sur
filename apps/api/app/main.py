@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.database import check_supabase_connection
 
 # Metadatos de las etiquetas para Swagger
 tags_metadata = [
@@ -30,10 +31,13 @@ app.add_middleware(
 def read_root():
     return {"message": f"API inicializada en ambiente: {settings.environment}"}
 
+
 @app.get("/api/v1/health", tags=["System"])
 def health_check():
+    db_status = check_supabase_connection()
     return {
         "service": "AquaBloom Sur API",
         "version": "v1",
-        "status": "ok"
+        "status": "ok" if db_status["status"] == "ok" else "degraded",
+        "database": db_status
     }
