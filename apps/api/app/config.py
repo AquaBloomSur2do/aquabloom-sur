@@ -1,17 +1,18 @@
+
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # Variables con valores por defecto (opcionales)
     environment: str = "development"
     cors_origins: str = "http://localhost:5173"
-    
-    # Variables obligatorias (sin valor por defecto)
     supabase_url: str
-    supabase_anon_key: str
+    supabase_key: SecretStr
 
-    # Nueva configuración para Pydantic V2
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-# Instanciamos la configuración para poder usarla en el resto de la API
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",")]
+
 settings = Settings()
