@@ -21,7 +21,7 @@
     environment:
       - VITE_API_URL=${VITE_API_URL}
     ports:
-      - "3000:3000"
+      - "3000:5173"
     networks:
       - aquabloom-net
     depends_on:
@@ -36,9 +36,14 @@
       - POSTGRES_DB=${POSTGRES_DB}
     ports:
       - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     networks:
       - aquabloom-net
 
 networks:
   aquabloom-net:
     driver: bridge
+
+volumes:
+  pgdata:
