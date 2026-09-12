@@ -4,19 +4,13 @@ const BASE_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
   .replace(/\/+$/g, '')
   .replace(/\/+/g, '/');
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
-
-export interface HealthResponse {
-  status: string;
-  version: string;
-  timestamp: string;
-}
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export interface RequestOptions {
   method?: HttpMethod;
   token?: string;
   headers?: Record<string, string>;
-  body?: Record<string, unknown> | unknown;
+  body?: any;
   signal?: AbortSignal;
 }
 
@@ -58,7 +52,7 @@ function createApiError(code: string, message: string, status: number, overrides
   });
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function request<T = any>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', token, headers = {}, body, signal } = options;
   const url = path.startsWith('http') ? path : `${BASE_URL}/${path.replace(/^\/+/, '')}`;
 
@@ -166,41 +160,16 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 export const apiClient = {
   request,
-
-  get: <T = Record<string, unknown>>(
-    path: string,
-    opts: Omit<RequestOptions, 'method'> = {}
-  ): Promise<T> => request<T>(path, { ...opts, method: 'GET' }),
-
-  post: <T = Record<string, unknown>>(
-    path: string,
-    body?: Record<string, unknown> | unknown,
-    opts: Omit<RequestOptions, 'method' | 'body'> = {}
-  ): Promise<T> => request<T>(path, { ...opts, method: 'POST', body }),
-
-  put: <T = Record<string, unknown>>(
-    path: string,
-    body?: Record<string, unknown> | unknown,
-    opts: Omit<RequestOptions, 'method' | 'body'> = {}
-  ): Promise<T> => request<T>(path, { ...opts, method: 'PUT', body }),
-
-  patch: <T = Record<string, unknown>>(
-    path: string,
-    body?: Record<string, unknown> | unknown,
-    opts: Omit<RequestOptions, 'method' | 'body'> = {}
-  ): Promise<T> => request<T>(path, { ...opts, method: 'PATCH', body }),
-
-  delete: <T = Record<string, unknown>>(
-    path: string,
-    opts: Omit<RequestOptions, 'method'> = {}
-  ): Promise<T> => request<T>(path, { ...opts, method: 'DELETE' }),
-
-  head: <T = Record<string, unknown>>(
-    path: string,
-    opts: Omit<RequestOptions, 'method'> = {}
-  ): Promise<T> => request<T>(path, { ...opts, method: 'HEAD' }),
-
-  getHealth: (): Promise<HealthResponse> => request<HealthResponse>('/health', { method: 'GET' }),
+  get: <T = any>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
+    request<T>(path, { ...opts, method: 'GET' }),
+  post: <T = any>(path: string, body?: any, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+    request<T>(path, { ...opts, method: 'POST', body }),
+  put: <T = any>(path: string, body?: any, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+    request<T>(path, { ...opts, method: 'PUT', body }),
+  patch: <T = any>(path: string, body?: any, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+    request<T>(path, { ...opts, method: 'PATCH', body }),
+  del: <T = any>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
+    request<T>(path, { ...opts, method: 'DELETE' }),
 };
 
 export default apiClient;

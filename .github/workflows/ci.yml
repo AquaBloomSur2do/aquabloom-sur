@@ -1,0 +1,63 @@
+﻿name: CI Pipeline
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  web-ci:
+    name: Validar Web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./apps/web
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+        
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+          
+      - name: Instalar dependencias
+        run: pnpm install
+        
+      - name: Ejecutar Linter
+        run: pnpm run lint
+        
+      - name: Compilar
+        run: pnpm run build
+
+  api-ci:
+    name: Validar API
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./apps/api
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+        
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          
+      - name: Instalar dependencias
+        run: |
+          pip install -r requirements.txt
+          pip install ruff
+          
+      - name: Ejecutar Linter
+        run: ruff check .
+        
+      - name: Compilar
+        run: python -m compileall .
+              
