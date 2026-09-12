@@ -1,25 +1,64 @@
 // Lightweight fetch-based API client for Vite + TypeScript
 
-const BASE_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/g, '');
+const BASE_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1')
+  .replace(/\/+$/g, '')
+  .replace(/\/+/g, '/');
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
+
+export interface HealthResponse {
+  status: string;
+  version: string;
+  timestamp: string;
+}
 
 export interface RequestOptions {
   method?: HttpMethod;
   token?: string;
   headers?: Record<string, string>;
-  body?: any;
+  body?: Record<string, unknown> | unknown;
   signal?: AbortSignal;
 }
 
-export interface ApiError {
-  code: string;
+export interface ApiErrorDetails {
   message: string;
+  status: number;
+  code?: string;
   details?: unknown;
-  request_id?: string | null;
+  isNetworkError?: boolean;
+  isCancelled?: boolean;
 }
 
-async function request<T = any>(path: string, options: RequestOptions = {}): Promise<T> {
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  details?: unknown;
+  isNetworkError: boolean;
+  isCancelled: boolean;
+
+  constructor(payload: ApiErrorDetails) {
+    super(payload.message);
+    this.name = 'ApiError';
+    this.status = payload.status;
+    this.code = payload.code;
+    this.details = payload.details;
+    this.isNetworkError = payload.isNetworkError ?? false;
+    this.isCancelled = payload.isCancelled ?? false;
+  }
+}
+
+function createApiError(code: string, message: string, status: number, overrides: Partial<ApiErrorDetails> = {}): ApiError {
+  return new ApiError({
+    message,
+    status,
+    code,
+    details: overrides.details,
+    isNetworkError: overrides.isNetworkError ?? false,
+    isCancelled: overrides.isCancelled ?? false,
+  });
+}
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', token, headers = {}, body, signal } = options;
   const url = path.startsWith('http') ? path : `${BASE_URL}/${path.replace(/^\/+/, '')}`;
 
@@ -42,23 +81,21 @@ async function request<T = any>(path: string, options: RequestOptions = {}): Pro
     init.body = JSON.stringify(body);
   }
 
-  const res = await fetch(url, init);
+  let res: Response;
 
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-
-    if (data && data.code && data.message) {
-      return Promise.reject(data);
+  try {
+    res = await fetch(url, init);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw createApiError('REQUEST_CANCELLED', 'La solicitud fue cancelada', 0, {
+        isCancelled: true,
+      });
     }
 
-    const errorObj: ApiError = {
-      code: `HTTP_ERROR_${res.status}`,
-      message: 'Error inesperado al consultar la API',
-      details: data || res.statusText,
-      request_id: null,
-    };
-
-    return Promise.reject(errorObj);
+    throw createApiError('NETWORK_ERROR', 'Error de red o servidor no disponible', 0, {
+      isNetworkError: true,
+      details: error instanceof Error ? error.message : String(error),
+    });
   }
 
   if (res.status === 204) {
@@ -66,27 +103,104 @@ async function request<T = any>(path: string, options: RequestOptions = {}): Pro
   }
 
   const contentType = res.headers.get('content-type') ?? '';
-  if (contentType.includes('application/json')) {
-    const data = await res.json().catch(() => null);
-    return data as T;
+  const isJsonResponse = contentType.includes('application/json');
+
+  let responseText: string;
+
+  try {
+    responseText = await res.text();
+  } catch (error) {
+    throw createApiError('RESPONSE_READ_ERROR', 'No se pudo leer la respuesta del servidor', res.status, {
+      details: error instanceof Error ? error.message : String(error),
+    });
   }
 
-  const text = await res.text().catch(() => null);
-  return (text as unknown) as T;
+  if (!res.ok) {
+    if (isJsonResponse && responseText) {
+      try {
+        const data = JSON.parse(responseText) as Record<string, unknown>;
+
+        if (data && typeof data === 'object' && 'code' in data && 'message' in data) {
+          throw createApiError(String(data.code), String(data.message), res.status, {
+            details: data,
+          });
+        }
+      } catch (parseError) {
+        if (parseError instanceof ApiError) {
+          throw parseError;
+        }
+      }
+    }
+
+    throw createApiError(`HTTP_ERROR_${res.status}`, 'Error inesperado al consultar la API', res.status, {
+      details: isJsonResponse
+        ? 'La respuesta de error no es un JSON válido'
+        : responseText || res.statusText,
+    });
+  }
+
+  if (!responseText) {
+    return {} as T;
+  }
+
+  if (!isJsonResponse) {
+    throw createApiError(
+      'INVALID_RESPONSE_FORMAT',
+      'La respuesta del servidor no es JSON válido',
+      res.status,
+      {
+        details: responseText,
+      }
+    );
+  }
+
+  try {
+    const data = JSON.parse(responseText) as T;
+    return data;
+  } catch (error) {
+    throw createApiError('JSON_PARSE_ERROR', 'No se pudo parsear la respuesta JSON', res.status, {
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 export const apiClient = {
   request,
-  get: <T = any>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
-    request<T>(path, { ...opts, method: 'GET' }),
-  post: <T = any>(path: string, body?: any, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
-    request<T>(path, { ...opts, method: 'POST', body }),
-  put: <T = any>(path: string, body?: any, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
-    request<T>(path, { ...opts, method: 'PUT', body }),
-  patch: <T = any>(path: string, body?: any, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
-    request<T>(path, { ...opts, method: 'PATCH', body }),
-  del: <T = any>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
-    request<T>(path, { ...opts, method: 'DELETE' }),
+
+  get: <T = Record<string, unknown>>(
+    path: string,
+    opts: Omit<RequestOptions, 'method'> = {}
+  ): Promise<T> => request<T>(path, { ...opts, method: 'GET' }),
+
+  post: <T = Record<string, unknown>>(
+    path: string,
+    body?: Record<string, unknown> | unknown,
+    opts: Omit<RequestOptions, 'method' | 'body'> = {}
+  ): Promise<T> => request<T>(path, { ...opts, method: 'POST', body }),
+
+  put: <T = Record<string, unknown>>(
+    path: string,
+    body?: Record<string, unknown> | unknown,
+    opts: Omit<RequestOptions, 'method' | 'body'> = {}
+  ): Promise<T> => request<T>(path, { ...opts, method: 'PUT', body }),
+
+  patch: <T = Record<string, unknown>>(
+    path: string,
+    body?: Record<string, unknown> | unknown,
+    opts: Omit<RequestOptions, 'method' | 'body'> = {}
+  ): Promise<T> => request<T>(path, { ...opts, method: 'PATCH', body }),
+
+  delete: <T = Record<string, unknown>>(
+    path: string,
+    opts: Omit<RequestOptions, 'method'> = {}
+  ): Promise<T> => request<T>(path, { ...opts, method: 'DELETE' }),
+
+  head: <T = Record<string, unknown>>(
+    path: string,
+    opts: Omit<RequestOptions, 'method'> = {}
+  ): Promise<T> => request<T>(path, { ...opts, method: 'HEAD' }),
+
+  getHealth: (): Promise<HealthResponse> => request<HealthResponse>('/health', { method: 'GET' }),
 };
 
 export default apiClient;
