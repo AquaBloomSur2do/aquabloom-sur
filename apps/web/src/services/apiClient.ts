@@ -10,8 +10,15 @@ export interface RequestOptions {
   method?: HttpMethod;
   token?: string;
   headers?: Record<string, string>;
-  body?: any;
+  body?: unknown;
   signal?: AbortSignal;
+}
+
+export interface HealthResponse {
+  service: string;
+  version: string;
+  status: 'ok' | 'degraded' | string;
+  database: Record<string, unknown>;
 }
 
 export interface ApiErrorDetails {
@@ -41,7 +48,12 @@ export class ApiError extends Error {
   }
 }
 
-function createApiError(code: string, message: string, status: number, overrides: Partial<ApiErrorDetails> = {}): ApiError {
+function createApiError(
+  code: string,
+  message: string,
+  status: number,
+  overrides: Partial<ApiErrorDetails> = {}
+): ApiError {
   return new ApiError({
     message,
     status,
@@ -52,7 +64,7 @@ function createApiError(code: string, message: string, status: number, overrides
   });
 }
 
-async function request<T = any>(path: string, options: RequestOptions = {}): Promise<T> {
+async function request<T = unknown>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', token, headers = {}, body, signal } = options;
   const url = path.startsWith('http') ? path : `${BASE_URL}/${path.replace(/^\/+/, '')}`;
 
@@ -71,7 +83,7 @@ async function request<T = any>(path: string, options: RequestOptions = {}): Pro
     signal,
   };
 
-  if (body !== undefined && method !== 'GET' && method !== 'HEAD') {
+  if (body !== undefined && method !== 'GET') {
     init.body = JSON.stringify(body);
   }
 
@@ -113,9 +125,10 @@ async function request<T = any>(path: string, options: RequestOptions = {}): Pro
     if (isJsonResponse && responseText) {
       try {
         const data = JSON.parse(responseText) as Record<string, unknown>;
+        const apiErrorPayload = data as { code?: unknown; message?: unknown };
 
-        if (data && typeof data === 'object' && 'code' in data && 'message' in data) {
-          throw createApiError(String(data.code), String(data.message), res.status, {
+        if (typeof apiErrorPayload.code !== 'undefined' && typeof apiErrorPayload.message !== 'undefined') {
+          throw createApiError(String(apiErrorPayload.code), String(apiErrorPayload.message), res.status, {
             details: data,
           });
         }
@@ -160,16 +173,17 @@ async function request<T = any>(path: string, options: RequestOptions = {}): Pro
 
 export const apiClient = {
   request,
-  get: <T = any>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
+  get: <T = unknown>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
     request<T>(path, { ...opts, method: 'GET' }),
-  post: <T = any>(path: string, body?: any, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+  post: <T = unknown>(path: string, body?: unknown, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
     request<T>(path, { ...opts, method: 'POST', body }),
-  put: <T = any>(path: string, body?: any, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+  put: <T = unknown>(path: string, body?: unknown, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
     request<T>(path, { ...opts, method: 'PUT', body }),
-  patch: <T = any>(path: string, body?: any, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
+  patch: <T = unknown>(path: string, body?: unknown, opts: Omit<RequestOptions, 'method' | 'body'> = {}) =>
     request<T>(path, { ...opts, method: 'PATCH', body }),
-  del: <T = any>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
+  del: <T = unknown>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
     request<T>(path, { ...opts, method: 'DELETE' }),
+  getHealth: (): Promise<HealthResponse> => apiClient.get<HealthResponse>('health'),
 };
 
 export default apiClient;
