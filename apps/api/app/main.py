@@ -14,7 +14,6 @@ tags_metadata = [
 app = FastAPI(
     title="AquaBloom Sur API",
     description="API REST para el manejo de usuarios, control de roles y catálogo de lagos.",
-    version="v1",
     servers=[{"url": "http://localhost:8000"}],
     openapi_tags=tags_metadata
 )
@@ -30,7 +29,7 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"message": "API inicializada correctamente"}
+    return {"message": f"API inicializada en ambiente: {settings.environment}"}
 
 
 @app.get("/api/v1/health", tags=["System"])

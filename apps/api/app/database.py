@@ -16,8 +16,10 @@ def get_supabase_client() -> Client | None:
         if not url or not key:
             logger.warning("Credenciales de Supabase ausentes o mal nombradas en el entorno.")
             return None
+        
+        clave_plana = key.get_secret_value() if hasattr(key, 'get_secret_value') else key
 
-        return create_client(supabase_url=url, supabase_key=key)
+        return create_client(supabase_url=url, supabase_key=clave_plana)
     except Exception as e:  # noqa: BLE001
         logger.error(f"Fallo crítico al inicializar cliente Supabase: {e}")
         return None
@@ -35,3 +37,4 @@ def check_supabase_connection() -> dict:
         return {"status": "ok", "connection": "successful"}
     except Exception:  # noqa: BLE001
         return {"status": "error", "detail": "Fallo de red o permisos insuficientes."}
+    
