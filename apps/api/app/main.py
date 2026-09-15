@@ -4,6 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import check_supabase_connection
 
+from app.auth import AuthException
+from app.handlers import auth_exception_handler, global_exception_handler
+
+
 # Metadatos de las etiquetas para Swagger
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
@@ -17,6 +21,10 @@ app = FastAPI(
     servers=[{"url": "http://localhost:8000"}],
     openapi_tags=tags_metadata
 )
+
+# Registro de manejadores de excepciones
+app.add_exception_handler(AuthException, auth_exception_handler)
+app.add_exception_handler(Exception, global_exception_handler)
 
 # Habilitar CORS para que el frontend React 
 app.add_middleware(
@@ -41,3 +49,4 @@ def health_check():
         "status": "ok" if db_status["status"] == "ok" else "degraded",
         "database": db_status
     }
+    
