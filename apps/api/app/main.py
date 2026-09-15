@@ -1,12 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth import AuthException
 from app.config import settings
 from app.database import check_supabase_connection
-
-from app.auth import AuthException
 from app.handlers import auth_exception_handler, global_exception_handler
-
 
 # Metadatos de las etiquetas para Swagger
 tags_metadata = [

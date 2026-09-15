@@ -1,8 +1,8 @@
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from .schemas import ErrorResponse
 from .auth import AuthException
+from .schemas import ErrorResponse
 
 
 async def global_exception_handler(request: Request, exc: Exception):
