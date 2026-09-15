@@ -28,7 +28,7 @@
       - api
 
   db:
-    image: postgres:15
+    image: postgis/postgis:15-3.3
     restart: unless-stopped
     environment:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
