@@ -11,7 +11,7 @@ class AuthException(Exception):
         self.message = message
         self.details = details
 
-def verify_supabase_jwt(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict:
+def verify_supabase_jwt(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict: # noqa: B008
     token = credentials.credentials
     secret = settings.supabase_jwt_secret
     issuer = f"{settings.supabase_url}/auth/v1"
