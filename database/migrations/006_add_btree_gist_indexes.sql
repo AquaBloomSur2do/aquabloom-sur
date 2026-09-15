@@ -1,24 +1,31 @@
 BEGIN;
 
-CREATE INDEX IF NOT EXISTS idx_lakes_geom
-ON public.lakes USING gist (geom);
+-- B-tree: búsqueda por nombre de lago
+CREATE INDEX IF NOT EXISTS idx_lakes_name
+ON public.lakes USING btree (name);
 
-CREATE INDEX IF NOT EXISTS idx_memberships_user_id
-ON public.memberships USING btree (user_id);
-
-CREATE INDEX IF NOT EXISTS idx_memberships_organization_id
-ON public.memberships USING btree (organization_id);
-
-CREATE INDEX IF NOT EXISTS idx_memberships_status
-ON public.memberships USING btree (status);
-
+-- B-tree: catálogo y filtros de lagos
 CREATE INDEX IF NOT EXISTS idx_lakes_region
 ON public.lakes USING btree (region);
 
 CREATE INDEX IF NOT EXISTS idx_lakes_status
 ON public.lakes USING btree (status);
 
-CREATE INDEX IF NOT EXISTS idx_profiles_status
-ON public.profiles USING btree (status);
+-- GiST: consultas espaciales sobre geometrías de lagos
+CREATE INDEX IF NOT EXISTS idx_lakes_geom
+ON public.lakes USING gist (geom);
+
+-- GiST: consultas espaciales sobre puntos de estaciones
+CREATE INDEX IF NOT EXISTS idx_stations_point
+ON public.stations USING gist (point);
 
 COMMIT;
+
+-- DOWN (reversión)
+-- BEGIN;
+-- DROP INDEX IF EXISTS public.idx_lakes_name;
+-- DROP INDEX IF EXISTS public.idx_lakes_region;
+-- DROP INDEX IF EXISTS public.idx_lakes_status;
+-- DROP INDEX IF EXISTS public.idx_lakes_geom;
+-- DROP INDEX IF EXISTS public.idx_stations_point;
+-- COMMIT;

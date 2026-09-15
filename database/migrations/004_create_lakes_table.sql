@@ -4,7 +4,7 @@ CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
 -- Crear tabla lakes
 CREATE TABLE public.lakes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(255) NOT NULL,
+    name VARCHAR(255) UNIQUE NOT NULL,
     region VARCHAR(255) NOT NULL,
     description TEXT,
     geom GEOMETRY(Polygon, 4326) NOT NULL,
