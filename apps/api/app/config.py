@@ -4,8 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # Variables con valores por defecto (opcionales)
     environment: str = "development"
-    cors_origins: str = "http://localhost:5173"
-    
+    cors_origins: list[str] = ["http://localhost:5173"]
+        
     # Variables obligatorias (sin valor por defecto)
     supabase_url: str
     supabase_anon_key: str
