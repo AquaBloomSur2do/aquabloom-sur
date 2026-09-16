@@ -1,24 +1,26 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
+from app.auth import router as auth_router
 from app.config import settings
 from app.database import check_supabase_connection
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 # Metadatos de las etiquetas para Swagger
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
     {"name": "Auth", "description": "Autenticación de usuarios."},
-    {"name": "Catalog", "description": "Catálogo de lagos y estaciones."}
+    {"name": "Catalog", "description": "Catálogo de lagos y estaciones."},
 ]
 
 app = FastAPI(
     title="AquaBloom Sur API",
     description="API REST para el manejo de usuarios, control de roles y catálogo de lagos.",
     servers=[{"url": "http://localhost:8000"}],
-    openapi_tags=tags_metadata
+    openapi_tags=tags_metadata,
 )
 
-# Habilitar CORS para que el frontend React 
+app.include_router(auth_router)
+
+# Habilitar CORS para que el frontend React
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -26,6 +28,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept"],
 )
+
 
 @app.get("/")
 def read_root():
@@ -39,5 +42,5 @@ def health_check():
         "service": "AquaBloom Sur API",
         "version": "v1",
         "status": "ok" if db_status["status"] == "ok" else "degraded",
-        "database": db_status
+        "database": db_status,
     }
