@@ -1,8 +1,9 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from app.auth import router as auth_router
 from app.config import settings
 from app.database import check_supabase_connection
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 # Metadatos de las etiquetas para Swagger
 tags_metadata = [
