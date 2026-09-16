@@ -5,6 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     environment: str = "development"
     cors_origins: str = "http://localhost:5173"
+    
+    # Variables obligatorias (sin valor por defecto)
     supabase_url: str
     supabase_key: SecretStr
 
