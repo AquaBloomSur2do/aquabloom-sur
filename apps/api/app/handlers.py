@@ -19,3 +19,4 @@ async def auth_exception_handler(request: Request, exc: AuthException):
         status_code=401,
         content=error_content.model_dump()
     )
+

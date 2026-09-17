@@ -1,11 +1,12 @@
-import jwt
 from uuid import UUID
 
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from app.config import settings
+
 from .database import supabase
 from .services import get_current_user_profile
 
@@ -87,3 +88,4 @@ def read_current_user(token: str = Depends(get_bearer_token)):
         ) from exc
 
     return get_current_user_profile(supabase, user_id, user.email)
+
