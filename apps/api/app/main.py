@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.auth import router as auth_router
 from app.config import settings
 from app.database import check_supabase_connection
+from app.organizations import router as organizations_router
 
 # Metadatos de las etiquetas para Swagger
 tags_metadata = [
@@ -20,6 +21,7 @@ app = FastAPI(
 )
 
 app.include_router(auth_router)
+app.include_router(organizations_router)
 
 # Habilitar CORS para que el frontend React
 app.add_middleware(
