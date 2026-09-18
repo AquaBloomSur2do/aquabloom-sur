@@ -42,8 +42,7 @@ def get_bearer_token(
     return credentials.credentials
 
 
-@router.get("/me", response_model=CurrentUserResponse)
-def read_current_user(token: str = Depends(get_bearer_token)):
+def get_authenticated_user(token: str) -> tuple[UUID, str | None]:
     if supabase is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -53,7 +52,7 @@ def read_current_user(token: str = Depends(get_bearer_token)):
     try:
         auth_response = supabase.auth.get_user(token)
         user = auth_response.user
-        user_id = UUID(str(user.id))
+        return UUID(str(user.id)), user.email
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -61,4 +60,8 @@ def read_current_user(token: str = Depends(get_bearer_token)):
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
-    return get_current_user_profile(supabase, user_id, user.email)
+
+@router.get("/me", response_model=CurrentUserResponse)
+def read_current_user(token: str = Depends(get_bearer_token)):
+    user_id, email = get_authenticated_user(token)
+    return get_current_user_profile(supabase, user_id, email)
