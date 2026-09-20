@@ -1,74 +1,90 @@
-import { useParams, Link } from 'react-router-dom';
-
-interface LakeInfo {
-  id: string;
-  name: string;
-  location: string;
-  area: number;
-  depth: number;
-  coordinates: {
-    latitude: number;
-    longitude: number;
-  };
-}
+import { useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { apiClient } from '../services/apiClient';
+import type { LakeDetailResponse } from '../types/lake';
 
 export function LakeDetail() {
   const { id } = useParams<{ id: string }>();
+  const [lake, setLake] = useState<LakeDetailResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Datos de ejemplo - en una aplicación real, estos vendrían de una API
-  const lakesData: Record<string, LakeInfo> = {
-    '1': {
-      id: '1',
-      name: 'Lago Argentino',
-      location: 'Santa Cruz, Argentina',
-      area: 1468,
-      depth: 532,
-      coordinates: { latitude: -50.333, longitude: -73.189 },
-    },
-    '2': {
-      id: '2',
-      name: 'Lago Nahuel Huapi',
-      location: 'Río Negro, Argentina',
-      area: 557,
-      depth: 464,
-      coordinates: { latitude: -41.137, longitude: -71.588 },
-    },
-    '3': {
-      id: '3',
-      name: 'Lago Viedma',
-      location: 'Santa Cruz, Argentina',
-      area: 1080,
-      depth: 423,
-      coordinates: { latitude: -50.306, longitude: -72.606 },
-    },
-    '4': {
-      id: '4',
-      name: 'Lago San Martín',
-      location: 'Santa Cruz, Argentina',
-      area: 1050,
-      depth: 395,
-      coordinates: { latitude: -48.800, longitude: -71.000 },
-    },
-  };
+  useEffect(() => {
+    if (!id) {
+      setLoading(false);
+      setError('No se indicó un lago válido.');
+      return;
+    }
 
-  const lake = id ? lakesData[id] : null;
+    let isMounted = true;
+
+    const fetchLake = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const data = await apiClient.get<LakeDetailResponse>(`lakes/${id}`);
+        if (isMounted) {
+          setLake(data);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'No se pudo cargar el detalle del lago.');
+          setLake(null);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void fetchLake();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="lake-detail-page">
+        <div className="state-panel state-panel--loading">Cargando detalle del lago...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="lake-detail-page">
+        <div className="state-panel state-panel--error">
+          <p>{error}</p>
+          <Link to="/lakes" className="btn btn-primary">
+            Volver a lagos
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (!lake) {
     return (
       <div className="lake-detail-page">
         <h1>Lago no encontrado</h1>
-        <p>El lago solicitado no existe.</p>
-        <Link to="/lakes" className="btn-back">
+        <p>El lago solicitado no existe o no está disponible.</p>
+        <Link to="/lakes" className="btn btn-primary">
           Volver al listado
         </Link>
       </div>
     );
   }
 
+  const stationCount = Array.isArray(lake.stations) ? lake.stations.length : lake.station_count ?? 0;
+
   return (
     <div className="lake-detail-page">
       <div className="detail-header">
-        <Link to="/lakes" className="btn-back">
+        <Link to="/lakes" className="btn btn-secondary">
           ← Volver
         </Link>
         <h1>{lake.name}</h1>
@@ -76,25 +92,23 @@ export function LakeDetail() {
 
       <div className="detail-content">
         <div className="detail-section">
-          <h2>Información General</h2>
+          <h2>Información general</h2>
           <div className="info-grid">
             <div className="info-item">
-              <label>Ubicación:</label>
-              <p>{lake.location}</p>
+              <label>Región</label>
+              <p>{lake.region}</p>
             </div>
             <div className="info-item">
-              <label>Área:</label>
-              <p>{lake.area} km²</p>
+              <label>Estado</label>
+              <p>{lake.status ?? 'Sin estado'}</p>
             </div>
             <div className="info-item">
-              <label>Profundidad Máxima:</label>
-              <p>{lake.depth} m</p>
+              <label>Estaciones</label>
+              <p>{stationCount}</p>
             </div>
             <div className="info-item">
-              <label>Coordenadas:</label>
-              <p>
-                {lake.coordinates.latitude.toFixed(3)}, {lake.coordinates.longitude.toFixed(3)}
-              </p>
+              <label>Descripción</label>
+              <p>{lake.description ?? 'Sin descripción disponible'}</p>
             </div>
           </div>
         </div>

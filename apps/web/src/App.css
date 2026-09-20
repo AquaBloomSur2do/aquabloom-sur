@@ -182,3 +182,211 @@
     border-right-color: var(--border);
   }
 }
+
+.lakes-list-page,
+.lake-detail-page {
+  padding: 32px 24px 48px;
+}
+
+.lakes-header,
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #3b82f6;
+}
+
+.lakes-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+}
+
+.lakes-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.lakes-table th,
+.lakes-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+}
+
+.lakes-table thead th {
+  background: #f8fafc;
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.lake-row {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.lake-row:hover,
+.lake-row:focus-visible {
+  background: #f8fbff;
+  outline: none;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.status-badge--active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-badge--inactive {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-badge--maintenance,
+.status-badge--archived {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.status-badge--default {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.state-panel {
+  padding: 24px 20px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  color: #334155;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.state-panel--loading {
+  border-color: #dbeafe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.state-panel--error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.state-panel--empty {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+.btn:hover {
+  opacity: 0.92;
+}
+
+.btn-primary {
+  background: #2563eb;
+  color: white;
+}
+
+.btn-secondary {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.detail-content {
+  display: grid;
+  gap: 24px;
+}
+
+.detail-section {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.info-item label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.info-item p {
+  margin: 0;
+  color: #0f172a;
+}
+
+@media (max-width: 640px) {
+  .lakes-list-page,
+  .lake-detail-page {
+    padding: 20px 16px 32px;
+  }
+
+  .lakes-header,
+  .detail-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .lakes-table th,
+  .lakes-table td {
+    padding: 12px 10px;
+  }
+}
