@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth import AuthException
 from app.auth import router as auth_router
 from app.config import settings
 from app.database import check_supabase_connection
+from app.handlers import auth_exception_handler, global_exception_handler
 from app.organizations import router as organizations_router
 
 # Metadatos de las etiquetas para Swagger
@@ -20,6 +22,11 @@ app = FastAPI(
     openapi_tags=tags_metadata,
 )
 
+# Registro de manejadores de excepciones
+app.add_exception_handler(AuthException, auth_exception_handler)
+app.add_exception_handler(Exception, global_exception_handler)
+
+# Registro de rutas
 app.include_router(auth_router)
 app.include_router(organizations_router)
 
