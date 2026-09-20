@@ -6,6 +6,7 @@ from app.auth import router as auth_router
 from app.config import settings
 from app.database import check_supabase_connection
 from app.handlers import auth_exception_handler, global_exception_handler
+from app.lakes import router as lakes_router
 
 # Metadatos de las etiquetas para Swagger
 tags_metadata = [
@@ -27,6 +28,7 @@ app.add_exception_handler(Exception, global_exception_handler)
 
 # Registro de rutas
 app.include_router(auth_router)
+app.include_router(lakes_router)
 
 # Habilitar CORS para que el frontend React
 app.add_middleware(
@@ -37,9 +39,11 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
+
 @app.get("/")
 def read_root():
     return {"message": f"API inicializada en ambiente: {settings.environment}"}
+
 
 @app.get("/api/v1/health", tags=["System"])
 def health_check():
