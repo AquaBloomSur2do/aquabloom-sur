@@ -57,7 +57,34 @@ export function LakesList() {
   };
 
   useEffect(() => {
-    void loadLakes();
+    let cancelled = false;
+
+    const fetchLakes = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const data = await apiClient.get<unknown>('lakes');
+        if (!cancelled) {
+          setLakes(normalizeLakesResponse(data));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'No se pudo cargar la lista de lagos.');
+          setLakes([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void fetchLakes();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleRowNavigation = (id: string) => {

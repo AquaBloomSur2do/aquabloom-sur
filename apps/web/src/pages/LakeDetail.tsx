@@ -10,17 +10,21 @@ export function LakeDetail() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!id) {
-      setLoading(false);
-      setError('No se indicó un lago válido.');
-      return;
-    }
-
     let isMounted = true;
 
     const fetchLake = async () => {
-      setLoading(true);
-      setError(null);
+      if (!id) {
+        if (isMounted) {
+          setLoading(false);
+          setError('No se indicó un lago válido.');
+        }
+        return;
+      }
+
+      if (isMounted) {
+        setLoading(true);
+        setError(null);
+      }
 
       try {
         const data = await apiClient.get<LakeDetailResponse>(`lakes/${id}`);
