@@ -63,7 +63,11 @@ def get_bearer_token(credentials: HTTPAuthorizationCredentials | None = Depends(
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Se requiere un token de autenticacion",
+            detail={
+                "type": "AuthenticationError",
+                "code": "MISSING_OR_INVALID_HEADER",
+                "message": "Falta el encabezado Authorization o el esquema no es Bearer"
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
     return credentials.credentials
@@ -91,4 +95,3 @@ def read_current_user(payload: dict = Security(verify_supabase_jwt)): # noqa: B0
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al recuperar el perfil: {exc!s}"
         )
-    
