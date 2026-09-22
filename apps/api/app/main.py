@@ -8,8 +8,8 @@ from app.auth import router as auth_router
 from app.config import settings
 from app.database import check_supabase_connection, supabase
 from app.handlers import auth_exception_handler, global_exception_handler
-from app.schemas import LakeDetail, MembershipCreate
-from app.services import add_organization_member, get_lake_by_id
+from app.schemas import LakeDetail
+from app.services import get_lake_by_id
 
 # Metadatos de las etiquetas para Swagger
 tags_metadata = [
@@ -58,12 +58,3 @@ def health_check():
 @app.get("/api/v1/lakes/{id}", response_model=LakeDetail, tags=["Catalog"])
 def get_lake(id: UUID):
     return get_lake_by_id(supabase=supabase, lake_id=id)
-
-@app.post("/api/v1/organizations/{id}/members", tags=["Organizations"])
-def create_organization_member(id: UUID, membership: MembershipCreate):
-    return add_organization_member(
-        supabase=supabase,
-        org_id=id,
-        profile_id=membership.profile_id,
-        role=membership.role
-    )
