@@ -6,14 +6,12 @@ from app.auth import router as auth_router
 from app.config import settings
 from app.database import check_supabase_connection
 from app.handlers import auth_exception_handler, global_exception_handler
-from app.organizations import (
-    router as organizations_router,  # Inyección del nuevo enrutador
-)
+from app.organizations import router as organizations_router
 
-# Metadatos de las etiquetas para Swagger
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
     {"name": "Auth", "description": "Autenticación de usuarios."},
+    {"name": "Organizations", "description": "Gestión de organizaciones."}, # <-- Añadir
     {"name": "Catalog", "description": "Catálogo de lagos y estaciones."},
     {
         "name": "Organizations",
@@ -28,15 +26,11 @@ app = FastAPI(
     openapi_tags=tags_metadata,
 )
 
-# Registro de manejadores de excepciones
 app.add_exception_handler(AuthException, auth_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
 
-# Registro de rutas
 app.include_router(auth_router)
-app.include_router(
-    organizations_router
-)  # Exposición del endpoint GET /api/v1/organizations
+app.include_router(organizations_router)
 
 # Habilitar CORS para el frontend React
 app.add_middleware(
@@ -62,3 +56,4 @@ def health_check():
         "status": "ok" if db_status["status"] == "ok" else "degraded",
         "database": db_status,
     }
+

@@ -3,16 +3,15 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from app.auth import verify_supabase_jwt
-
-# Importamos la instancia de BD y la barrera de seguridad de tu compañero
+from app.auth import require_admin, verify_supabase_jwt
 from app.database import supabase
+from app.schemas import OrganizationCreate, OrganizationOut
+from app.services import create_organization
 
-# Definimos el router con la ruta base exigida en el ticket
 router = APIRouter(prefix="/api/v1/organizations", tags=["Organizations"])
 
 
-# Definición estricta del esquema de respuesta (Criterio de Aceptación)
+# Definición estricta del esquema de respuesta (S2-040)
 class UserOrganizationResponse(BaseModel):
     id: UUID
     name: str
@@ -34,7 +33,6 @@ def get_user_organizations(payload: dict = Depends(verify_supabase_jwt)):  # noq
 
     try:
         # Consulta a la tabla intermedia 'memberships' filtrando por el usuario exacto.
-        # Esto cumple la directiva de impedir la enumeración de entidades ajenas.
         response = (
             supabase.table("memberships")
             .select("role, organizations!inner(id, name)")
@@ -61,3 +59,14 @@ def get_user_organizations(payload: dict = Depends(verify_supabase_jwt)):  # noq
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error en el motor de base de datos al recuperar organizaciones: {exc}",
         ) from exc
+
+
+@router.post("", response_model=OrganizationOut, status_code=status.HTTP_201_CREATED)
+def create_org(org: OrganizationCreate, payload: dict = Depends(require_admin)):  # noqa: B008
+    org_data = {
+        "name": org.name,
+        "identifier": org.identifier,
+        "description": org.description,
+        "status": "active"
+    }
+    return create_organization(supabase, org_data)
