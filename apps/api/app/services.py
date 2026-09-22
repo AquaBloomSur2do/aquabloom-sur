@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from fastapi import HTTPException
+
 
 def get_current_user_profile(supabase, user_id: UUID, email: str) -> dict:
     # 1. Operación Atómica para evitar condiciones de carrera (Ticket S2-036).
@@ -20,3 +22,12 @@ def get_current_user_profile(supabase, user_id: UUID, email: str) -> dict:
     )
 
     return response.data
+
+def get_lake_by_id(supabase, lake_id: UUID) -> dict:
+    response = supabase.table("lakes").select("*").eq("id", str(lake_id)).execute()
+    
+    # Lago inexistente (Error 404)
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Lago no encontrado")
+        
+    return response.data[0]
