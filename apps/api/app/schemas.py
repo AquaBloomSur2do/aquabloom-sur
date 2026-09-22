@@ -13,14 +13,19 @@ class ErrorResponse(BaseModel):
 
 # --- Esquemas de Lake ---
 
+
 class LakeBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Nombre del lago")
-    region: str = Field(..., min_length=1, max_length=255, description="Región donde se ubica")
+    region: str = Field(
+        ..., min_length=1, max_length=255, description="Región donde se ubica"
+    )
     description: str | None = Field(None, description="Descripción opcional")
 
 
 class LakeCreate(LakeBase):
-    geom: dict[str, Any] = Field(..., description="Geometría del lago en formato GeoJSON Polygon")
+    geom: dict[str, Any] = Field(
+        ..., description="Geometría del lago en formato GeoJSON Polygon"
+    )
 
     @field_validator("geom")
     @classmethod
@@ -61,4 +66,3 @@ class LakeDetail(LakeSummary):
     geom: dict[str, Any]
     created_at: datetime
     updated_at: datetime
-    
