@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from fastapi import HTTPException
+
 
 def get_current_user_profile(supabase, user_id: UUID, email: str) -> dict:
     # 1. Operación Atómica para evitar condiciones de carrera (Ticket S2-036).
@@ -20,3 +22,30 @@ def get_current_user_profile(supabase, user_id: UUID, email: str) -> dict:
     )
 
     return response.data
+
+def add_organization_member(supabase, org_id: UUID, profile_id: UUID, role: str) -> dict:
+    # 1. Validar: Perfil inexistente
+    profile_res = supabase.table("profiles").select("id").eq("id", str(profile_id)).execute()
+    if not profile_res.data:
+        raise HTTPException(status_code=404, detail="Perfil inexistente")
+
+    # 2. Validar: Membresía duplicada
+    member_res = supabase.table("memberships").select("id").eq("organization_id", str(org_id)).eq("profile_id", str(profile_id)).execute()
+    if member_res.data:
+        raise HTTPException(status_code=400, detail="Membresía duplicada en esta organización")
+
+    # 3. Validar: Administrador de otra organización
+    if role == "admin":
+        admin_res = supabase.table("memberships").select("id").eq("profile_id", str(profile_id)).eq("role", "admin").neq("organization_id", str(org_id)).execute()
+        if admin_res.data:
+            raise HTTPException(status_code=400, detail="El usuario ya es administrador de otra organización")
+
+    # 4. Insertar la nueva membresía
+    insert_res = supabase.table("memberships").insert({
+        "organization_id": str(org_id),
+        "profile_id": str(profile_id),
+        "role": role,
+        "status": "active"
+    }).execute()
+    
+    return insert_res.data[0]

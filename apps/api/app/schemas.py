@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -61,4 +61,8 @@ class LakeDetail(LakeSummary):
     geom: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+    
+class MembershipCreate(BaseModel):
+    profile_id: UUID = Field(..., description="ID del perfil del usuario")
+    role: Literal["admin", "member"] = Field(..., description="Rol en la organización")
     
