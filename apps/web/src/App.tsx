@@ -1,6 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import type { Session } from '@supabase/supabase-js';
 
 import { PublicLayout } from './layouts/PublicLayout';
@@ -13,10 +12,8 @@ import { LakeDetail } from './pages/LakeDetail';
 import { NotFound } from './pages/NotFound';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
-// Inicializamos el cliente local de Supabase usando las variables de entorno de Vite
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder';
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Importamos la instancia centralizada de Supabase (Patrón Singleton)
+import { supabase } from './lib/supabase';
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
