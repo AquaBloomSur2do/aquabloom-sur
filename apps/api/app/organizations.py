@@ -1,10 +1,10 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, Security, status
 from pydantic import BaseModel
 
-from .auth import get_authenticated_user, get_bearer_token
+from .auth import verify_supabase_jwt
 from .database import supabase
 from .services import get_organization_members_for_user
 
@@ -27,7 +27,7 @@ class OrganizationMemberResponse(BaseModel):
 )
 def list_organization_members(
     organization_id: UUID,
-    token: str = Depends(get_bearer_token),
+    payload: dict = Security(verify_supabase_jwt),  # noqa: B008
 ):
     if supabase is None:
         raise HTTPException(
@@ -35,7 +35,14 @@ def list_organization_members(
             detail="El servicio de autenticación no está disponible",
         )
 
-    current_user_id, _ = get_authenticated_user(token)
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token sin identificador de usuario (sub).",
+        )
+
+    current_user_id = UUID(str(user_id))
 
     try:
         members = get_organization_members_for_user(

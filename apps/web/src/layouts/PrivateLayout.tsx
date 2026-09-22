@@ -1,6 +1,13 @@
-import { Outlet, Link } from 'react-router-dom';
+import { Outlet, Link, useNavigate } from 'react-router-dom';
+import { supabase } from '../services/supabase';
 
 export function PrivateLayout() {
+  const navigate = useNavigate();
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate('/login', { replace: true });
+  };
+
   return (
     <div className="private-layout">
       <nav className="private-navbar">
@@ -10,6 +17,7 @@ export function PrivateLayout() {
         <div className="navbar-menu">
           <Link to="/dashboard" className="nav-link">Dashboard</Link>
           <Link to="/lakes" className="nav-link">Lagos</Link>
+          <button onClick={handleLogout} className="nav-link logout-btn">Cerrar sesión</button>
         </div>
       </nav>
       <div className="private-container">

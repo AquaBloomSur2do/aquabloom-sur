@@ -39,10 +39,7 @@ class CurrentUserResponse(BaseModel):
     email: str | None
     memberships: list[MembershipResponse]
 
-
-def verify_supabase_jwt(
-    credentials: HTTPAuthorizationCredentials = Security(security),  # noqa: B008
-) -> dict:
+def verify_supabase_jwt(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict: # noqa: B008
     token = credentials.credentials
     secret = settings.supabase_jwt_secret
     issuer = f"{settings.supabase_url}/auth/v1"
@@ -64,10 +61,7 @@ def verify_supabase_jwt(
     except jwt.PyJWTError:
         raise AuthException("Token JWT alterado o inválido.", {"code": "INVALID_TOKEN"})
 
-
-def get_bearer_token(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),  # noqa: B008
-) -> str:
+def get_bearer_token(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)) -> str: # noqa: B008
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -140,9 +134,10 @@ def read_current_user(payload: dict = Security(verify_supabase_jwt)):  # noqa: B
     try:
         # Pasamos el UUID validado localmente al servicio de perfiles existente.
         # Cero llamadas de red al servidor de Auth de Supabase.
-        return get_current_user_profile(supabase, UUID(str(user_id)), email)
-    except Exception as exc:
+        return get_current_user_profile(supabase, UUID(user_id), email)
+    except Exception as exc: # noqa: BLE001
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al recuperar el perfil: {exc!s}",
-        ) from exc
+            detail=f"Error al recuperar el perfil: {exc!s}"
+        )
+    

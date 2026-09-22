@@ -2,12 +2,7 @@ from uuid import UUID
 
 from supabase import Client
 
-from .repositories import (
-    get_active_memberships,
-    get_organization_by_id,
-    get_organization_members,
-    get_user_membership_in_organization,
-)
+from .repositories import get_active_memberships
 
 
 def get_current_user_profile(client: Client, user_id: UUID, email: str | None) -> dict:
@@ -21,52 +16,61 @@ def get_current_user_profile(client: Client, user_id: UUID, email: str | None) -
 def get_organization_members_for_user(
     client: Client, user_id: UUID, organization_id: UUID
 ) -> list[dict]:
-    organization = get_organization_by_id(client, organization_id)
-    if organization is None:
-        raise LookupError(f"La organización {organization_id} no existe.")
+    organization = (
+        client.table("organizations")
+        .select("id, name, status")
+        .eq("id", str(organization_id))
+        .maybe_single()
+        .execute()
+    )
+    if not organization.data:
+        raise LookupError(f"Organización no encontrada: {organization_id}")
 
-    if organization.get("status") != "active":
-        raise PermissionError(
-            "La organización no está activa para realizar esta consulta."
+    requester_membership = (
+        client.table("memberships")
+        .select("id, role, status")
+        .eq("user_id", str(user_id))
+        .eq("organization_id", str(organization_id))
+        .maybe_single()
+        .execute()
+    )
+    if not requester_membership.data:
+        raise PermissionError("Usuario no pertenece a la organización")
+
+    response = (
+        client.table("memberships")
+        .select(
+            "id, user_id, role, status, created_at, updated_at, "
+            "profile:profiles!user_id(id, email, full_name)"
         )
+        .eq("organization_id", str(organization_id))
+        .order("created_at", desc=False)
+        .execute()
+    )
 
-    membership = get_user_membership_in_organization(client, user_id, organization_id)
-    if membership is None or membership.get("status") != "active":
-        raise PermissionError(
-            "No tienes permisos para consultar los miembros de esta organización."
-        )
-
-    members = get_organization_members(client, organization_id)
-    user_ids = {str(member["user_id"]) for member in members if member.get("user_id")}
-    email_by_user_id: dict[str, str | None] = {}
-
-    if user_ids:
-        try:
-            users_response = client.auth.admin.list_users()
-            for user in users_response.users:
-                if getattr(user, "id", None) is not None:
-                    email_by_user_id[str(user.id)] = getattr(user, "email", None)
-        except (AttributeError, TypeError):
-            email_by_user_id = {}
-
-    normalized_members: list[dict] = []
-    for member in members:
-        profile = member.get("profile") or {}
-        user_id_value = member.get("user_id")
-        normalized_member = {
-            "user_id": UUID(str(user_id_value)),
+    members = response.data or []
+    return [
+        {
+            "user_id": UUID(str(member["user_id"])),
             "profile_id": (
-                UUID(str(profile["id"]))
-                if isinstance(profile, dict) and profile.get("id")
+                UUID(str(member["profile"]["id"]))
+                if member.get("profile") and member["profile"].get("id")
                 else None
             ),
-            "full_name": profile.get("name") if isinstance(profile, dict) else None,
-            "email": email_by_user_id.get(str(user_id_value)),
-            "role": member.get("role"),
-            "status": member.get("status"),
-            "created_at": member.get("created_at"),
-            "updated_at": member.get("updated_at"),
+            "full_name": (
+                member.get("profile", {}).get("full_name")
+                if member.get("profile")
+                else None
+            ),
+            "email": (
+                member.get("profile", {}).get("email")
+                if member.get("profile")
+                else None
+            ),
+            "role": member["role"],
+            "status": member["status"],
+            "created_at": member["created_at"],
+            "updated_at": member["updated_at"],
         }
-        normalized_members.append(normalized_member)
-
-    return normalized_members
+        for member in members
+    ]
