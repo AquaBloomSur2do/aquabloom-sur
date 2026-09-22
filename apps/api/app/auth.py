@@ -92,7 +92,6 @@ def read_current_user(payload: dict = Security(verify_supabase_jwt)):  # noqa: B
         )
 
 
-<<<<<<< Updated upstream
 def require_admin(payload: dict = Security(verify_supabase_jwt)) -> dict:  # noqa: B008
     user_metadata = payload.get("user_metadata", {})
     role = user_metadata.get("role")
@@ -101,13 +100,29 @@ def require_admin(payload: dict = Security(verify_supabase_jwt)) -> dict:  # noq
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo los administradores pueden realizar esta acción."
-=======
+        )
+    return payload
+
+ROLE_PERMISSIONS = {
+    "administrador": ["catalog:view", "catalog:update", "catalog:disable"],
+    "investigador": ["catalog:view", "catalog:update"],
+    "usuario": ["catalog:view"],
+}
+
+
+def _has_permission(payload: dict, required_permission: str) -> bool:
+    user_metadata = payload.get("user_metadata", {})
+    role = user_metadata.get("role")
+    if not role:
+        return False
+    return required_permission in ROLE_PERMISSIONS.get(role, [])
+
 def require_catalog_update_permission(payload: dict = Security(verify_supabase_jwt)) -> dict:  # noqa: B008
     if not _has_permission(payload, "catalog:update"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permisos para actualizar lagos."
->>>>>>> Stashed changes
         )
     return payload
+
 
