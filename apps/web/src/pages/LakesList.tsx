@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/apiClient';
 import type { LakeSummary } from '../types/lake';
@@ -41,51 +41,28 @@ export function LakesList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadLakes = async () => {
-    setLoading(true);
-    setError(null);
+  const fetchLakes = useCallback(async (isManual = false) => {
+    if (isManual) {
+      setLoading(true);
+      setError(null);
+    }
 
     try {
       const data = await apiClient.get<unknown>('lakes');
       setLakes(normalizeLakesResponse(data));
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo cargar la lista de lagos.');
       setLakes([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const fetchLakes = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const data = await apiClient.get<unknown>('lakes');
-        if (!cancelled) {
-          setLakes(normalizeLakesResponse(data));
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'No se pudo cargar la lista de lagos.');
-          setLakes([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchLakes();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  }, [fetchLakes]);
 
   const handleRowNavigation = (id: string) => {
     navigate(`/lakes/${id}`);
@@ -116,7 +93,7 @@ export function LakesList() {
       {!loading && error && (
         <div className="state-panel state-panel--error" role="alert">
           <p>{error}</p>
-          <button type="button" className="btn btn-primary" onClick={() => void loadLakes()}>
+          <button type="button" className="btn btn-primary" onClick={() => void fetchLakes(true)}>
             Reintentar
           </button>
         </div>
