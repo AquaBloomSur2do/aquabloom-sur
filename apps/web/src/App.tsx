@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import type { Session } from '@supabase/supabase-js';
 
@@ -12,46 +12,60 @@ import { LakeDetail } from './pages/LakeDetail';
 import { NotFound } from './pages/NotFound';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
-// Importamos la instancia centralizada de Supabase (Patrón Singleton)
+import Error401 from './pages/Error401';
+import Error403 from './pages/Error403';
+
 import { supabase } from './lib/supabase';
+// Importamos el manejador global
+import { setupGlobalErrorHandler } from './lib/errorHandler';
+
+// Componente auxiliar para inyectar navigate en Axios
+function AxiosInterceptor() {
+  const navigate = useNavigate();
+  
+  useEffect(() => {
+    setupGlobalErrorHandler(navigate);
+  }, [navigate]);
+
+  return null; // Este componente no renderiza nada visualmente
+}
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Obtener la sesion actual al cargar la página
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
     });
 
-    // 2. Escuchar cambios automaticamente (cuando el usuario hace login o logout)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
 
-    // Limpieza del listener al desmontar el componente
     return () => subscription.unsubscribe();
   }, []);
 
-  // Evitamos el parpadeo de redirección mientras Supabase verifica la sesion
   if (loading) {
     return <div>Cargando sesión...</div>;
   }
 
   return (
     <BrowserRouter>
+      {/* Inicializamos el interceptor de Axios aquí para que tenga acceso al router */}
+      <AxiosInterceptor />
+      
       <Routes>
-        {/* Rutas publicas */}
         <Route element={<PublicLayout />}>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/401" element={<Error401 />} />
+          <Route path="/403" element={<Error403 />} />
         </Route>
 
-        {/* Rutas privadas (Ahora protegidas dinamicamente) */}
         <Route element={<ProtectedRoute session={session} />}>
           <Route element={<PrivateLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
@@ -60,7 +74,6 @@ function App() {
           </Route>
         </Route>
 
-        {/* Ruta 404 */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
