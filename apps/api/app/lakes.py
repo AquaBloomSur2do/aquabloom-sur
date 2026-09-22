@@ -1,66 +1,68 @@
 from uuid import UUID
 
-import jwt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Security, status
 
-from app.config import settings
-
-from .auth import get_bearer_token
+from .auth import verify_supabase_jwt
 from .database import supabase
 
 router = APIRouter(prefix="/api/v1", tags=["Catalog"])
 
 
-def _has_permission(payload: dict, permission: str) -> bool:
-    permissions = payload.get("permissions")
-    if permissions is None:
-        metadata = payload.get("app_metadata") or {}
-        permissions = metadata.get("permissions")
-    if permissions is None:
-        metadata = payload.get("user_metadata") or {}
-        permissions = metadata.get("permissions")
+def _get_permissions(payload: dict) -> list[str]:
+    permissions = payload.get("permissions", [])
+    if not permissions:
+        permissions = (payload.get("app_metadata") or {}).get("permissions", [])
+    if not permissions:
+        permissions = (payload.get("user_metadata") or {}).get("permissions", [])
 
     if isinstance(permissions, str):
         permissions = [item.strip() for item in permissions.split(",") if item.strip()]
 
     if isinstance(permissions, (list, tuple, set)):
-        return permission in permissions
+        return [str(item).strip() for item in permissions if str(item).strip()]
 
-    return False
+    return []
+
+
+def _get_role(payload: dict) -> str:
+    role = (
+        payload.get("role")
+        or (payload.get("app_metadata") or {}).get("role")
+        or (payload.get("user_metadata") or {}).get("role")
+        or ""
+    )
+    return str(role).lower()
+
+
+def _has_permission(payload: dict, permission: str) -> bool:
+    return permission in _get_permissions(payload)
 
 
 def require_catalog_disable_permission(
-    token: str = Depends(get_bearer_token),
+    payload: dict = Security(verify_supabase_jwt),  # noqa: B008
 ) -> dict:
-    if not getattr(settings, "supabase_jwt_secret", None):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="La configuración del secreto JWT no está disponible.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    role = _get_role(payload)
+    permissions = _get_permissions(payload)
+    status_value = str(
+        payload.get("status")
+        or (payload.get("app_metadata") or {}).get("status")
+        or (payload.get("user_metadata") or {}).get("status")
+        or "active"
+    ).lower()
 
-    try:
-        payload = jwt.decode(
-            token,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
-            audience="authenticated",
-            issuer=f"{settings.supabase_url}/auth/v1",
-        )
-    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, jwt.PyJWTError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token JWT inválido o expirado.",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
-
-    if not _has_permission(payload, "catalog:disable"):
+    if status_value and status_value != "active":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permisos para desactivar lagos.",
         )
 
-    return payload
+    if role in {"administrator", "curator"} or "catalog:disable" in permissions:
+        return payload
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="No tienes permisos para desactivar lagos.",
+    )
 
 
 @router.get("/lakes")

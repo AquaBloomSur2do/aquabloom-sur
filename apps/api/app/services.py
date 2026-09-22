@@ -1,13 +1,22 @@
 from uuid import UUID
 
-from supabase import Client
 
-from .repositories import get_active_memberships
+def get_current_user_profile(supabase, user_id: UUID, email: str) -> dict:
+    # 1. Operación Atómica para evitar condiciones de carrera (Ticket S2-036).
+    # Se preserva el identificador original de Supabase Auth inyectándolo en 'id'.
+    # Si dos peticiones llegan al mismo milisegundo, PostgreSQL ignora la segunda.
+    supabase.table("profiles").upsert(
+        {"id": str(user_id), "email": email}, on_conflict="id", ignore_duplicates=True
+    ).execute()
 
+    # 2. Recuperación del perfil y sus relaciones (roles/organizaciones).
+    # Mapea con la estructura de respuesta (CurrentUserResponse) definida en auth.py.
+    response = (
+        supabase.table("profiles")
+        .select("id, email, memberships(role, status, organization(id, name, status))")
+        .eq("id", str(user_id))
+        .single()
+        .execute()
+    )
 
-def get_current_user_profile(client: Client, user_id: UUID, email: str | None) -> dict:
-    return {
-        "id": str(user_id),
-        "email": email,
-        "memberships": get_active_memberships(client, user_id),
-    }
+    return response.data

@@ -1,7 +1,7 @@
 from uuid import UUID
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi import APIRouter, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
@@ -11,7 +11,6 @@ from .database import supabase
 from .services import get_current_user_profile
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
-bearer_scheme = HTTPBearer(auto_error=False)
 security = HTTPBearer()
 
 
@@ -40,17 +39,18 @@ class CurrentUserResponse(BaseModel):
     memberships: list[MembershipResponse]
 
 
-def verify_supabase_jwt(
-    credentials: HTTPAuthorizationCredentials = Security(security),  # noqa: B008
-) -> dict:
+def verify_supabase_jwt(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict:  # noqa: B008
     token = credentials.credentials
     secret = settings.supabase_jwt_secret
     issuer = f"{settings.supabase_url}/auth/v1"
 
     try:
-        # Decodificación estricta: firma, expiración, emisor y audiencia
         payload = jwt.decode(
-            token, secret, algorithms=["HS256"], audience="authenticated", issuer=issuer
+            token,
+            secret,
+            algorithms=["HS256"],
+            audience="authenticated",
+            issuer=issuer,
         )
         return payload
     except jwt.ExpiredSignatureError:
@@ -63,18 +63,6 @@ def verify_supabase_jwt(
         raise AuthException("Emisor del token inválido.", {"code": "INVALID_ISSUER"})
     except jwt.PyJWTError:
         raise AuthException("Token JWT alterado o inválido.", {"code": "INVALID_TOKEN"})
-
-
-def get_bearer_token(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),  # noqa: B008
-) -> str:
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Se requiere un token de autenticacion",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return credentials.credentials
 
 
 @router.get("/me", response_model=CurrentUserResponse)
@@ -94,8 +82,6 @@ def read_current_user(payload: dict = Security(verify_supabase_jwt)):  # noqa: B
         )
 
     try:
-        # Pasamos el UUID validado localmente al servicio de perfiles existente.
-        # Cero llamadas de red al servidor de Auth de Supabase.
         return get_current_user_profile(supabase, UUID(user_id), email)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(
