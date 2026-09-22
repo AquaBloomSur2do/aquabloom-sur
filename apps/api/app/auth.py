@@ -90,3 +90,16 @@ def read_current_user(payload: dict = Security(verify_supabase_jwt)):  # noqa: B
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al recuperar el perfil: {exc!s}",
         )
+
+
+def require_admin(payload: dict = Security(verify_supabase_jwt)) -> dict:  # noqa: B008
+    user_metadata = payload.get("user_metadata", {})
+    role = user_metadata.get("role")
+    
+    if role != "administrador":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores pueden realizar esta acción."
+        )
+    return payload
+
