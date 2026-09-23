@@ -6,13 +6,6 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 
-class PaginatedLakes(BaseModel):
-    items: list[Any]
-    page: int
-    page_size: int
-    total: int
-
-
 class ErrorResponse(BaseModel):
     error: str
     message: str
@@ -81,6 +74,14 @@ class LakeDetail(LakeSummary):
     geom: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+
+
+# PaginatedLakes reubicado debajo de LakeSummary para evitar NameError
+class PaginatedLakes(BaseModel):
+    items: list[LakeSummary]
+    page: int
+    page_size: int
+    total: int
 
 
 class OrganizationCreate(BaseModel):
