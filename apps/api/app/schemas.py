@@ -40,6 +40,13 @@ class LakeUpdate(BaseModel):
     geom: dict[str, Any] | None = None
     status: str | None = Field(None, min_length=1, max_length=50)
 
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("El nombre del lago no puede estar vacío.")
+        return v
+
     @field_validator("geom")
     @classmethod
     def validate_geom(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -63,6 +70,7 @@ class LakeDetail(LakeSummary):
     created_at: datetime
     updated_at: datetime
     
+
 class OrganizationCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Nombre de la organización")
     identifier: str = Field(..., min_length=1, max_length=100, description="Identificador único (slug)")
@@ -75,6 +83,7 @@ class OrganizationCreate(BaseModel):
             raise ValueError("El identificador solo puede contener letras minúsculas, números y guiones.")
         return v
 
+
 class OrganizationOut(BaseModel):
     id: UUID
     name: str
@@ -84,4 +93,5 @@ class OrganizationOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+    
     
