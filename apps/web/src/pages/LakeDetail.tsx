@@ -18,7 +18,7 @@ export function LakeDetail() {
       try {
         const data = await apiClient.get<LakeDetailResponse>(`lakes/${id}`);
         if (isMounted) setLake(data);
-      } catch (err: any) {
+      } catch {
         if (isMounted) {
           // Si el fetch falla o retorna error HTTP, forzamos la vista 404
           setIsError404(true);
