@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -65,4 +66,26 @@ class LakeDetail(LakeSummary):
 class MembershipCreate(BaseModel):
     profile_id: UUID = Field(..., description="ID del perfil del usuario")
     role: Literal["admin", "member"] = Field(..., description="Rol en la organización")
+    
+class OrganizationCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255, description="Nombre de la organización")
+    identifier: str = Field(..., min_length=1, max_length=100, description="Identificador único (slug)")
+    description: str | None = Field(None, description="Descripción opcional")
+
+    @field_validator("identifier")
+    @classmethod
+    def validate_identifier(cls, v: str) -> str:
+        if not re.match(r"^[a-z0-9\-]+$", v):
+            raise ValueError("El identificador solo puede contener letras minúsculas, números y guiones.")
+        return v
+
+class OrganizationOut(BaseModel):
+    id: UUID
+    name: str
+    identifier: str
+    description: str | None
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
     

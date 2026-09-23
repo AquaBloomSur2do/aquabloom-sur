@@ -10,12 +10,17 @@ from app.database import check_supabase_connection, supabase
 from app.handlers import auth_exception_handler, global_exception_handler
 from app.schemas import MembershipCreate
 from app.services import add_organization_member
+from app.organizations import router as organizations_router
 
-# Metadatos de las etiquetas para Swagger
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
     {"name": "Auth", "description": "Autenticación de usuarios."},
+    {"name": "Organizations", "description": "Gestión de organizaciones."}, # <-- Añadir
     {"name": "Catalog", "description": "Catálogo de lagos y estaciones."},
+    {
+        "name": "Organizations",
+        "description": "Gestión de organizaciones de usuarios.",
+    },  # Documentación actualizada
 ]
 
 app = FastAPI(
@@ -25,14 +30,13 @@ app = FastAPI(
     openapi_tags=tags_metadata,
 )
 
-# Registro de manejadores de excepciones
 app.add_exception_handler(AuthException, auth_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
 
-# Registro de rutas
 app.include_router(auth_router)
+app.include_router(organizations_router)
 
-# Habilitar CORS para que el frontend React
+# Habilitar CORS para el frontend React
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -41,9 +45,11 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
+
 @app.get("/")
 def read_root():
     return {"message": f"API inicializada en ambiente: {settings.environment}"}
+
 
 @app.get("/api/v1/health", tags=["System"])
 def health_check():

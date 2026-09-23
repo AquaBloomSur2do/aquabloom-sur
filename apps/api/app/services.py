@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 
 
 def get_current_user_profile(supabase, user_id: UUID, email: str) -> dict:
@@ -49,3 +49,20 @@ def add_organization_member(supabase, org_id: UUID, profile_id: UUID, role: str)
     }).execute()
     
     return insert_res.data[0]
+def create_organization(supabase, org_data: dict) -> dict:
+    try:
+        response = supabase.table("organizations").insert(org_data).execute()
+        return response.data[0]
+    except Exception as exc:
+        error_msg = str(exc).lower()
+        # PostgREST devuelve errores 23505 para violaciones UNIQUE
+        if "duplicate key" in error_msg or "unique constraint" in error_msg or "23505" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ya existe una organización con ese identificador o nombre."
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al crear la organización: {exc!s}"
+        ) from exc
+
