@@ -37,10 +37,12 @@ def update_station(
     # 2. Extracción segura (exclude_unset=True ignora lo que el cliente no envió)
     update_data = station_update.model_dump(exclude_unset=True)
 
-    # Si enviaron coordinates, lo extraemos a un formato compatible con tu base de datos (dict)
-    if update_data.get("coordinates"):
-        # Mantenemos la estructura JSON plano para la base de datos
-        update_data["coordinates"] = update_data["coordinates"]
+    # Transformación a formato WKT (Well-Known Text) para PostGIS
+    if "coordinates" in update_data:
+        coords = update_data.pop("coordinates")
+        if coords:
+            # PostGIS espera longitud primero, luego latitud: 'POINT(lon lat)'
+            update_data["geom"] = f"POINT({coords['longitude']} {coords['latitude']})"
 
     # 3. Optimización: Interceptar transacciones vacías
     if not update_data:
