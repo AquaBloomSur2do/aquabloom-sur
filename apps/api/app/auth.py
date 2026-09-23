@@ -48,7 +48,6 @@ def verify_supabase_jwt(
     issuer = f"{settings.supabase_url}/auth/v1"
 
     try:
-        # Decodificación estricta: firma, expiración, emisor y audiencia
         payload = jwt.decode(
             token, secret, algorithms=["HS256"], audience="authenticated", issuer=issuer
         )
@@ -82,8 +81,6 @@ def read_current_user(payload: dict = Security(verify_supabase_jwt)):  # noqa: B
         )
 
     try:
-        # Pasamos el UUID validado localmente al servicio de perfiles existente.
-        # Cero llamadas de red al servidor de Auth de Supabase.
         return get_current_user_profile(supabase, UUID(user_id), email)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(
@@ -103,6 +100,7 @@ def require_admin(payload: dict = Security(verify_supabase_jwt)) -> dict:  # noq
         )
     return payload
 
+
 ROLE_PERMISSIONS = {
     "administrador": ["catalog:view", "catalog:update", "catalog:disable"],
     "investigador": ["catalog:view", "catalog:update"],
@@ -117,6 +115,7 @@ def _has_permission(payload: dict, required_permission: str) -> bool:
         return False
     return required_permission in ROLE_PERMISSIONS.get(role, [])
 
+
 def require_catalog_update_permission(payload: dict = Security(verify_supabase_jwt)) -> dict:  # noqa: B008
     if not _has_permission(payload, "catalog:update"):
         raise HTTPException(
@@ -124,5 +123,4 @@ def require_catalog_update_permission(payload: dict = Security(verify_supabase_j
             detail="No tienes permisos para actualizar lagos."
         )
     return payload
-
 
