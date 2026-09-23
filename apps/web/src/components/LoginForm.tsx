@@ -11,7 +11,6 @@ export default function LoginForm() {
     e.preventDefault();
     setError('');
 
-    // Validación: Evitar envío si hay campos vacíos
     if (!email.trim() || !password.trim()) {
       setError('El correo y la contraseña son obligatorios.');
       return;
@@ -20,12 +19,29 @@ export default function LoginForm() {
     setIsLoading(true);
     
     try {
-      // Llamada real a Supabase usando el Singleton centralizado
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       
-      if (signInError) throw signInError;
+      if (signInError) {
+        const msg = signInError.message;
+        const status = signInError.status;
+
+        // Evaluación de códigos y mensajes técnicos de Supabase
+        if (status === 429 || msg.includes('Too many requests')) {
+          setError('Demasiados intentos. Por favor, espera unos minutos e intenta nuevamente.');
+        } else if (msg.includes('Invalid login credentials')) {
+          setError('El correo o la contraseña son incorrectos.');
+        } else if (msg.includes('Email not confirmed')) {
+          setError('Debes confirmar tu correo electrónico antes de iniciar sesión.');
+        } else if (msg.includes('Failed to fetch')) {
+          setError('Error de red. Verifica tu conexión a internet.');
+        } else {
+          setError('Ocurrió un error al iniciar sesión. Intenta más tarde.');
+        }
+        return;
+      }
     } catch {
-      setError('Error al procesar la solicitud.');
+      // Captura excepciones críticas a nivel de red (cuando el fetch ni siquiera alcanza a Supabase)
+      setError('Error de red. Verifica tu conexión a internet.');
     } finally {
       setIsLoading(false);
     }
@@ -69,7 +85,6 @@ export default function LoginForm() {
         {isLoading ? 'Ingresando...' : 'Ingresar'}
       </button>
 
-      {/* Enlace de recuperación deshabilitado como función futura */}
       <a 
         href="#" 
         className="text-sm text-gray-400 cursor-not-allowed pointer-events-none text-center mt-2" 
