@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -85,3 +85,14 @@ class OrganizationOut(BaseModel):
 
     model_config = {"from_attributes": True}
     
+class GeoJSONFeature(BaseModel):
+    type: Literal["Feature"] = "Feature"
+    geometry: dict[str, Any] | None
+    properties: dict[str, Any]
+
+class GeoJSONFeatureCollection(BaseModel):
+    type: Literal["FeatureCollection"] = "FeatureCollection"
+    features: list[GeoJSONFeature]
+    
+    
+
