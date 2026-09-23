@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import axios from 'axios';
 
 import { PublicLayout } from './layouts/PublicLayout';
 import { PrivateLayout } from './layouts/PrivateLayout';
@@ -19,12 +20,18 @@ import { supabase } from './lib/supabase';
 // Importamos el manejador global
 import { setupGlobalErrorHandler } from './lib/errorHandler';
 
-// Componente auxiliar para inyectar navigate en Axios
+// Componente auxiliar para inyectar navigate en Axios con limpieza de memoria
 function AxiosInterceptor() {
   const navigate = useNavigate();
   
   useEffect(() => {
-    setupGlobalErrorHandler(navigate);
+    // 1. Configuramos el interceptor y guardamos su ID numérico
+    const interceptorId = setupGlobalErrorHandler(navigate);
+
+    // 2. Función de limpieza para expulsar el interceptor y evitar fugas de memoria
+    return () => {
+      axios.interceptors.response.eject(interceptorId);
+    };
   }, [navigate]);
 
   return null; // Este componente no renderiza nada visualmente

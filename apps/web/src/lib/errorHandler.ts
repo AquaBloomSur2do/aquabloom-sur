@@ -1,8 +1,8 @@
 import axios from 'axios';
 import type { NavigateFunction } from 'react-router-dom';
 
-export const setupGlobalErrorHandler = (navigate: NavigateFunction) => {
-  axios.interceptors.response.use(
+export const setupGlobalErrorHandler = (navigate: NavigateFunction): number => {
+  const interceptorId = axios.interceptors.response.use(
     (response) => response,
     (error) => {
       if (error.response) {
@@ -17,4 +17,6 @@ export const setupGlobalErrorHandler = (navigate: NavigateFunction) => {
       return Promise.reject(error);
     }
   );
+
+  return interceptorId;
 };
