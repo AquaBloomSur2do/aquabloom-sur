@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { supabase } from '../lib/supabase';
 
 export default function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -15,12 +17,17 @@ export default function LoginForm() {
       return;
     }
 
-    // Aquí irá la llamada real a Supabase (solo se ejecuta si pasa la validación)
+    setIsLoading(true);
+    
     try {
-      console.log('Llamando a Supabase con:', email);
-      // await supabaseClient.auth.signInWithPassword({ email, password });
+      // Llamada real a Supabase usando el Singleton centralizado
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      
+      if (signInError) throw signInError;
     } catch {
       setError('Error al procesar la solicitud.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -38,6 +45,7 @@ export default function LoginForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="border border-gray-300 p-2 rounded focus:outline-none focus:border-blue-500"
+          disabled={isLoading}
         />
       </div>
 
@@ -49,14 +57,16 @@ export default function LoginForm() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="border border-gray-300 p-2 rounded focus:outline-none focus:border-blue-500"
+          disabled={isLoading}
         />
       </div>
 
       <button 
         type="submit" 
-        className="bg-blue-600 text-white font-medium p-2 rounded hover:bg-blue-700 transition-colors mt-2"
+        className="bg-blue-600 text-white font-medium p-2 rounded hover:bg-blue-700 transition-colors mt-2 disabled:bg-blue-400 disabled:cursor-not-allowed"
+        disabled={isLoading}
       >
-        Ingresar
+        {isLoading ? 'Ingresando...' : 'Ingresar'}
       </button>
 
       {/* Enlace de recuperación deshabilitado como función futura */}
