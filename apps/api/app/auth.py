@@ -41,7 +41,7 @@ class CurrentUserResponse(BaseModel):
 
 
 def verify_supabase_jwt(
-    credentials: HTTPAuthorizationCredentials = Security(security), #noqa: B008
+    credentials: HTTPAuthorizationCredentials = Security(security),  # noqa: B008
 ) -> dict:
     token = credentials.credentials
     secret = settings.supabase_jwt_secret
@@ -92,11 +92,11 @@ def read_current_user(payload: dict = Security(verify_supabase_jwt)):  # noqa: B
 def require_admin(payload: dict = Security(verify_supabase_jwt)) -> dict:  # noqa: B008
     user_metadata = payload.get("user_metadata", {})
     role = user_metadata.get("role")
-    
+
     if role != "administrador":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo los administradores pueden realizar esta acción."
+            detail="Solo los administradores pueden realizar esta acción.",
         )
     return payload
 
@@ -116,11 +116,12 @@ def _has_permission(payload: dict, required_permission: str) -> bool:
     return required_permission in ROLE_PERMISSIONS.get(role, [])
 
 
-def require_catalog_update_permission(payload: dict = Security(verify_supabase_jwt)) -> dict:  # noqa: B008
+def require_catalog_update_permission(
+    payload: dict = Security(verify_supabase_jwt),  # noqa: B008
+) -> dict:
     if not _has_permission(payload, "catalog:update"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para actualizar lagos."
+            detail="No tienes permisos para actualizar lagos.",
         )
     return payload
-
