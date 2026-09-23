@@ -8,9 +8,9 @@ from app.auth import router as auth_router
 from app.config import settings
 from app.database import check_supabase_connection, supabase
 from app.handlers import auth_exception_handler, global_exception_handler
+from app.organizations import router as organizations_router
 from app.schemas import MembershipCreate
 from app.services import add_organization_member
-from app.organizations import router as organizations_router
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
