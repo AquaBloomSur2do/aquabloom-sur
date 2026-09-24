@@ -84,6 +84,36 @@ class PaginatedLakes(BaseModel):
     total: int
 
 
+# --- Esquemas de Station ---
+
+
+class CoordinatesUpdate(BaseModel):
+    latitude: float = Field(
+        ..., ge=-90.0, le=90.0, description="Latitud válida entre -90 y 90"
+    )
+    longitude: float = Field(
+        ..., ge=-180.0, le=180.0, description="Longitud válida entre -180 y 180"
+    )
+
+
+class StationUpdate(BaseModel):
+    # Omitimos intencionalmente 'lake_id' y 'code' para que sea imposible sobrescribirlos
+    name: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = None
+    coordinates: CoordinatesUpdate | None = None
+    status: str | None = Field(None, min_length=1, max_length=50)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("El nombre de la estación no puede ser una cadena vacía.")
+        return v
+
+
+# --- Esquemas de Organization y Otros ---
+
+
 class OrganizationCreate(BaseModel):
     name: str = Field(
         ..., min_length=1, max_length=255, description="Nombre de la organización"
