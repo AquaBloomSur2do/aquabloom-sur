@@ -1,10 +1,9 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-
 from app.auth import require_catalog_update_permission
 from app.database import supabase
 from app.schemas import StationUpdate
+from fastapi import APIRouter, Depends, HTTPException, status
 
 router = APIRouter(prefix="/api/v1/stations", tags=["Catalog"])
 
