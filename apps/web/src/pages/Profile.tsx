@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiClient } from '../services/apiClient';
 
 interface UserProfile {
   name: string;
@@ -14,39 +15,47 @@ export default function Profile() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    // 3. Control de fuga de memoria (Montaje)
+    let isMounted = true;
+
     const fetchProfile = async () => {
       try {
-        setIsLoading(true);
-        setError('');
+        if (isMounted) setIsLoading(true);
+        if (isMounted) setError('');
         
-        // Llamada a la API para obtener los datos
-        const response = await fetch('/api/v1/profile'); // Ajustaremos la ruta cuando el backend la defina
+        // 1. Uso del cliente de red oficial del equipo
+        const data = await apiClient.get<UserProfile>('/profile');
         
-        if (!response.ok) {
-          if (response.status === 404) {
-            setProfile(null);
-            return;
-          }
-          throw new Error('Error en la red');
+        if (isMounted) {
+          setProfile({
+            name: data.name || 'Usuario Desconocido',
+            email: data.email || 'Sin correo',
+            organization: data.organization || 'Sin organización',
+            role: data.role || 'Sin rol',
+            status: data.status || 'inactivo'
+          });
         }
-
-        const data = await response.json();
-        
-        setProfile({
-          name: data.name || 'Usuario Desconocido',
-          email: data.email || 'Sin correo',
-          organization: data.organization || 'Sin organización',
-          role: data.role || 'Sin rol',
-          status: data.status || 'inactivo'
-        });
-      } catch {
-        setError('No se pudo cargar la información del perfil.');
+      } catch (err: any) {
+        if (isMounted) {
+          // Manejo del 404 a través del error del cliente (tipo Axios)
+          if (err?.response?.status === 404) {
+            setProfile(null);
+          } else {
+            setError('No se pudo cargar la información del perfil.');
+          }
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted) setIsLoading(false);
       }
     };
 
-    fetchProfile();
+    // 2. Ejecución segura para el Linter
+    void fetchProfile();
+
+    // 3. Limpieza del efecto (Desmontaje)
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   if (isLoading) {
