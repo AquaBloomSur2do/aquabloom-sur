@@ -15,7 +15,6 @@ export default function Profile() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    // 3. Control de fuga de memoria (Montaje)
     let isMounted = true;
 
     const fetchProfile = async () => {
@@ -23,7 +22,7 @@ export default function Profile() {
         if (isMounted) setIsLoading(true);
         if (isMounted) setError('');
         
-        // 1. Uso del cliente de red oficial del equipo
+        // Llamada directa sin desestructurar para cumplir con la interfaz
         const data = await apiClient.get<UserProfile>('/profile');
         
         if (isMounted) {
@@ -35,10 +34,12 @@ export default function Profile() {
             status: data.status || 'inactivo'
           });
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (isMounted) {
-          // Manejo del 404 a través del error del cliente (tipo Axios)
-          if (err?.response?.status === 404) {
+          // Moldeamos el error desconocido a la estructura segura esperada
+          const apiError = err as { response?: { status?: number } };
+          
+          if (apiError?.response?.status === 404) {
             setProfile(null);
           } else {
             setError('No se pudo cargar la información del perfil.');
@@ -49,10 +50,8 @@ export default function Profile() {
       }
     };
 
-    // 2. Ejecución segura para el Linter
     void fetchProfile();
 
-    // 3. Limpieza del efecto (Desmontaje)
     return () => {
       isMounted = false;
     };
