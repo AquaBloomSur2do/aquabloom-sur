@@ -9,6 +9,7 @@ from app.auth import (
 )
 from app.database import supabase
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes
+from app.services import get_lake_by_id
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
 
@@ -68,15 +69,13 @@ def get_lake(lake_id: UUID):
             detail="El servicio de base de datos no está disponible",
         )
 
-    existing = supabase.table("lakes").select("*").eq("id", str(lake_id)).execute()
-    if not existing.data:
+    try:
+        return get_lake_by_id(supabase=supabase, lake_id=lake_id)
+    except LookupError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"El lago con id {lake_id} no existe.",
+            detail=str(e),
         )
-
-    return existing.data[0]
-
 
 @router.post("", response_model=LakeDetail, status_code=status.HTTP_201_CREATED)
 def create_lake(
