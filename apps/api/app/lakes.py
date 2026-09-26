@@ -164,7 +164,7 @@ def update_lake(
         del update_data["id"]
 
     # Mapeo de GeoJSON a WKT para actualizaciones de geometría
-    if "geom" in update_data and update_data["geom"]:
+    if update_data.get("geom"):
         update_data["geom"] = _convert_polygon_to_wkt(update_data["geom"])
 
     if not update_data:
