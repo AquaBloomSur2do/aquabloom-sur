@@ -1,7 +1,5 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-
 from app.auth import (
     require_catalog_create_permission,
     require_catalog_disable_permission,
@@ -9,23 +7,18 @@ from app.auth import (
 )
 from app.database import supabase
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
-
 
 @router.get("", response_model=PaginatedLakes)
 def get_lakes(
     text: str | None = Query(None, description="Filtro de búsqueda por nombre"),
     region: str | None = Query(None, description="Filtro exacto por región"),
-    status_filter: str | None = Query(
-        None, alias="status", description="Filtro exacto por estado"
-    ),
+    status_filter: str | None = Query(None, alias="status", description="Filtro exacto por estado"),
     page: int = Query(1, ge=1, description="Número de página actual"),
-    limit: int = Query(
-        10, ge=1, le=100, description="Límite máximo de ítems por página"
-    ),
+    limit: int = Query(10, ge=1, le=100, description="Límite máximo de ítems por página"),
 ):
-    """Recupera el catálogo de lagos con soporte para filtros combinados y paginación."""
     try:
         query = supabase.table("lakes").select("*", count="exact")
 
@@ -59,7 +52,6 @@ def get_lakes(
             detail=f"Error en el motor de base de datos al recuperar el catálogo: {exc}",
         ) from exc
 
-
 @router.get("/{lake_id}", response_model=LakeDetail)
 def get_lake(lake_id: UUID):
     if supabase is None:
@@ -77,7 +69,6 @@ def get_lake(lake_id: UUID):
 
     return existing.data[0]
 
-
 @router.post("", response_model=LakeDetail, status_code=status.HTTP_201_CREATED)
 def create_lake(
     lake_create: LakeCreate,
@@ -90,16 +81,46 @@ def create_lake(
         )
 
     lake_data = lake_create.model_dump()
-    response = supabase.table("lakes").insert(lake_data).execute()
 
-    if not response.data:
+    geom_type = str(lake_data["geometry"].get("type", "")).upper()
+    coords = lake_data["geometry"].get("coordinates", [])
+
+    def format_coords(c: list) -> str:
+        if not c: return ""
+        if isinstance(c[0], (int, float)):
+            return f"{c[0]} {c[1]}"
+        return "(" + ", ".join(format_coords(sub) for sub in c) + ")"
+
+    try:
+        if geom_type == "POINT":
+            wkt_geometry = f"POINT({format_coords(coords)})"
+        else:
+            wkt_geometry = f"{geom_type}{format_coords(coords)}"
+            
+        lake_data["geometry"] = wkt_geometry
+    except (TypeError, ValueError, IndexError, AttributeError) as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al crear el lago.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Estructura de coordenadas GeoJSON inválida: {e}"
         )
 
-    return response.data[0]
-
+    try:
+        response = supabase.table("lakes").insert(lake_data).execute()
+        
+        if not response.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="La base de datos no retornó los datos del lago creado."
+            )
+            
+        return response.data[0]
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno del motor de base de datos al guardar el lago: {exc}"
+        )
 
 @router.patch("/{lake_id}", response_model=LakeDetail)
 def update_lake(
@@ -138,7 +159,6 @@ def update_lake(
         )
 
     return response.data[0]
-
 
 @router.delete("/{lake_id}", response_model=LakeDetail)
 def delete_lake(
