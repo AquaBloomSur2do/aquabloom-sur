@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
 from app.auth import (
     require_catalog_create_permission,
     require_catalog_disable_permission,
@@ -7,9 +9,19 @@ from app.auth import (
 )
 from app.database import supabase
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes
-from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
+
+
+def _convert_polygon_to_wkt(geom: dict) -> str | None:
+    """Convierte un diccionario GeoJSON Polygon a una cadena WKT para PostGIS."""
+    if not geom or geom.get("type") != "Polygon":
+        return None
+    rings = []
+    for ring in geom.get("coordinates", []):
+        points = ", ".join([f"{lon} {lat}" for lon, lat in ring])
+        rings.append(f"({points})")
+    return f"POLYGON({', '.join(rings)})"
 
 
 @router.get("", response_model=PaginatedLakes)
@@ -67,7 +79,14 @@ def get_lake(lake_id: UUID):
             detail="El servicio de base de datos no está disponible",
         )
 
-    existing = supabase.table("lakes").select("*").eq("id", str(lake_id)).execute()
+    try:
+        existing = supabase.table("lakes").select("*").eq("id", str(lake_id)).execute()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error en el motor de base de datos al buscar el lago: {exc}",
+        ) from exc
+
     if not existing.data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -89,15 +108,29 @@ def create_lake(
         )
 
     lake_data = lake_create.model_dump()
-    response = supabase.table("lakes").insert(lake_data).execute()
 
-    if not response.data:
+    # Mapeo de GeoJSON a WKT para compatibilidad con PostGIS
+    geom = lake_data.get("geom")
+    if geom:
+        lake_data["geom"] = _convert_polygon_to_wkt(geom)
+
+    try:
+        response = supabase.table("lakes").insert(lake_data).execute()
+
+        if not response.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno al persistir el registro del lago (respuesta vacía).",
+            )
+        return response.data[0]
+
+    except HTTPException:
+        raise
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al persistir el registro del lago.",
-        )
-
-    return response.data[0]
+            detail=f"Error en el motor de base de datos al crear el lago: {exc}",
+        ) from exc
 
 
 @router.patch("/{lake_id}", response_model=LakeDetail)
@@ -112,7 +145,14 @@ def update_lake(
             detail="El servicio de base de datos no está disponible",
         )
 
-    existing = supabase.table("lakes").select("*").eq("id", str(lake_id)).execute()
+    try:
+        existing = supabase.table("lakes").select("*").eq("id", str(lake_id)).execute()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error en el motor de base de datos al verificar el lago: {exc}",
+        ) from exc
+
     if not existing.data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -123,20 +163,32 @@ def update_lake(
     if "id" in update_data:
         del update_data["id"]
 
+    # Mapeo de GeoJSON a WKT para actualizaciones de geometría
+    if "geom" in update_data and update_data["geom"]:
+        update_data["geom"] = _convert_polygon_to_wkt(update_data["geom"])
+
     if not update_data:
         return existing.data[0]
 
-    response = (
-        supabase.table("lakes").update(update_data).eq("id", str(lake_id)).execute()
-    )
-
-    if not response.data:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al actualizar el lago.",
+    try:
+        response = (
+            supabase.table("lakes").update(update_data).eq("id", str(lake_id)).execute()
         )
 
-    return response.data[0]
+        if not response.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error al actualizar el lago (respuesta vacía).",
+            )
+        return response.data[0]
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error en el motor de base de datos al actualizar el lago: {exc}",
+        ) from exc
 
 
 @router.delete("/{lake_id}", response_model=LakeDetail)
@@ -150,7 +202,14 @@ def delete_lake(
             detail="El servicio de base de datos no está disponible",
         )
 
-    existing = supabase.table("lakes").select("*").eq("id", str(lake_id)).execute()
+    try:
+        existing = supabase.table("lakes").select("*").eq("id", str(lake_id)).execute()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error en el motor de base de datos al verificar el lago: {exc}",
+        ) from exc
+
     if not existing.data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -158,14 +217,24 @@ def delete_lake(
         )
 
     update_data = {"status": "inactive"}
-    response = (
-        supabase.table("lakes").update(update_data).eq("id", str(lake_id)).execute()
-    )
-
-    if not response.data:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al desactivar el lago.",
+    
+    try:
+        response = (
+            supabase.table("lakes").update(update_data).eq("id", str(lake_id)).execute()
         )
 
-    return response.data[0]
+        if not response.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error al desactivar el lago (respuesta vacía).",
+            )
+        return response.data[0]
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error en el motor de base de datos al desactivar el lago: {exc}",
+        ) from exc
+    
