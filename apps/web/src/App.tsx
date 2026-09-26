@@ -11,6 +11,7 @@ import { LakesList } from './pages/LakesList';
 import { LakeDetail } from './pages/LakeDetail';
 import { NotFound } from './pages/NotFound';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import LakeCreate from './pages/LakeCreate';
 
 import Error401 from './pages/Error401';
 import Error403 from './pages/Error403';
@@ -54,6 +55,10 @@ function App() {
           <Route element={<PrivateLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/lakes" element={<LakesList />} />
+            
+            {/* INYECCIÓN ESTRATÉGICA: /new debe ir antes de /:id */}
+            <Route path="/lakes/new" element={<LakeCreate />} />
+            
             <Route path="/lakes/:id" element={<LakeDetail />} />
           </Route>
         </Route>
@@ -65,3 +70,4 @@ function App() {
 }
 
 export default App;
+
