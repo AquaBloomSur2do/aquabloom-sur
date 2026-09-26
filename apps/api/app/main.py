@@ -1,26 +1,22 @@
-from uuid import UUID
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth import AuthException
 from app.auth import router as auth_router
 from app.config import settings
-from app.database import check_supabase_connection, supabase
+from app.database import check_supabase_connection
 from app.handlers import auth_exception_handler, global_exception_handler
 from app.organizations import router as organizations_router
-from app.schemas import MembershipCreate
-from app.services import add_organization_member
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
     {"name": "Auth", "description": "Autenticación de usuarios."},
-    {"name": "Organizations", "description": "Gestión de organizaciones."}, # <-- Añadir
+    {"name": "Organizations", "description": "Gestión de organizaciones."}, 
     {"name": "Catalog", "description": "Catálogo de lagos y estaciones."},
     {
         "name": "Organizations",
         "description": "Gestión de organizaciones de usuarios.",
-    },  # Documentación actualizada
+    },  
 ]
 
 app = FastAPI(
@@ -61,11 +57,3 @@ def health_check():
         "database": db_status,
     }
 
-@app.post("/api/v1/organizations/{id}/members", tags=["Organizations"])
-def create_organization_member(id: UUID, membership: MembershipCreate):
-    return add_organization_member(
-        supabase=supabase,
-        org_id=id,
-        profile_id=membership.profile_id,
-        role=membership.role
-    )
