@@ -28,9 +28,9 @@ def get_lake_by_id(supabase, lake_id: UUID) -> dict:
     
     # Lago inexistente (Error 404)
     if not response.data:
-        raise HTTPException(status_code=404, detail="Lago no encontrado")
-        
+        raise LookupError("Lago no encontrado")       
     return response.data[0]
+
 def create_organization(supabase, org_data: dict) -> dict:
     try:
         response = supabase.table("organizations").insert(org_data).execute()
@@ -47,4 +47,3 @@ def create_organization(supabase, org_data: dict) -> dict:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al crear la organización: {exc!s}"
         ) from exc
-
