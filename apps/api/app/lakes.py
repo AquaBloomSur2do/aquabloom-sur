@@ -1,7 +1,5 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-
 from app.auth import (
     require_catalog_create_permission,
     require_catalog_disable_permission,
@@ -10,6 +8,7 @@ from app.auth import (
 from app.database import supabase
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes
 from app.services import get_lake_by_id
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
 
@@ -228,5 +227,40 @@ def delete_lake(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error en el motor de base de datos al desactivar el lago: {exc}",
+        ) from exc
+
+@router.get("/{lake_id}/stations")
+def get_lake_stations(
+    lake_id: UUID,
+    status_filter: str | None = Query(None, alias="status", description="Filtro exacto por estado"),
+):
+    if supabase is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="El servicio de base de datos no está disponible",
+        )
+
+    # 1. Validar que el lago exista (Criterio de aceptación: 404 si no existe)
+    existing_lake = supabase.table("lakes").select("id").eq("id", str(lake_id)).execute()
+    if not existing_lake.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"El lago con id {lake_id} no existe.",
+        )
+
+    # 2. Consultar las estaciones asociadas a ese lago
+    query = supabase.table("stations").select("*").eq("lake_id", str(lake_id))
+
+    # 3. Aplicar filtro por estado si se proporciona
+    if status_filter:
+        query = query.eq("status", status_filter)
+
+    try:
+        response = query.execute()
+        return response.data
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error en el motor de base de datos al recuperar las estaciones: {exc}",
         ) from exc
     
