@@ -40,3 +40,5 @@ def check_catalog_permission(role: str, action: str) -> bool:
     # Evaluación de permisos (por defecto vacío si el rol no existe)
     allowed_actions = ROLE_PERMISSIONS.get(role, [])
     return action in allowed_actions
+
+

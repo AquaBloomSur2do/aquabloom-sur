@@ -70,3 +70,4 @@ def create_org(org: OrganizationCreate, payload: dict = Depends(require_admin)):
         "status": "active"
     }
     return create_organization(supabase, org_data)
+
