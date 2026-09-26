@@ -8,6 +8,7 @@ from app.auth import (
     require_catalog_update_permission,
 )
 from app.database import supabase
+from app.dependencies import require_permission
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes
 from app.services import get_lake_by_id
 
@@ -181,10 +182,13 @@ def update_lake(
         ) from exc
 
 
-@router.delete("/{lake_id}", response_model=LakeDetail)
+@router.delete(
+    "/{lake_id}",
+    response_model=LakeDetail,
+    dependencies=[Depends(require_permission("catalog:disable"))],
+)
 def delete_lake(
     lake_id: UUID,
-    _payload: dict = Depends(require_catalog_disable_permission),  # noqa: B008
 ):
     if supabase is None:
         raise HTTPException(

@@ -119,11 +119,27 @@ ROLE_PERMISSIONS = {
 
 
 def _has_permission(payload: dict, required_permission: str) -> bool:
-    user_metadata = payload.get("user_metadata", {})
-    role = user_metadata.get("role")
-    if not role:
-        return False
-    return required_permission in ROLE_PERMISSIONS.get(role, [])
+    metadata = payload.get("user_metadata") or payload.get("app_metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    role = str(
+        payload.get("role")
+        or metadata.get("role")
+        or (payload.get("user_metadata") or {}).get("role")
+        or ""
+    ).lower()
+
+    if role and required_permission in ROLE_PERMISSIONS.get(role, []):
+        return True
+
+    permissions = payload.get("permissions") or metadata.get("permissions") or []
+    if isinstance(permissions, str):
+        permissions = [item.strip() for item in permissions.split(",") if item.strip()]
+    if isinstance(permissions, (list, tuple, set)):
+        return required_permission in [str(item).strip() for item in permissions if str(item).strip()]
+
+    return False
 
 
 def require_catalog_create_permission(

@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from app.auth import verify_supabase_jwt
 from app.database import supabase
-from app.dependencies import require_admin
+from app.dependencies import require_permission
 from app.schemas import MembershipCreate, OrganizationCreate, OrganizationOut
 from app.services import add_organization_member, create_organization
 
@@ -81,12 +81,15 @@ def create_organization_member(
         raise HTTPException(status_code=400, detail=str(e))
     
 @router.post("", response_model=OrganizationOut, status_code=status.HTTP_201_CREATED)
-def create_org(org: OrganizationCreate, payload: dict = Depends(require_admin)):  # noqa: B008
+def create_org(
+    org: OrganizationCreate,
+    _current_user: dict = Depends(require_permission("admin")),  # noqa: B008
+):
     org_data = {
         "name": org.name,
         "identifier": org.identifier,
         "description": org.description,
-        "status": "active"
+        "status": "active",
     }
     return create_organization(supabase, org_data)
 
