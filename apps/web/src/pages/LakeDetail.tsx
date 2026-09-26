@@ -41,6 +41,7 @@ export function LakeDetail() {
   }, [id]);
 
   useEffect(() => {
+    // eslint-disable-next-line
     void fetchLake();
   }, [fetchLake]);
 
