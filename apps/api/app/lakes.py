@@ -9,6 +9,7 @@ from app.auth import (
 )
 from app.database import supabase
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes
+from app.services import get_lake_by_id
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
 
@@ -80,21 +81,12 @@ def get_lake(lake_id: UUID):
         )
 
     try:
-        existing = supabase.table("lakes").select("*").eq("id", str(lake_id)).execute()
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error en el motor de base de datos al buscar el lago: {exc}",
-        ) from exc
-
-    if not existing.data:
+        return get_lake_by_id(supabase=supabase, lake_id=lake_id)
+    except LookupError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"El lago con id {lake_id} no existe.",
+            detail=str(e),
         )
-
-    return existing.data[0]
-
 
 @router.post("", response_model=LakeDetail, status_code=status.HTTP_201_CREATED)
 def create_lake(
