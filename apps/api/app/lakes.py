@@ -1,7 +1,5 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-
 from app.auth import (
     require_catalog_create_permission,
     require_catalog_disable_permission,
@@ -9,6 +7,7 @@ from app.auth import (
 )
 from app.database import supabase
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
 
@@ -86,7 +85,7 @@ def create_lake(
     if supabase is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="El servicio de base de datos no está disponible",
+            detail="El servicio de base de datos no está disponible.",
         )
 
     lake_data = lake_create.model_dump()
@@ -95,7 +94,7 @@ def create_lake(
     if not response.data:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al crear el lago.",
+            detail="Error interno al persistir el registro del lago.",
         )
 
     return response.data[0]
