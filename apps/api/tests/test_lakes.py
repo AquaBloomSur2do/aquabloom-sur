@@ -99,7 +99,7 @@ def test_list_lakes_excludes_inactive(monkeypatch):
 
     assert response.status_code == 200
     data = response.json()
-    assert [item["id"] for item in data] == [lake_id]
+    assert [item["id"] for item in data["items"]] == [lake_id]
 
 
 def test_delete_lake_requires_catalog_disable_permission(monkeypatch):

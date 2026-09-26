@@ -39,7 +39,9 @@ class CurrentUserResponse(BaseModel):
     memberships: list[MembershipResponse]
 
 
-def verify_supabase_jwt(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict:  # noqa: B008
+def verify_supabase_jwt(
+    credentials: HTTPAuthorizationCredentials = Security(security),  # noqa: B008
+) -> dict:
     token = credentials.credentials
     secret = settings.supabase_jwt_secret
     issuer = f"{settings.supabase_url}/auth/v1"
@@ -88,3 +90,70 @@ def read_current_user(payload: dict = Security(verify_supabase_jwt)):  # noqa: B
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al recuperar el perfil: {exc!s}",
         )
+
+
+def require_admin(payload: dict = Security(verify_supabase_jwt)) -> dict:  # noqa: B008
+    user_metadata = payload.get("user_metadata", {})
+    role = user_metadata.get("role")
+
+    if role != "administrador":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores pueden realizar esta acción.",
+        )
+    return payload
+
+
+ROLE_PERMISSIONS = {
+    "administrador": [
+        "catalog:view",
+        "catalog:create",
+        "catalog:update",
+        "catalog:disable",
+    ],
+    "investigador": ["catalog:view", "catalog:create", "catalog:update"],
+    "supervisor": ["catalog:view", "catalog:update"],
+    "auditor": ["catalog:view"],
+    "usuario": ["catalog:view"],
+}
+
+
+def _has_permission(payload: dict, required_permission: str) -> bool:
+    user_metadata = payload.get("user_metadata", {})
+    role = user_metadata.get("role")
+    if not role:
+        return False
+    return required_permission in ROLE_PERMISSIONS.get(role, [])
+
+
+def require_catalog_create_permission(
+    payload: dict = Security(verify_supabase_jwt),  # noqa: B008
+) -> dict:
+    if not _has_permission(payload, "catalog:create"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para crear lagos.",
+        )
+    return payload
+
+
+def require_catalog_update_permission(
+    payload: dict = Security(verify_supabase_jwt),  # noqa: B008
+) -> dict:
+    if not _has_permission(payload, "catalog:update"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para actualizar lagos.",
+        )
+    return payload
+
+
+def require_catalog_disable_permission(
+    payload: dict = Security(verify_supabase_jwt),  # noqa: B008
+) -> dict:
+    if not _has_permission(payload, "catalog:disable"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para desactivar lagos.",
+        )
+    return payload

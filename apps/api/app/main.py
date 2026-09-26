@@ -7,30 +7,32 @@ from app.config import settings
 from app.database import check_supabase_connection
 from app.handlers import auth_exception_handler, global_exception_handler
 from app.lakes import router as lakes_router
+from app.organizations import router as organizations_router
+from app.stations import router as stations_router
 
-# Metadatos de las etiquetas para Swagger
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
     {"name": "Auth", "description": "Autenticación de usuarios."},
+    {"name": "Organizations", "description": "Gestión de organizaciones de usuarios."},
     {"name": "Catalog", "description": "Catálogo de lagos y estaciones."},
 ]
 
 app = FastAPI(
     title="AquaBloom Sur API",
     description="API REST para el manejo de usuarios, control de roles y catálogo de lagos.",
+    version="v1",
     servers=[{"url": "http://localhost:8000"}],
     openapi_tags=tags_metadata,
 )
 
-# Registro de manejadores de excepciones
 app.add_exception_handler(AuthException, auth_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
 
-# Registro de rutas
 app.include_router(auth_router)
+app.include_router(organizations_router)
 app.include_router(lakes_router)
+app.include_router(stations_router)
 
-# Habilitar CORS para que el frontend React
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
