@@ -3,10 +3,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from app.auth import require_admin, verify_supabase_jwt
+from app.auth import verify_supabase_jwt
 from app.database import supabase
-from app.schemas import OrganizationCreate, OrganizationOut
-from app.services import create_organization
+from app.dependencies import require_admin
+from app.schemas import MembershipCreate, OrganizationCreate, OrganizationOut
+from app.services import add_organization_member, create_organization
 
 router = APIRouter(prefix="/api/v1/organizations", tags=["Organizations"])
 
@@ -61,6 +62,24 @@ def get_user_organizations(payload: dict = Depends(verify_supabase_jwt)):  # noq
         ) from exc
 
 
+@router.post("/{id}/members")
+def create_organization_member(
+    id: UUID, 
+    membership: MembershipCreate,
+    user=Depends(verify_supabase_jwt) # noqa: B008
+):
+    try:
+        return add_organization_member(
+            supabase=supabase,
+            org_id=id,
+            profile_id=membership.profile_id,
+            role=membership.role
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
 @router.post("", response_model=OrganizationOut, status_code=status.HTTP_201_CREATED)
 def create_org(org: OrganizationCreate, payload: dict = Depends(require_admin)):  # noqa: B008
     org_data = {
