@@ -1,7 +1,7 @@
 from uuid import UUID
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi import APIRouter, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
@@ -11,7 +11,6 @@ from .database import supabase
 from .services import get_current_user_profile
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
-bearer_scheme = HTTPBearer(auto_error=False)
 security = HTTPBearer()
 
 
@@ -39,15 +38,21 @@ class CurrentUserResponse(BaseModel):
     email: str | None
     memberships: list[MembershipResponse]
 
-def verify_supabase_jwt(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict: # noqa: B008
+
+def verify_supabase_jwt(
+    credentials: HTTPAuthorizationCredentials = Security(security),  # noqa: B008
+) -> dict:
     token = credentials.credentials
     secret = settings.supabase_jwt_secret
     issuer = f"{settings.supabase_url}/auth/v1"
 
     try:
-        # Decodificación estricta: firma, expiración, emisor y audiencia
         payload = jwt.decode(
-            token, secret, algorithms=["HS256"], audience="authenticated", issuer=issuer
+            token,
+            secret,
+            algorithms=["HS256"],
+            audience="authenticated",
+            issuer=issuer,
         )
         return payload
     except jwt.ExpiredSignatureError:
@@ -60,59 +65,6 @@ def verify_supabase_jwt(credentials: HTTPAuthorizationCredentials = Security(sec
         raise AuthException("Emisor del token inválido.", {"code": "INVALID_ISSUER"})
     except jwt.PyJWTError:
         raise AuthException("Token JWT alterado o inválido.", {"code": "INVALID_TOKEN"})
-
-def get_bearer_token(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)) -> str: # noqa: B008
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Se requiere un token de autenticacion",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return credentials.credentials
-
-
-def get_authenticated_user(token: str) -> tuple[UUID, str | None]:
-    secret = settings.supabase_jwt_secret
-    issuer = f"{settings.supabase_url}/auth/v1"
-
-    try:
-        payload = jwt.decode(
-            token,
-            secret,
-            algorithms=["HS256"],
-            audience="authenticated",
-            issuer=issuer,
-        )
-    except jwt.ExpiredSignatureError as exc:
-        raise AuthException(
-            "El token JWT ha expirado.", {"code": "TOKEN_EXPIRED"}
-        ) from exc
-    except jwt.InvalidAudienceError as exc:
-        raise AuthException(
-            "Audiencia del token inválida.", {"code": "INVALID_AUDIENCE"}
-        ) from exc
-    except jwt.InvalidIssuerError as exc:
-        raise AuthException(
-            "Emisor del token inválido.", {"code": "INVALID_ISSUER"}
-        ) from exc
-    except jwt.PyJWTError as exc:
-        raise AuthException(
-            "Token JWT alterado o inválido.", {"code": "INVALID_TOKEN"}
-        ) from exc
-
-    user_id = payload.get("sub")
-    if not user_id:
-        raise AuthException(
-            "Token sin identificador de usuario (sub).", {"code": "MISSING_SUB"}
-        )
-
-    try:
-        return UUID(str(user_id)), payload.get("email")
-    except ValueError as exc:
-        raise AuthException(
-            "Identificador de usuario inválido en el token.",
-            {"code": "INVALID_USER_ID"},
-        ) from exc
 
 
 @router.get("/me", response_model=CurrentUserResponse)
@@ -132,12 +84,95 @@ def read_current_user(payload: dict = Security(verify_supabase_jwt)):  # noqa: B
         )
 
     try:
-        # Pasamos el UUID validado localmente al servicio de perfiles existente.
-        # Cero llamadas de red al servidor de Auth de Supabase.
         return get_current_user_profile(supabase, UUID(user_id), email)
-    except Exception as exc: # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al recuperar el perfil: {exc!s}"
+            detail=f"Error al recuperar el perfil: {exc!s}",
+        ) from exc
+
+
+def require_admin(payload: dict = Security(verify_supabase_jwt)) -> dict:  # noqa: B008
+    user_metadata = payload.get("user_metadata", {})
+    role = user_metadata.get("role")
+
+    if role != "administrador":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores pueden realizar esta acción.",
         )
-    
+    return payload
+
+
+ROLE_PERMISSIONS = {
+    "administrador": [
+        "catalog:view",
+        "catalog:create",
+        "catalog:update",
+        "catalog:disable",
+    ],
+    "investigador": ["catalog:view", "catalog:create", "catalog:update"],
+    "supervisor": ["catalog:view", "catalog:update"],
+    "auditor": ["catalog:view"],
+    "usuario": ["catalog:view"],
+}
+
+
+def _has_permission(payload: dict, required_permission: str) -> bool:
+    metadata = payload.get("user_metadata") or payload.get("app_metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    role = str(
+        payload.get("role")
+        or metadata.get("role")
+        or (payload.get("user_metadata") or {}).get("role")
+        or ""
+    ).lower()
+
+    if role and required_permission in ROLE_PERMISSIONS.get(role, []):
+        return True
+
+    permissions = payload.get("permissions") or metadata.get("permissions") or []
+    if isinstance(permissions, str):
+        permissions = [item.strip() for item in permissions.split(",") if item.strip()]
+    if isinstance(permissions, (list, tuple, set)):
+        return required_permission in [
+            str(item).strip() for item in permissions if str(item).strip()
+        ]
+
+    return False
+
+
+def require_catalog_create_permission(
+    payload: dict = Security(verify_supabase_jwt),  # noqa: B008
+) -> dict:
+    if not _has_permission(payload, "catalog:create"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para crear lagos.",
+        )
+    return payload
+
+
+def require_catalog_update_permission(
+    payload: dict = Security(verify_supabase_jwt),  # noqa: B008
+) -> dict:
+    if not _has_permission(payload, "catalog:update"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para actualizar lagos.",
+        )
+    return payload
+
+
+def require_catalog_disable_permission(
+    payload: dict = Security(verify_supabase_jwt),  # noqa: B008
+) -> dict:
+    if not _has_permission(payload, "catalog:disable"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para desactivar lagos.",
+        )
+    return payload
+

@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import type { Session } from '@supabase/supabase-js';
 
-import { supabase } from './services/supabase';
 import { PublicLayout } from './layouts/PublicLayout';
 import { PrivateLayout } from './layouts/PrivateLayout';
 import { Home } from './pages/Home';
@@ -12,30 +11,32 @@ import { LakesList } from './pages/LakesList';
 import { LakeDetail } from './pages/LakeDetail';
 import { NotFound } from './pages/NotFound';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import LakeCreate from './pages/LakeCreate';
+
+import Error401 from './pages/Error401';
+import Error403 from './pages/Error403';
+
+import { supabase } from './lib/supabase';
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Obtener la sesion actual al cargar la página
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
     });
 
-    // 2. Escuchar cambios automaticamente (cuando el usuario hace login o logout)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
 
-    // Limpieza del listener al desmontar el componente
     return () => subscription.unsubscribe();
   }, []);
 
-  // Evitamos el parpadeo de redirección mientras Supabase verifica la sesion
   if (loading) {
     return <div>Cargando sesión...</div>;
   }
@@ -43,22 +44,25 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Rutas publicas */}
         <Route element={<PublicLayout />}>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/401" element={<Error401 />} />
+          <Route path="/403" element={<Error403 />} />
         </Route>
 
-        {/* Rutas privadas (Ahora protegidas dinamicamente) */}
         <Route element={<ProtectedRoute session={session} />}>
           <Route element={<PrivateLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/lakes" element={<LakesList />} />
+            
+            {/* INYECCIÓN ESTRATÉGICA: /new debe ir antes de /:id */}
+            <Route path="/lakes/new" element={<LakeCreate />} />
+            
             <Route path="/lakes/:id" element={<LakeDetail />} />
           </Route>
         </Route>
 
-        {/* Ruta 404 */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
@@ -66,3 +70,4 @@ function App() {
 }
 
 export default App;
+
