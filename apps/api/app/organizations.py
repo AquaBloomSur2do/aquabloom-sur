@@ -62,7 +62,7 @@ def get_user_organizations(payload: dict = Depends(verify_supabase_jwt)):  # noq
         ) from exc
 
 
-@router.post("/api/v1/organizations/{id}/members", tags=["Organizations"])
+@router.post("/{id}/members")
 def create_organization_member(
     id: UUID, 
     membership: MembershipCreate,
