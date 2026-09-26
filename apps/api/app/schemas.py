@@ -17,7 +17,7 @@ class LakeBase(BaseModel):
     description: str | None = Field(None, description="Descripción opcional")
 
 class LakeCreate(LakeBase):
-    geometry: dict = Field(..., description="Geometría del lago en formato GeoJSON")
+    geom: dict = Field(..., description="Geometría del lago en formato GeoJSON")
 
     @field_validator("name")
     @classmethod
@@ -26,7 +26,7 @@ class LakeCreate(LakeBase):
             raise ValueError("El nombre del lago no puede estar vacío.")
         return value.strip()
 
-    @field_validator("geometry")
+    @field_validator("geom")
     @classmethod
     def validate_geometry_format(cls, value: dict) -> dict:
         if not isinstance(value, dict) or "type" not in value:
@@ -37,7 +37,7 @@ class LakeUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     region: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = None
-    geometry: dict | None = None
+    geom: dict | None = None
     status: str | None = Field(None, min_length=1, max_length=50)
 
     @field_validator("name")
@@ -47,7 +47,7 @@ class LakeUpdate(BaseModel):
             raise ValueError("El nombre del lago no puede estar vacío.")
         return v
 
-    @field_validator("geometry")
+    @field_validator("geom")
     @classmethod
     def validate_geometry(cls, v: dict | None) -> dict | None:
         if v is not None and (not isinstance(v, dict) or "type" not in v):
@@ -57,10 +57,10 @@ class LakeUpdate(BaseModel):
 class LakeSummary(LakeBase):
     id: UUID
     status: str
+    geom: dict | str
     model_config = {"from_attributes": True}
 
 class LakeDetail(LakeSummary):
-    geometry: dict
     created_at: datetime
     updated_at: datetime
 
@@ -116,4 +116,3 @@ class GeoJSONFeature(BaseModel):
 class GeoJSONFeatureCollection(BaseModel):
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: list[GeoJSONFeature]
-    

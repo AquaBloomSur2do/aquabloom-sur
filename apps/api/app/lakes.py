@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
 from app.auth import (
     require_catalog_create_permission,
     require_catalog_disable_permission,
@@ -7,9 +9,23 @@ from app.auth import (
 )
 from app.database import supabase
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes
-from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
+
+
+def _geometry_to_wkt(geometry: dict) -> str:
+    geom_type = str(geometry.get("type", "")).upper()
+    coords = geometry.get("coordinates", [])
+
+    def format_coords(value: list) -> str:
+        if not value:
+            return ""
+        if isinstance(value[0], (int, float)):
+            return f"{value[0]} {value[1]}"
+        return "(" + ", ".join(format_coords(part) for part in value) + ")"
+
+    return f"{geom_type}{format_coords(coords)}"
+
 
 @router.get("", response_model=PaginatedLakes)
 def get_lakes(
@@ -82,22 +98,8 @@ def create_lake(
 
     lake_data = lake_create.model_dump()
 
-    geom_type = str(lake_data["geometry"].get("type", "")).upper()
-    coords = lake_data["geometry"].get("coordinates", [])
-
-    def format_coords(c: list) -> str:
-        if not c: return ""
-        if isinstance(c[0], (int, float)):
-            return f"{c[0]} {c[1]}"
-        return "(" + ", ".join(format_coords(sub) for sub in c) + ")"
-
     try:
-        if geom_type == "POINT":
-            wkt_geometry = f"POINT({format_coords(coords)})"
-        else:
-            wkt_geometry = f"{geom_type}{format_coords(coords)}"
-            
-        lake_data["geometry"] = wkt_geometry
+        lake_data["geom"] = _geometry_to_wkt(lake_data["geom"])
     except (TypeError, ValueError, IndexError, AttributeError) as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -144,6 +146,8 @@ def update_lake(
     update_data = lake_update.model_dump(exclude_unset=True)
     if "id" in update_data:
         del update_data["id"]
+    if update_data.get("geom") is not None:
+        update_data["geom"] = _geometry_to_wkt(update_data["geom"])
 
     if not update_data:
         return existing.data[0]

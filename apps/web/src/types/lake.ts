@@ -11,7 +11,7 @@ export interface LakeDetailResponse {
   region: string;
   description?: string;
   status?: string;
-  geom?: Record<string, unknown>;
+  geom?: Record<string, unknown> | string;
   station_count?: number;
   stations?: Station[];
 }
