@@ -15,3 +15,5 @@ def get_active_memberships(client: Client, user_id: UUID) -> list[dict]:
     )
 
     return response.data or []
+
+

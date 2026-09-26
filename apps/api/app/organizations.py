@@ -79,3 +79,13 @@ def create_organization_member(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
+@router.post("", response_model=OrganizationOut, status_code=status.HTTP_201_CREATED)
+def create_org(org: OrganizationCreate, payload: dict = Depends(require_admin)):  # noqa: B008
+    org_data = {
+        "name": org.name,
+        "identifier": org.identifier,
+        "description": org.description,
+        "status": "active"
+    }
+    return create_organization(supabase, org_data)
+
