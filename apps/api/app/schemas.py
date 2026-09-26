@@ -22,6 +22,13 @@ class LakeBase(BaseModel):
     )
     description: str | None = Field(None, description="Descripción opcional")
 
+    @field_validator("name", "region")
+    @classmethod
+    def validate_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("El campo no puede estar vacío o contener solo espacios.")
+        return v
+
 
 class LakeCreate(LakeBase):
     geom: dict[str, Any] = Field(
@@ -31,10 +38,13 @@ class LakeCreate(LakeBase):
     @field_validator("geom")
     @classmethod
     def validate_geom(cls, v: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(v, dict):
+            raise TypeError("La geometría debe ser un objeto JSON estructurado.")
         if v.get("type") != "Polygon":
-            raise ValueError("La geometría debe ser un Polygon GeoJSON")
-        if not v.get("coordinates"):
-            raise ValueError("Las coordenadas no pueden estar vacías")
+            raise ValueError("La geometría debe ser estrictamente de tipo 'Polygon'.")
+        coords = v.get("coordinates")
+        if not coords or not isinstance(coords, list) or len(coords) == 0:
+            raise ValueError("El polígono debe contener un arreglo de coordenadas válido.")
         return v
 
 
@@ -56,6 +66,8 @@ class LakeUpdate(BaseModel):
     @classmethod
     def validate_geom(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
         if v is not None:
+            if not isinstance(v, dict):
+                raise TypeError("La geometría debe ser un objeto JSON estructurado.")
             if v.get("type") != "Polygon":
                 raise ValueError("La geometría debe ser un Polygon GeoJSON")
             if not v.get("coordinates"):
@@ -153,3 +165,4 @@ class GeoJSONFeature(BaseModel):
 class GeoJSONFeatureCollection(BaseModel):
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: list[GeoJSONFeature]
+    
