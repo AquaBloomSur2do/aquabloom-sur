@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.auth import (
     require_catalog_create_permission,
-    require_catalog_disable_permission,
     require_catalog_update_permission,
 )
 from app.database import supabase

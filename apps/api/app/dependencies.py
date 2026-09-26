@@ -34,7 +34,7 @@ def _has_permission(payload: dict, required_permission: str) -> bool:
 def require_permission(required_permission: str) -> Callable:
     """Protege endpoints verificando que el JWT del usuario tenga el permiso requerido."""
 
-    def permission_checker(payload: dict = Depends(verify_supabase_jwt)) -> dict:
+    def permission_checker(payload: dict = Depends(verify_supabase_jwt)) -> dict:  # noqa: B008
         if not _has_permission(payload, required_permission):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
