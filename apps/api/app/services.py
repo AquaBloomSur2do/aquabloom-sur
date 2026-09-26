@@ -32,6 +32,14 @@ def get_current_user_profile(supabase, user_id: UUID, email: str) -> dict:
 
     return response.data
 
+def get_lake_by_id(supabase, lake_id: UUID) -> dict:
+    response = supabase.table("lakes").select("*").eq("id", str(lake_id)).execute()
+    
+    # Lago inexistente (Error 404)
+    if not response.data:
+        raise LookupError("Lago no encontrado")       
+    return response.data[0]
+
 def create_organization(supabase, org_data: dict) -> dict:
     try:
         response = supabase.table("organizations").insert(org_data).execute()
