@@ -1,3 +1,5 @@
+import { supabase } from '../lib/supabase';
+
 // Lightweight fetch-based API client for Vite + TypeScript
 
 const BASE_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1')
@@ -73,9 +75,19 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
     ...headers,
   };
 
-  if (token) {
-    defaultHeaders['Authorization'] = `Bearer ${token}`;
+  // --- S2-044: INYECCIÓN DE TOKEN DINÁMICO ---
+  let activeToken = token;
+  if (!activeToken) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+          activeToken = session.access_token;
+      }
   }
+
+  if (activeToken) {
+    defaultHeaders['Authorization'] = `Bearer ${activeToken}`;
+  }
+  // ------------------------------------------
 
   const init: RequestInit = {
     method,
@@ -103,6 +115,18 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
       details: error instanceof Error ? error.message : String(error),
     });
   }
+
+  // --- S2-044: MANEJO DE REDIRECCIÓN CONTROLADA ---
+  if (res.status === 401) {
+      await supabase.auth.signOut();
+      
+      if (!window.location.pathname.includes('/login')) {
+          window.location.replace('/login');
+      }
+      
+      throw createApiError('UNAUTHORIZED', 'Sesión expirada o token inválido.', 401);
+  }
+  // ------------------------------------------------
 
   if (res.status === 204) {
     return {} as T;

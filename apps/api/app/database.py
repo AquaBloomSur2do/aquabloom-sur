@@ -49,3 +49,4 @@ def check_supabase_connection() -> dict:
         return {"status": "ok", "connection": "successful"}
     except Exception:  # noqa: BLE001
         return {"status": "error", "detail": "Fallo de red o permisos insuficientes."}
+

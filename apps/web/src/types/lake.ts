@@ -1,18 +1,23 @@
 export type LakeStatus = 'active' | 'inactive' | 'maintenance' | 'archived' | string;
 
-export interface LakeStation {
+export interface Station {
   id: string;
-  lake_id: string;
+  lake_id?: string;
   code: string;
   name: string;
   description?: string | null;
-  status: LakeStatus;
+  status?: string;
   point?: {
     type: 'Point';
     coordinates: [number, number];
   } | null;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+export interface LakeStation extends Station {
+  lake_id: string;
+  status: LakeStatus;
 }
 
 export interface LakeSummary {
