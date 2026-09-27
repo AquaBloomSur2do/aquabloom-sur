@@ -197,6 +197,18 @@ class StationUpdate(BaseModel):
         return v
 
 
+class StationOut(BaseModel):
+    id: UUID
+    lake_id: UUID
+    code: str
+    name: str
+    point: Any
+    description: str | None = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
 # --- Esquemas de Organization y Otros ---
 
 
