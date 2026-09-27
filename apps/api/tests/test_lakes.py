@@ -248,3 +248,37 @@ def test_lake_crud_rejects_unauthorized_users(client_with_unauthorized_lakes):
         "/api/v1/lakes/11111111-1111-1111-1111-111111111111"
     )
     assert delete_response.status_code == 403
+
+
+def test_get_lake_stations_returns_500_when_lake_query_fails(monkeypatch):
+    class FailingQuery:
+        def select(self, *args, **kwargs):
+            return self
+
+        def eq(self, field, value):
+            return self
+
+        def execute(self):
+            raise RuntimeError("database unavailable")
+
+    class FailingSupabase:
+        def table(self, table_name):
+            return FailingQuery()
+
+    monkeypatch.setattr(lakes_module, "supabase", FailingSupabase())
+    response = TestClient(app).get(
+        "/api/v1/lakes/11111111-1111-1111-1111-111111111111/stations"
+    )
+
+    assert response.status_code == 500
+    assert "database unavailable" in response.json()["detail"]
+
+
+def test_get_lake_stations_documents_station_response_model():
+    operation = app.openapi()["paths"]["/api/v1/lakes/{lake_id}/stations"]["get"]
+    response_schema = operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]
+
+    assert response_schema["type"] == "array"
+    assert response_schema["items"]["$ref"] == "#/components/schemas/StationOut"
