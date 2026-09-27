@@ -97,7 +97,11 @@ export function LakeDetail() {
             </div>
             <div className="info-item">
               <label>Estado:</label>
-              <p>{lake.status ?? 'Sin estado'}</p>
+              <p>
+                <span className={`status-badge status-badge--${lake.status?.toLowerCase() ?? 'default'}`}>
+                  {lake.status ?? 'Sin estado'}
+                </span>
+              </p>
             </div>
             <div className="info-item">
               <label>Descripción:</label>
@@ -127,7 +131,7 @@ export function LakeDetail() {
                       <td className="p-3 border-b font-mono text-xs">{station.code}</td>
                       <td className="p-3 border-b">{station.name}</td>
                       <td className="p-3 border-b">
-                        <span className={`status-badge status-badge--${station.status?.toLowerCase?.() ?? 'default'}`}>
+                        <span className={`status-badge status-badge--${station.status?.toLowerCase() ?? 'default'}`}>
                           {station.status ?? 'Sin estado'}
                         </span>
                       </td>

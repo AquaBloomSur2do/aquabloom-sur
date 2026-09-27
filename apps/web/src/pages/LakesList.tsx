@@ -131,7 +131,7 @@ export function LakesList() {
                   <td>{lake.name}</td>
                   <td>{lake.region}</td>
                   <td>
-                    <span className={`status-badge status-badge--${lake.status?.toLowerCase?.() ?? 'default'}`}>
+                    <span className={`status-badge status-badge--${lake.status?.toLowerCase() ?? 'default'}`}>
                       {lake.status ?? 'Sin estado'}
                     </span>
                   </td>

@@ -40,7 +40,7 @@ def _convert_wkt_to_geojson(geom: object) -> object:
 
     try:
         return mapping(from_wkt(cleaned))
-    except Exception:
+    except Exception:  # noqa: BLE001
         return geom
 
 
