@@ -3,7 +3,6 @@ import { GeoJSON, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { FeatureCollection, Geometry, Feature } from 'geojson';
 
-// 1. Prevención visual: Aseguramos que los estilos nativos de Leaflet estén cargados
 import 'leaflet/dist/leaflet.css';
 
 interface LakePolygonProps {
@@ -18,7 +17,6 @@ export const LakePolygon: React.FC<LakePolygonProps> = ({ geojsonData }) => {
         if (geojsonData && geoJsonRef.current) {
             const bounds = geoJsonRef.current.getBounds();
             
-            // Seguridad: Aseguramos que el polígono tiene un área válida antes de mover la cámara
             if (bounds.isValid()) {
                 map.fitBounds(bounds, { 
                     padding: [40, 40], 
@@ -30,10 +28,21 @@ export const LakePolygon: React.FC<LakePolygonProps> = ({ geojsonData }) => {
 
     if (!geojsonData) return null;
 
-    // 2. Arquitectura (Bugfix React Leaflet): Creamos un hash o string único basado en el polígono.
-    // Al pasar esto como 'key', obligamos a React a redibujar el polígono cuando cambias de lago, 
-    // resolviendo el bug nativo donde GeoJSON no actualiza sus datos dinámicamente.
-    const dynamicKey = JSON.stringify(geojsonData.bbox || geojsonData.type) + Math.random();
+    const getStableKey = () => {
+        if (geojsonData.bbox) return JSON.stringify(geojsonData.bbox);
+        
+        if ('features' in geojsonData && geojsonData.features[0]?.id) {
+             return String(geojsonData.features[0].id);
+        }
+        
+        if ('properties' in geojsonData && geojsonData.properties?.name) {
+             return String(geojsonData.properties.name);
+        }
+        
+        return JSON.stringify(geojsonData.type) + JSON.stringify(geojsonData);
+    };
+
+    const dynamicKey = getStableKey();
 
     return (
         <GeoJSON 
