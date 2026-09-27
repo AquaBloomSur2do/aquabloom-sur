@@ -14,12 +14,32 @@ from app.main import app
 
 
 class FakeTable:
-    def __init__(self, rows):
-        self.rows = list(rows)
+    def __init__(self, supabase):
+        self.supabase = supabase
         self.filters = []
         self.payload = None
 
+    @property
+    def rows(self):
+        return self.supabase.rows
+
+    def _matches_filters(self, row):
+        for op, column, value in self.filters:
+            if op == "eq" and str(row.get(column)) != str(value):
+                return False
+            if op == "neq" and str(row.get(column)) == str(value):
+                return False
+            if op == "ilike":
+                pattern = str(value).replace("%", "")
+                if pattern.lower() not in str(row.get(column, "")).lower():
+                    return False
+            if op == "range":
+                continue
+        return True
+
     def select(self, *_args, **_kwargs):
+        self.filters = []
+        self.payload = None
         return self
 
     def eq(self, column, value):
@@ -49,33 +69,25 @@ class FakeTable:
         return self
 
     def execute(self):
-        rows = self.rows
+        matching_rows = [row for row in self.rows if self._matches_filters(row)]
         for op, column, value in self.filters:
-            if op == "eq":
-                rows = [row for row in rows if str(row.get(column)) == str(value)]
-            elif op == "neq":
-                rows = [row for row in rows if str(row.get(column)) != str(value)]
-            elif op == "ilike":
-                pattern = str(value).replace("%", "")
-                rows = [row for row in rows if pattern.lower() in str(row.get(column, "")).lower()]
-            elif op == "range":
+            if op == "range":
                 start, end = column, value
-                rows = rows[start : end + 1]
+                matching_rows = matching_rows[start : end + 1]
 
         if self.payload is not None:
-            updated = []
-            for row in self.rows:
-                if all(
-                    str(row.get(column)) == str(value)
-                    for op, column, value in self.filters if op == "eq"
-                ):
-                    row = {**row, **self.payload}
-                updated.append(row)
-            self.rows = updated
+            updated_rows = []
+            for index, row in enumerate(self.rows):
+                if self._matches_filters(row):
+                    updated_row = {**row, **self.payload}
+                    self.supabase.rows[index] = updated_row
+                    updated_rows.append(updated_row)
             self.payload = None
-            return SimpleNamespace(data=updated, count=len(updated))
+            self.filters = []
+            return SimpleNamespace(data=updated_rows, count=len(updated_rows))
 
-        return SimpleNamespace(data=rows, count=len(rows))
+        self.filters = []
+        return SimpleNamespace(data=matching_rows, count=len(matching_rows))
 
 
 class FakeSupabase:
@@ -83,7 +95,7 @@ class FakeSupabase:
         self.rows = list(rows)
 
     def table(self, _name):
-        return FakeTable(self.rows)
+        return FakeTable(self)
 
 
 def build_token(permissions=None, role="administrador", status="active"):
@@ -211,3 +223,68 @@ def test_delete_lake_soft_deletes(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["status"] == "inactive"
+
+
+def test_delete_lake_not_found_when_already_inactive(monkeypatch):
+    settings.supabase_jwt_secret = "test-secret"
+    settings.supabase_url = "https://example.supabase.co"
+    lake_id = "123e4567-e89b-12d3-a456-426614174000"
+    fake_client = FakeSupabase([
+        {
+            "id": lake_id,
+            "name": "Inactivo",
+            "region": "Patagonia",
+            "description": "Lago ya desactivado",
+            "geom": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]},
+            "status": "inactive",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-02T00:00:00Z",
+        }
+    ])
+    monkeypatch.setattr("app.database.supabase", fake_client)
+    import app.lakes as lakes_module
+
+    monkeypatch.setattr(lakes_module, "supabase", fake_client)
+
+    client = TestClient(app)
+    token = build_token(permissions=["catalog:disable"])
+    response = client.delete(
+        f"/api/v1/lakes/{lake_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["message"] == "Lago no encontrado"
+
+
+def test_delete_lake_soft_deletes_and_excludes_from_list(monkeypatch):
+    settings.supabase_jwt_secret = "test-secret"
+    settings.supabase_url = "https://example.supabase.co"
+    lake_id = "123e4567-e89b-12d3-a456-426614174000"
+    fake_client = FakeSupabase([
+        {
+            "id": lake_id,
+            "name": "Activo",
+            "region": "Patagonia",
+            "description": "Lago activo",
+            "geom": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]},
+            "status": "active",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+        }
+    ])
+    monkeypatch.setattr("app.database.supabase", fake_client)
+    import app.lakes as lakes_module
+
+    monkeypatch.setattr(lakes_module, "supabase", fake_client)
+
+    client = TestClient(app)
+    token = build_token(permissions=["catalog:disable"])
+    delete_response = client.delete(
+        f"/api/v1/lakes/{lake_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert delete_response.status_code == 200
+
+    list_response = client.get("/api/v1/lakes")
+    assert list_response.status_code == 200
+    assert list_response.json()["items"] == []

@@ -4,12 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.auth import (
     require_catalog_create_permission,
+    require_catalog_disable_permission,
     require_catalog_update_permission,
 )
 from app.database import supabase
-from app.dependencies import require_permission
+from app.repositories import get_lakes as get_lakes_repository
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes
-from app.services import get_lake_by_id
+from app.services import disable_lake, get_lake_by_id
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
 
@@ -39,32 +40,14 @@ def get_lakes(
 ):
     """Recupera el catálogo de lagos con soporte para filtros combinados y paginación."""
     try:
-        query = supabase.table("lakes").select("*", count="exact")
-
-        if status_filter:
-            query = query.eq("status", status_filter)
-        else:
-            query = query.neq("status", "inactive")
-
-        if text:
-            query = query.ilike("name", f"%{text}%")
-        if region:
-            query = query.eq("region", region)
-
-        start = (page - 1) * limit
-        end = start + limit - 1
-        query = query.range(start, end)
-
-        response = query.execute()
-        total_count = response.count if response.count is not None else 0
-
-        return {
-            "items": response.data,
-            "page": page,
-            "page_size": limit,
-            "total": total_count,
-        }
-
+        return get_lakes_repository(
+            supabase,
+            text=text,
+            region=region,
+            status_filter=status_filter,
+            page=page,
+            limit=limit,
+        )
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -181,13 +164,10 @@ def update_lake(
         ) from exc
 
 
-@router.delete(
-    "/{lake_id}",
-    response_model=LakeDetail,
-    dependencies=[Depends(require_permission("catalog:disable"))],
-)
+@router.delete("/{lake_id}", response_model=LakeDetail)
 def delete_lake(
     lake_id: UUID,
+    current_user: dict = Depends(require_catalog_disable_permission),  # noqa: B008
 ):
     if supabase is None:
         raise HTTPException(
@@ -196,35 +176,17 @@ def delete_lake(
         )
 
     try:
-        existing = supabase.table("lakes").select("*").eq("id", str(lake_id)).execute()
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error en el motor de base de datos al verificar el lago: {exc}",
-        ) from exc
-
-    if not existing.data:
+        return disable_lake(lake_id=lake_id, current_user=current_user, supabase=supabase)
+    except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"El lago con id {lake_id} no existe.",
-        )
-
-    update_data = {"status": "inactive"}
-
-    try:
-        response = (
-            supabase.table("lakes").update(update_data).eq("id", str(lake_id)).execute()
-        )
-
-        if not response.data:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error al desactivar el lago (respuesta vacía).",
-            )
-        return response.data[0]
-
-    except HTTPException:
-        raise
+            detail=str(exc),
+        ) from exc
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -6,6 +6,8 @@ CATALOG_ACTIONS = {
     "DISABLE": "catalog:disable",
 }
 
+CATALOG_DISABLE = CATALOG_ACTIONS["DISABLE"]
+
 # 2. Matriz de Control de Acceso (RBAC) para los 4 roles requeridos
 ROLE_PERMISSIONS: dict[str, list[str]] = {
     "administrador": [
