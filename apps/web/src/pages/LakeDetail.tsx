@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { apiClient } from '../services/apiClient';
 import type { LakeDetailResponse } from '../types/lake';
 import { NotFound } from './NotFound'; // Reutilizamos la vista 404 del catálogo
@@ -57,9 +57,17 @@ export function LakeDetail() {
           <h1 className="text-3xl font-bold text-gray-800">{lake.name}</h1>
           <p className="text-gray-500">{lake.region}</p>
         </div>
-        <span className={`status-badge status-badge--${lake.status?.toLowerCase() ?? 'default'} px-3 py-1 rounded-full text-sm font-semibold`}>
-          {lake.status ?? 'Sin estado'}
-        </span>
+        <div className="flex gap-4 items-center">
+          <span className={`status-badge status-badge--${lake.status?.toLowerCase() ?? 'default'} px-3 py-1 rounded-full text-sm font-semibold`}>
+            {lake.status ?? 'Sin estado'}
+          </span>
+          <Link 
+            to={`/lakes/${id}/edit`} 
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-semibold transition-colors"
+          >
+            Editar Lago
+          </Link>
+        </div>
       </header>
 
       <div className="detail-content grid grid-cols-1 lg:grid-cols-2 gap-8">
