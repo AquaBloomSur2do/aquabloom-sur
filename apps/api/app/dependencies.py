@@ -3,6 +3,10 @@ from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
 
+from app.auth import require_admin
+
+__all__ = ["require_admin", "mock_get_current_user", "require_permission"]
+
 
 def mock_get_current_user(authorization: Annotated[str | None, Header()] = None) -> dict | None:
     """Mock temporal para evaluar el criterio de aceptación del ticket."""

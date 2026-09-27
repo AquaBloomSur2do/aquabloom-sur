@@ -1,6 +1,8 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from shapely import from_wkt
+from shapely.geometry import mapping
 
 from app.auth import (
     require_catalog_create_permission,
@@ -23,6 +25,33 @@ def _convert_polygon_to_wkt(geom: dict) -> str | None:
         points = ", ".join([f"{lon} {lat}" for lon, lat in ring])
         rings.append(f"({points})")
     return f"POLYGON({', '.join(rings)})"
+
+
+def _convert_wkt_to_geojson(geom: object) -> object:
+    """Normaliza geometrías WKT devueltas por PostGIS a GeoJSON compatible con Pydantic."""
+    if isinstance(geom, dict):
+        return geom
+    if not isinstance(geom, str):
+        return geom
+
+    cleaned = geom.strip()
+    if not cleaned or not cleaned.upper().startswith("POLYGON"):
+        return geom
+
+    try:
+        return mapping(from_wkt(cleaned))
+    except Exception:
+        return geom
+
+
+def _normalize_lake_record(record: dict | None) -> dict | None:
+    if not isinstance(record, dict):
+        return record
+
+    normalized = dict(record)
+    if "geom" in normalized:
+        normalized["geom"] = _convert_wkt_to_geojson(normalized["geom"])
+    return normalized
 
 
 @router.get("", response_model=PaginatedLakes)
@@ -81,7 +110,8 @@ def get_lake(lake_id: UUID):
         )
 
     try:
-        return get_lake_by_id(supabase=supabase, lake_id=lake_id)
+        lake = get_lake_by_id(supabase=supabase, lake_id=lake_id)
+        return _normalize_lake_record(lake)
     except LookupError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -114,7 +144,7 @@ def create_lake(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error interno al persistir el registro del lago (respuesta vacía).",
             )
-        return response.data[0]
+        return _normalize_lake_record(response.data[0])
 
     except HTTPException:
         raise
@@ -172,7 +202,7 @@ def update_lake(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al actualizar el lago (respuesta vacía).",
             )
-        return response.data[0]
+        return _normalize_lake_record(response.data[0])
 
     except HTTPException:
         raise
@@ -220,7 +250,7 @@ def delete_lake(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al desactivar el lago (respuesta vacía).",
             )
-        return response.data[0]
+        return _normalize_lake_record(response.data[0])
 
     except HTTPException:
         raise
