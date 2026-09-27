@@ -1,10 +1,11 @@
 from uuid import UUID
 
 import jwt
-from app.config import settings
 from fastapi import APIRouter, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
+
+from app.config import settings
 
 from .database import supabase
 from .services import get_current_user_profile

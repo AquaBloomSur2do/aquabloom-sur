@@ -1,12 +1,13 @@
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+
 from app.auth import verify_supabase_jwt
 from app.database import supabase
 from app.dependencies import require_admin
 from app.schemas import MembershipCreate, OrganizationCreate, OrganizationOut
 from app.services import add_organization_member, create_organization
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/v1/organizations", tags=["Organizations"])
 

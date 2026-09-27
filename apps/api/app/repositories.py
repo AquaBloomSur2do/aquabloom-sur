@@ -1,11 +1,12 @@
 from typing import Any
 from uuid import UUID
 
-from app.database import supabase
-from app.schemas import LakeDetail
 from shapely import from_wkt
 from shapely.geometry import mapping
 from supabase import Client
+
+from app.database import supabase
+from app.schemas import LakeDetail
 
 PUBLIC_LAKE_FIELDS = (
     "id",

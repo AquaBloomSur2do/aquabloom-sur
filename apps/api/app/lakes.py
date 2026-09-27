@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
 from app.auth import (
     require_catalog_create_permission,
     require_catalog_disable_permission,
@@ -9,7 +11,6 @@ from app.database import supabase
 from app.repositories import _convert_wkt_to_polygon, get_lake_stations_from_db
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes, StationOut
 from app.services import get_lake_by_id
-from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
 

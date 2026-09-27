@@ -1,8 +1,9 @@
 from collections.abc import Callable
 from typing import Annotated
 
-from app.auth import require_admin
 from fastapi import Depends, Header, HTTPException, status
+
+from app.auth import require_admin
 
 __all__ = ["mock_get_current_user", "require_admin", "require_permission"]
 
