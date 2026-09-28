@@ -3,9 +3,9 @@ from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
 
-from app.auth import require_admin
+from app.auth import verify_supabase_jwt
 
-__all__ = ["mock_get_current_user", "require_admin", "require_permission"]
+__all__ = ["mock_get_current_user", "require_permission"]
 
 
 def mock_get_current_user(authorization: Annotated[str | None, Header()] = None) -> dict | None:
@@ -16,30 +16,43 @@ def mock_get_current_user(authorization: Annotated[str | None, Header()] = None)
         return {"id": "1", "role": "admin"}
     if authorization == "Bearer token-empleado":
         return {"id": "2", "role": "empleado"}
-    
+
     return None
 
 
+def _normalize_role(role: str | None) -> str:
+    return str(role or "").strip().lower()
+
+
 def require_permission(required_role: str) -> Callable:
-    """
-    Fábrica de dependencias que protege los endpoints según el rol del usuario.
-    """
-    def role_checker(current_user: Annotated[dict | None, Depends(mock_get_current_user)]) -> dict:
-        # Criterio: Devuelve 401 al usuario anónimo
+    """Crea una dependencia que exige un rol o un alias equivalente."""
+    normalized_required_role = _normalize_role(required_role)
+    allowed_roles = {
+        normalized_required_role,
+        "administrador" if normalized_required_role == "admin" else "admin",
+    }
+
+    def role_checker(
+        current_user: Annotated[dict | None, Depends(verify_supabase_jwt)] = None,
+    ) -> dict:
         if not current_user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Usuario no autenticado"
+                detail="Usuario no autenticado",
             )
-        
-        # Criterio: Devuelve 403 al rol insuficiente
-        if current_user.get("role") != required_role:
+
+        role = current_user.get("role") or (
+            current_user.get("user_metadata") or {}
+        ).get("role")
+        if _normalize_role(role) not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Permisos insuficientes"
+                detail="Permisos insuficientes",
             )
-        
-        # Criterio: Permite al rol autorizado
+
         return current_user
-        
+
     return role_checker
+
+
+require_admin = require_permission("administrador")

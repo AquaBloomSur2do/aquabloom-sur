@@ -1,39 +1,112 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { MapContainer, TileLayer, Marker, Popup, Polygon } from 'react-leaflet';
+import L from 'leaflet';
+import { toast } from 'sonner';
 import { apiClient } from '../services/apiClient';
 import type { LakeDetailResponse } from '../types/lake';
-import { NotFound } from './NotFound'; // Reutilizamos la vista 404 del catálogo
+import type { Station } from '../types/station';
+import { NotFound } from './NotFound';
+import 'leaflet/dist/leaflet.css';
+
+interface GeoJsonGeometry {
+  type: 'Polygon' | 'MultiPolygon';
+  coordinates: number[][][] | number[][][][];
+}
+
+// Icono personalizado rojo/distintivo para las estaciones activas en el mapa
+const stationIcon = L.divIcon({
+  className: 'custom-station-marker',
+  html: `<div style="background-color: #ef4444; width: 14px; height: 14px; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>`,
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
+});
+
+// Helper robusto y tipado para convertir coordenadas de polígono GeoJSON [lon, lat] a Leaflet [lat, lon]
+const convertPolygonCoords = (geom: unknown): [number, number][][] => {
+  if (!geom || typeof geom !== 'object') return [];
+  const g = geom as { type?: string; coordinates?: unknown };
+  
+  if (!g.coordinates || !Array.isArray(g.coordinates)) return [];
+
+  if (g.type === 'Polygon') {
+    const coords = g.coordinates as number[][][];
+    return coords.map((ring) => 
+      ring.map(([lon, lat]) => [lat, lon] as [number, number])
+    );
+  }
+  
+  if (g.type === 'MultiPolygon') {
+    const coords = g.coordinates as number[][][][];
+    const firstPolygon = coords[0];
+    if (!firstPolygon) return [];
+    return firstPolygon.map((ring) => 
+      ring.map(([lon, lat]) => [lat, lon] as [number, number])
+    );
+  }
+
+  return [];
+};
 
 export function LakeDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+
   const [lake, setLake] = useState<LakeDetailResponse | null>(null);
+  const [stations, setStations] = useState<Station[]>([]);
   const [loading, setLoading] = useState(true);
   const [isError404, setIsError404] = useState(false);
 
   useEffect(() => {
-    let isMounted = true;
+    let mounted = true;
 
-    const fetchLake = async () => {
+    const fetchData = async () => {
       if (!id) return;
+      setLoading(true);
+      setLake(null);
+      setStations([]);
+      setIsError404(false);
+
       try {
-        const data = await apiClient.get<LakeDetailResponse>(`lakes/${id}`);
-        if (isMounted) setLake(data);
+        const [lakeData, stationsData] = await Promise.all([
+          apiClient.get<LakeDetailResponse>(`lakes/${id}`),
+          apiClient.get<Station[]>(`lakes/${id}/stations`)
+        ]);
+
+        if (mounted) {
+          setLake(lakeData);
+          setStations(Array.isArray(stationsData) ? stationsData : []);
+        }
       } catch {
-        if (isMounted) {
-          // Si el fetch falla o retorna error HTTP, forzamos la vista 404
+        if (mounted) {
           setIsError404(true);
+          toast.error('No se pudo cargar la información del lago o sus estaciones.');
         }
       } finally {
-        if (isMounted) setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
-    void fetchLake();
+    void fetchData();
 
     return () => {
-      isMounted = false;
+      mounted = false;
     };
   }, [id]);
+
+  const handleDeactivate = async () => {
+    if (!window.confirm('¿Estás seguro de que deseas desactivar este lago del catálogo?')) return;
+    
+    try {
+      await apiClient.request(`lakes/${id}`, { method: 'DELETE' });
+      toast.success('Lago desactivado exitosamente.');
+      navigate('/lakes');
+    } catch {
+      toast.error('Error al desactivar el lago. Verifica tus permisos o conexión.');
+    }
+  };
 
   if (loading) {
     return (
@@ -43,12 +116,16 @@ export function LakeDetail() {
     );
   }
 
-  // Criterio de Aceptación: ID inexistente presenta la vista 404 del catálogo
   if (isError404 || !lake) {
     return <NotFound />;
   }
 
-  const stationCount = Array.isArray(lake.stations) ? lake.stations.length : (lake.station_count ?? 0);
+  const activeStations = stations.filter((s) => s.status?.toLowerCase() === 'active');
+  const polygonPositions = convertPolygonCoords(lake.geom as GeoJsonGeometry | null);
+  
+  const defaultCenter: [number, number] = polygonPositions.length > 0 && polygonPositions[0].length > 0
+    ? polygonPositions[0][0]
+    : [-39.58, -72.22];
 
   return (
     <div className="lake-detail-page p-8">
@@ -58,9 +135,15 @@ export function LakeDetail() {
           <p className="text-gray-500">{lake.region}</p>
         </div>
         <div className="flex gap-4 items-center">
-          <span className={`status-badge status-badge--${lake.status?.toLowerCase() ?? 'default'} px-3 py-1 rounded-full text-sm font-semibold`}>
+          <span className={`status-badge status-badge--${lake.status?.toLowerCase() ?? 'default'}`}>
             {lake.status ?? 'Sin estado'}
           </span>
+          <button 
+            onClick={handleDeactivate}
+            className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 px-4 py-2 rounded text-sm font-semibold transition-colors border border-red-200"
+          >
+            Desactivar Lago
+          </button>
           <Link 
             to={`/lakes/${id}/edit`} 
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-semibold transition-colors"
@@ -93,10 +176,10 @@ export function LakeDetail() {
 
         <section className="detail-section bg-white p-6 rounded-lg shadow border border-gray-200">
           <h2 className="text-xl font-bold mb-4 border-b pb-2">
-            Estaciones Registradas ({stationCount})
+            Estaciones Registradas ({stations.length}) — Activas: {activeStations.length}
           </h2>
           
-          {lake.stations && lake.stations.length > 0 ? (
+          {stations.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-sm">
                 <thead>
@@ -107,14 +190,14 @@ export function LakeDetail() {
                   </tr>
                 </thead>
                 <tbody>
-                  {lake.stations.map((station) => (
+                  {stations.map((station) => (
                     <tr key={station.id} className="hover:bg-gray-50 transition-colors">
                       <td className="p-3 border-b font-mono text-xs">{station.code}</td>
                       <td className="p-3 border-b">{station.name}</td>
                       <td className="p-3 border-b">
                          <span className={`status-badge status-badge--${station.status?.toLowerCase() ?? 'default'}`}>
                           {station.status}
-                        </span>
+                         </span>
                       </td>
                     </tr>
                   ))}
@@ -128,7 +211,48 @@ export function LakeDetail() {
           )}
         </section>
       </div>
+
+      <section className="mt-8 bg-white p-6 rounded-lg shadow border border-gray-200">
+        <h2 className="text-xl font-bold mb-4 border-b pb-2">Visualización Cartográfica y Estaciones Activas</h2>
+        <div className="h-96 rounded overflow-hidden border z-0 relative">
+          <MapContainer 
+            center={defaultCenter} 
+            zoom={11} 
+            style={{ height: '100%', width: '100%' }}
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+
+            {polygonPositions.length > 0 && (
+              <Polygon 
+                positions={polygonPositions} 
+                pathOptions={{ color: 'blue', fillColor: 'lightblue', fillOpacity: 0.4 }} 
+              />
+            )}
+
+            {activeStations.map((station) => {
+              if (!station.point || !station.point.coordinates) return null;
+              const [lon, lat] = station.point.coordinates;
+
+              return (
+                <Marker key={station.id} position={[lat, lon]} icon={stationIcon}>
+                  <Popup>
+                    <div className="p-1">
+                      <p className="font-bold text-sm">{station.name}</p>
+                      <p className="text-xs text-gray-600">Código: {station.code}</p>
+                      <span className="inline-block mt-1 px-2 py-0.5 text-xs bg-red-100 text-red-800 rounded">
+                        Estación Activa
+                      </span>
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            })}
+          </MapContainer>
+        </div>
+      </section>
     </div>
   );
 }
-

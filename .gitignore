@@ -148,5 +148,7 @@ vite.config.ts.timestamp-*
 !.env.example
 *.pem
 
+# Python cache
 __pycache__/
+*.py[cod]
 *.pyc

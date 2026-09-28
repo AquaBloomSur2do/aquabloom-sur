@@ -9,6 +9,7 @@ os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 
 from app import auth
 from app import lakes as lakes_module
+from app import repositories as repositories_module
 from app.main import app
 from app.repositories import get_active_lakes
 
@@ -58,7 +59,8 @@ class FakeTable:
         return self
 
     def execute(self):
-        items = list(self.db.lakes)
+        table_items = self.db.tables.setdefault(self.table_name, [])
+        items = list(table_items)
 
         for field, (op, value) in self._filters.items():
             if op == "eq":
@@ -77,8 +79,8 @@ class FakeTable:
             payload.setdefault("status", "active")
             payload.setdefault("created_at", "2024-01-01T00:00:00Z")
             payload.setdefault("updated_at", "2024-01-01T00:00:00Z")
-            self.db.lakes.append(payload)
-            return FakeResponse([payload], count=len(self.db.lakes))
+            table_items.append(payload)
+            return FakeResponse([payload], count=len(table_items))
 
         if self._update_payload is not None:
             for item in items:
@@ -118,6 +120,7 @@ class FakeSupabase:
                 "updated_at": "2024-01-01T00:00:00Z",
             },
         ]
+        self.tables = {"lakes": self.lakes, "audit_logs": []}
 
     def table(self, table_name):
         return FakeTable(self, table_name)
@@ -337,6 +340,63 @@ def test_get_lake_stations_returns_500_when_lake_query_fails(monkeypatch):
     )
 
     assert response.status_code == 500
+
+
+@pytest.mark.parametrize(
+    "database_point",
+    [
+        "POINT(-72.22 -39.28)",
+        {"type": "Point", "coordinates": [-72.22, -39.28]},
+    ],
+)
+def test_get_lake_stations_returns_geojson_point(monkeypatch, database_point):
+    lake_id = "11111111-1111-1111-1111-111111111111"
+    station_row = {
+        "id": "33333333-3333-3333-3333-333333333333",
+        "lake_id": lake_id,
+        "code": "ST-01",
+        "name": "Estación de prueba",
+        "point": database_point,
+        "description": None,
+        "status": "active",
+        "created_at": "2024-01-01T00:00:00Z",
+        "updated_at": "2024-01-01T00:00:00Z",
+    }
+
+    class Query:
+        def __init__(self, table_name):
+            self.table_name = table_name
+            self.filters = {}
+
+        def select(self, *args, **kwargs):
+            return self
+
+        def eq(self, field, value):
+            self.filters[field] = value
+            return self
+
+        def execute(self):
+            if self.table_name == "lakes":
+                return FakeResponse([{"id": lake_id}])
+            matches = all(
+                str(station_row.get(field)) == str(value)
+                for field, value in self.filters.items()
+            )
+            return FakeResponse([station_row] if matches else [])
+
+    class Database:
+        def table(self, table_name):
+            return Query(table_name)
+
+    monkeypatch.setattr(repositories_module, "supabase", Database())
+
+    response = TestClient(app).get(f"/api/v1/lakes/{lake_id}/stations")
+
+    assert response.status_code == 200
+    assert response.json()[0]["point"] == {
+        "type": "Point",
+        "coordinates": [-72.22, -39.28],
+    }
 
 
 def test_get_lake_stations_documents_station_response_model():
