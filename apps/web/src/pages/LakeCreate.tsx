@@ -1,18 +1,58 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, Link, useParams } from 'react-router-dom';
 import apiClient from '../services/apiClient';
+
+// Definimos la estructura para cumplir con las reglas estrictas de TypeScript
+interface LakeFormData {
+  name?: string;
+  region?: string;
+  description?: string | null;
+  geom?: unknown;
+}
 
 export default function LakeCreate() {
   const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>(); 
+  const isEditMode = Boolean(id);
+
   const [name, setName] = useState('');
   const [region, setRegion] = useState('');
   const [description, setDescription] = useState('');
   const [geoJsonStr, setGeoJsonStr] = useState('');
   
+  const [initialData, setInitialData] = useState<LakeFormData | null>(null);
+
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(isEditMode);
 
-  // Procesador del archivo GeoJSON cargado localmente
+  useEffect(() => {
+    if (!isEditMode) return;
+    
+    let isMounted = true;
+    const fetchLake = async () => {
+      try {
+        const data = await apiClient.get<LakeFormData>(`lakes/${id}`);
+        if (isMounted) {
+          setName(data.name || '');
+          setRegion(data.region || '');
+          setDescription(data.description || '');
+          if (data.geom) {
+            setGeoJsonStr(JSON.stringify(data.geom, null, 2));
+          }
+          setInitialData(data);
+        }
+      } catch {
+        if (isMounted) setError('No se pudo cargar la información del lago.');
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+    
+    void fetchLake();
+    return () => { isMounted = false; };
+  }, [id, isEditMode]);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -31,7 +71,6 @@ export default function LakeCreate() {
     e.preventDefault();
     setError(null);
 
-    // 1. Barrera de validación estructural
     if (!name.trim() || !region.trim()) {
       setError('El nombre y la región son campos obligatorios.');
       return;
@@ -42,7 +81,6 @@ export default function LakeCreate() {
       return;
     }
 
-    // 2. Barrera de validación espacial (Client-side)
     let geom;
     try {
       geom = JSON.parse(geoJsonStr);
@@ -59,30 +97,52 @@ export default function LakeCreate() {
       return;
     }
 
-    // 3. Transacción de red
     setIsSubmitting(true);
     try {
-      await apiClient.post('/lakes', { 
-        name: name.trim(), 
-        region: region.trim(), 
-        description: description.trim() || null, 
-        geom 
-      });
-      // Criterio de aceptación: Redirección al catálogo tras la creación
-      navigate('/lakes');
+      if (isEditMode && initialData) {
+        const payload: Record<string, unknown> = {};
+        if (name.trim() !== initialData.name) payload.name = name.trim();
+        if (region.trim() !== initialData.region) payload.region = region.trim();
+        if (description.trim() !== (initialData.description || '')) payload.description = description.trim() || null;
+        if (JSON.stringify(geom) !== JSON.stringify(initialData.geom)) payload.geom = geom;
+
+        if (Object.keys(payload).length === 0) {
+          window.alert('No hay cambios para guardar.');
+          setIsSubmitting(false);
+          return;
+        }
+
+        await apiClient.patch(`lakes/${id}`, payload);
+        window.alert('Lago actualizado correctamente.');
+        navigate(`/lakes/${id}`);
+      } else {
+        await apiClient.post('lakes', { 
+          name: name.trim(), 
+          region: region.trim(), 
+          description: description.trim() || null, 
+          geom 
+        });
+        navigate('/lakes');
+      }
     } catch {
-      setError('El servidor rechazó la solicitud. Verifica tus permisos de curador o el estado de la API.');
+      setError('El servidor rechazó la solicitud. Verifica tus permisos o el estado de la API.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  if (isLoading) {
+    return <div className="p-8 text-center text-gray-500">Cargando datos del lago...</div>;
+  }
+
   return (
     <div className="p-8 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Registrar Nuevo Lago</h1>
-        <Link to="/lakes" className="text-gray-500 hover:text-gray-700 font-medium">
-          ← Volver al catálogo
+        <h1 className="text-2xl font-bold text-gray-800">
+          {isEditMode ? 'Editar Lago' : 'Registrar Nuevo Lago'}
+        </h1>
+        <Link to={isEditMode ? `/lakes/${id}` : '/lakes'} className="text-gray-500 hover:text-gray-700 font-medium">
+          ← {isEditMode ? 'Volver al detalle' : 'Volver al catálogo'}
         </Link>
       </div>
 
@@ -162,11 +222,10 @@ export default function LakeCreate() {
               isSubmitting ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
             } transition-colors`}
           >
-            {isSubmitting ? 'Registrando...' : 'Registrar Lago'}
+            {isSubmitting ? 'Guardando...' : (isEditMode ? 'Guardar Cambios' : 'Registrar Lago')}
           </button>
         </div>
       </form>
     </div>
   );
 }
-
