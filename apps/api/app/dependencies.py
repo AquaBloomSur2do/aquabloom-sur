@@ -3,7 +3,9 @@ from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
 
-from app.auth import verify_supabase_jwt
+from app.auth import require_admin
+
+__all__ = ["mock_get_current_user", "require_admin", "require_permission"]
 
 
 def mock_get_current_user(authorization: Annotated[str | None, Header()] = None) -> dict | None:
