@@ -2,7 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Security, status
 
-from app.auth import require_admin, verify_supabase_jwt
+from app.auth import verify_supabase_jwt
 from app.database import supabase
 from app.dependencies import require_admin
 from app.schemas import (
