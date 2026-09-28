@@ -72,7 +72,7 @@ export function LakeDetail() {
           <p className="text-gray-500">{lake.region}</p>
         </div>
         <div className="flex gap-4 items-center">
-          <span className={`status-badge status-badge--${lake.status?.toLowerCase() ?? 'default'} px-3 py-1 rounded-full text-sm font-semibold`}>
+          <span className={`status-badge status-badge--${lake.status?.toLowerCase() ?? 'default'}`}>
             {lake.status ?? 'Sin estado'}
           </span>
           <button 
