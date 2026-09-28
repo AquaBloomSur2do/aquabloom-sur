@@ -1,5 +1,6 @@
-from typing import Optional, Literal
+from typing import Literal
 from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 
@@ -24,18 +25,18 @@ class StationCreate(BaseModel):
     longitude: float = Field(..., ge=-180.0, le=180.0)
     source: str
     activity: str
-    status: Optional[str] = "active"
+    status: str | None = "active"
     lake_id: UUID
 
 
 class StationUpdate(BaseModel):
-    code: Optional[str] = None
-    name: Optional[str] = None
-    latitude: Optional[float] = Field(None, ge=-90.0, le=90.0)
-    longitude: Optional[float] = Field(None, ge=-180.0, le=180.0)
-    source: Optional[str] = None
-    activity: Optional[str] = None
-    status: Optional[str] = None
+    code: str | None = None
+    name: str | None = None
+    latitude: float | None = Field(None, ge=-90.0, le=90.0)
+    longitude: float | None = Field(None, ge=-180.0, le=180.0)
+    source: str | None = None
+    activity: str | None = None
+    status: str | None = None
 
 
 class StationResponse(StationBase):
