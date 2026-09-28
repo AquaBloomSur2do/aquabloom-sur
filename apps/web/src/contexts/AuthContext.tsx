@@ -21,6 +21,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       if (isMounted) {
         setUser(session?.user ?? null);
         setToken(session?.access_token ?? null);
+        setIsLoading(false);
       }
     });
 

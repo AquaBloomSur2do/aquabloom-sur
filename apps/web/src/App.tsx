@@ -1,6 +1,4 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import type { Session } from '@supabase/supabase-js';
 import { Toaster } from 'sonner';
 
 import { PublicLayout } from './layouts/PublicLayout';
@@ -31,7 +29,7 @@ function App() {
             <Route path="/403" element={<Error403 />} />
           </Route>
 
-          <Route element={<ProtectedRoute session={session} />}>
+          <Route element={<ProtectedRoute />}>
             <Route element={<PrivateLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/lakes" element={<LakesList />} />
