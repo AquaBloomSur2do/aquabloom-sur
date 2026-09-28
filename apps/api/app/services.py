@@ -165,3 +165,16 @@ def create_organization(supabase, org_data: dict) -> dict:
             detail=f"Error al crear la organización: {exc!s}",
         ) from exc
 
+
+def log_audit_event(supabase, actor_id: str, action: str, resource_type: str, resource_id: str, details: dict | None = None) -> None:
+    """Registra un evento de auditoría sin bloquear la transacción principal HTTP."""
+    try:
+        supabase.table("audit_logs").insert({
+            "actor_id": actor_id,
+            "action": action,
+            "resource_type": resource_type,
+            "resource_id": str(resource_id),
+            "details": details or {}
+        }).execute()
+    except Exception as e:  # noqa: BLE001
+        print(f"Alerta: Fallo silencioso en auditoría: {e}")

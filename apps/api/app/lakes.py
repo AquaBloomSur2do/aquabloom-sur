@@ -10,7 +10,10 @@ from app.auth import (
 from app.database import supabase
 from app.repositories import _convert_wkt_to_polygon, get_lake_stations_from_db
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes, StationOut
-from app.services import get_lake_by_id
+from app.services import (  # <-- AGREGADO: Importación de tu servicio de auditoría
+    get_lake_by_id,
+    log_audit_event,
+)
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
 
@@ -117,6 +120,11 @@ def create_lake(
             )
 
         created_lake = response.data[0]
+        
+        # <-- AGREGADO: Tu lógica de auditoría para CREATE
+        actor_id = _payload.get("sub", "system")
+        log_audit_event(supabase, actor_id, "CREATE", "lake", created_lake["id"], lake_data)
+        
         if isinstance(created_lake.get("geom"), str):
             created_lake["geom"] = _convert_wkt_to_polygon(created_lake["geom"])
         return created_lake
@@ -177,7 +185,14 @@ def update_lake(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al actualizar el lago (respuesta vacía).",
             )
-        return response.data[0]
+            
+        updated_lake = response.data[0]
+        
+        # <-- AGREGADO: Tu lógica de auditoría para UPDATE
+        actor_id = _payload.get("sub", "system")
+        log_audit_event(supabase, actor_id, "UPDATE", "lake", updated_lake["id"], update_data)
+        
+        return updated_lake
 
     except HTTPException:
         raise
@@ -225,7 +240,14 @@ def delete_lake(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al desactivar el lago (respuesta vacía).",
             )
-        return response.data[0]
+            
+        deleted_lake = response.data[0]
+        
+        # <-- AGREGADO: Tu lógica de auditoría para DEACTIVATE
+        actor_id = _payload.get("sub", "system")
+        log_audit_event(supabase, actor_id, "DEACTIVATE", "lake", deleted_lake["id"], update_data)
+        
+        return deleted_lake
 
     except HTTPException:
         raise
@@ -252,4 +274,5 @@ def get_lake_stations(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(exc),
         ) from exc
+
     
