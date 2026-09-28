@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { GeoJSON, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { FeatureCollection, Geometry, Feature } from 'geojson';
 
+// Importación de los estilos base de Leaflet
 import 'leaflet/dist/leaflet.css';
 
 interface LakePolygonProps {
@@ -26,23 +27,13 @@ export const LakePolygon: React.FC<LakePolygonProps> = ({ geojsonData }) => {
         }
     }, [geojsonData, map]); 
 
+    // Memoización arquitectónica: Protege el hilo principal y garantiza el redibujado 
+    // exacto ante cambios de geometría, evitando falsos positivos de caché.
+    const dynamicKey = useMemo(() => {
+        return JSON.stringify(geojsonData);
+    }, [geojsonData]);
+
     if (!geojsonData) return null;
-
-    const getStableKey = () => {
-        if (geojsonData.bbox) return JSON.stringify(geojsonData.bbox);
-        
-        if ('features' in geojsonData && geojsonData.features[0]?.id) {
-             return String(geojsonData.features[0].id);
-        }
-        
-        if ('properties' in geojsonData && geojsonData.properties?.name) {
-             return String(geojsonData.properties.name);
-        }
-        
-        return JSON.stringify(geojsonData.type) + JSON.stringify(geojsonData);
-    };
-
-    const dynamicKey = getStableKey();
 
     return (
         <GeoJSON 
