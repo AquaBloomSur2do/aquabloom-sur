@@ -45,9 +45,10 @@ async def http_exception_handler(request, exc):
         status_code=exc.status_code,
         content={
             "error": "Not Found" if exc.status_code == 404 else "HTTP Error",
-            "message": str(exc.detail)
-        }
+            "message": str(exc.detail),
+        },
     )
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
@@ -56,9 +57,10 @@ async def validation_exception_handler(request, exc):
         content={
             "error": "Validation Error",
             "message": "Parámetros de entrada inválidos",
-            "details": exc.errors()
-        }
+            "details": exc.errors(),
+        },
     )
+
 
 app.add_exception_handler(AuthException, auth_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
@@ -68,9 +70,11 @@ app.include_router(organizations_router)
 app.include_router(lakes_router)
 app.include_router(stations_router)
 
+
 @app.get("/")
 def read_root():
     return {"message": f"API inicializada en ambiente: {settings.environment}"}
+
 
 @app.get("/api/v1/health", tags=["System"])
 def health_check():
@@ -82,7 +86,13 @@ def health_check():
         "database": db_status,
     }
 
+
 # --- Ruta de prueba para ticket S2-038 ---
-@app.get("/api/test-permission", dependencies=[Depends(require_permission("admin"))], tags=["System"])
+@app.get(
+    "/api/test-permission",
+    dependencies=[Depends(require_permission("admin"))],
+    tags=["System"],
+)
 def test_permission_route() -> dict:
     return {"message": "Acceso permitido. Tienes el rol correcto."}
+
