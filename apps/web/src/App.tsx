@@ -1,6 +1,4 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import type { Session } from '@supabase/supabase-js';
 
 import { PublicLayout } from './layouts/PublicLayout';
 import { PrivateLayout } from './layouts/PrivateLayout';
@@ -16,31 +14,8 @@ import LakeCreate from './pages/LakeCreate';
 import Error401 from './pages/Error401';
 import Error403 from './pages/Error403';
 
-import { supabase } from './lib/supabase';
 
 function App() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  if (loading) {
-    return <div>Cargando sesión...</div>;
-  }
-
   return (
     <BrowserRouter>
       <Routes>
@@ -51,7 +26,7 @@ function App() {
           <Route path="/403" element={<Error403 />} />
         </Route>
 
-        <Route element={<ProtectedRoute session={session} />}>
+        <Route element={<ProtectedRoute />}>
           <Route element={<PrivateLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/lakes" element={<LakesList />} />
