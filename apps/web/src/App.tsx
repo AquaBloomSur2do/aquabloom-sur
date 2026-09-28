@@ -58,7 +58,7 @@ function App() {
             
             {/* INYECCIÓN ESTRATÉGICA: /new debe ir antes de /:id */}
             <Route path="/lakes/new" element={<LakeCreate />} />
-            
+            <Route path="/lakes/:id/edit" element={<LakeCreate />} />
             <Route path="/lakes/:id" element={<LakeDetail />} />
           </Route>
         </Route>
