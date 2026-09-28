@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import apiClient from '../services/apiClient';
 
 // Definimos la estructura para cumplir con las reglas estrictas de TypeScript
@@ -43,7 +44,10 @@ export default function LakeCreate() {
           setInitialData(data);
         }
       } catch {
-        if (isMounted) setError('No se pudo cargar la información del lago.');
+        if (isMounted) {
+          setError('No se pudo cargar la información del lago.');
+          toast.error('Error de red al cargar el lago.');
+        }
       } finally {
         if (isMounted) setIsLoading(false);
       }
@@ -62,6 +66,7 @@ export default function LakeCreate() {
       const content = event.target?.result;
       if (typeof content === 'string') {
         setGeoJsonStr(content);
+        toast.success('Archivo cargado correctamente.');
       }
     };
     reader.readAsText(file);
@@ -73,11 +78,13 @@ export default function LakeCreate() {
 
     if (!name.trim() || !region.trim()) {
       setError('El nombre y la región son campos obligatorios.');
+      toast.warning('Datos incompletos');
       return;
     }
 
     if (!geoJsonStr.trim()) {
       setError('Debes proporcionar la geometría del lago (GeoJSON).');
+      toast.warning('Falta la geometría del lago');
       return;
     }
 
@@ -86,14 +93,17 @@ export default function LakeCreate() {
       geom = JSON.parse(geoJsonStr);
       if (geom.type !== 'Polygon') {
         setError('El GeoJSON es inválido. El tipo debe ser estrictamente "Polygon".');
+        toast.error('GeoJSON inválido');
         return;
       }
       if (!geom.coordinates || !Array.isArray(geom.coordinates)) {
         setError('El GeoJSON carece de un arreglo de coordenadas válido.');
+        toast.error('Coordenadas inválidas en GeoJSON');
         return;
       }
     } catch {
       setError('Error de sintaxis: El texto proporcionado no es un JSON válido.');
+      toast.error('Error de sintaxis JSON');
       return;
     }
 
@@ -107,13 +117,13 @@ export default function LakeCreate() {
         if (JSON.stringify(geom) !== JSON.stringify(initialData.geom)) payload.geom = geom;
 
         if (Object.keys(payload).length === 0) {
-          window.alert('No hay cambios para guardar.');
+          toast.warning('No hay cambios para guardar.');
           setIsSubmitting(false);
           return;
         }
 
         await apiClient.patch(`lakes/${id}`, payload);
-        window.alert('Lago actualizado correctamente.');
+        toast.success('Lago actualizado correctamente.');
         navigate(`/lakes/${id}`);
       } else {
         await apiClient.post('lakes', { 
@@ -122,10 +132,12 @@ export default function LakeCreate() {
           description: description.trim() || null, 
           geom 
         });
+        toast.success('Lago registrado exitosamente en el catálogo.');
         navigate('/lakes');
       }
     } catch {
       setError('El servidor rechazó la solicitud. Verifica tus permisos o el estado de la API.');
+      toast.error('Operación rechazada por el servidor.');
     } finally {
       setIsSubmitting(false);
     }
@@ -229,3 +241,4 @@ export default function LakeCreate() {
     </div>
   );
 }
+

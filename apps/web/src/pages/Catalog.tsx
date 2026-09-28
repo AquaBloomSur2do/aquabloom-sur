@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import apiClient from '../services/apiClient';
 
 // Contrato de interfaz alineado con el backend
@@ -26,24 +27,23 @@ export default function Catalog() {
     setIsLoading(true);
     setError(null);
     try {
-      // Llamada al endpoint paginado que construimos previamente
       const data = await apiClient.get<PaginatedLakes>('/lakes');
       setLakes(data.items || []);
     } catch {
       setError('No se pudo cargar el catálogo de lagos. Verifica tu conexión al servidor.');
+      toast.error('Falló la sincronización con el catálogo.');
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-    useEffect(() => {
-        const loadData = async () => {
-            await fetchCatalog();
-        };
-        void loadData();
-    },  [fetchCatalog]);
+  useEffect(() => {
+    const loadData = async () => {
+      await fetchCatalog();
+    };
+    void loadData();
+  }, [fetchCatalog]);
 
-  // ESTADO 1: Carga (Evita la tabla vacía renderizando un Skeleton)
   if (isLoading) {
     return (
       <div className="p-8 max-w-6xl mx-auto">
@@ -58,7 +58,6 @@ export default function Catalog() {
     );
   }
 
-  // ESTADO 2: Error Recuperable (Fallo de red o API con botón de reintento)
   if (error) {
     return (
       <div className="p-8 max-w-6xl mx-auto">
@@ -76,7 +75,6 @@ export default function Catalog() {
     );
   }
 
-  // ESTADO 3: Catálogo sin Resultados (Tabla oculta, mensaje claro)
   if (lakes.length === 0) {
     return (
       <div className="p-8 max-w-6xl mx-auto">
@@ -89,7 +87,6 @@ export default function Catalog() {
     );
   }
 
-  // ESTADO 4: Éxito (Renderizado estándar de la tabla)
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-6 text-gray-800">Catálogo de Lagos</h1>
@@ -126,4 +123,5 @@ export default function Catalog() {
     </div>
   );
 }
+
 

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import { apiClient } from '../services/apiClient';
 import type { LakeDetailResponse } from '../types/lake';
-import { NotFound } from './NotFound'; // Reutilizamos la vista 404 del catálogo
+import { NotFound } from './NotFound';
 
 export function LakeDetail() {
   const { id } = useParams<{ id: string }>();
@@ -20,8 +21,8 @@ export function LakeDetail() {
         if (isMounted) setLake(data);
       } catch {
         if (isMounted) {
-          // Si el fetch falla o retorna error HTTP, forzamos la vista 404
           setIsError404(true);
+          toast.error('No se pudo cargar la información del lago.');
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -43,7 +44,6 @@ export function LakeDetail() {
     );
   }
 
-  // Criterio de Aceptación: ID inexistente presenta la vista 404 del catálogo
   if (isError404 || !lake) {
     return <NotFound />;
   }
