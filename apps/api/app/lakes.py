@@ -8,8 +8,12 @@ from app.auth import (
     require_catalog_update_permission,
 )
 from app.database import supabase
-from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes
-from app.services import get_lake_by_id, log_audit_event
+from app.repositories import _convert_wkt_to_polygon, get_lake_stations_from_db
+from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes, StationOut
+from app.services import (  # <-- AGREGADO: Importación de tu servicio de auditoría
+    get_lake_by_id,
+    log_audit_event,
+)
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
 
@@ -114,12 +118,16 @@ def create_lake(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error interno al persistir el registro del lago (respuesta vacía).",
             )
+
+        created_lake = response.data[0]
         
-        lake = response.data[0]
+        # <-- AGREGADO: Tu lógica de auditoría para CREATE
         actor_id = _payload.get("sub", "system")
-        log_audit_event(supabase, actor_id, "CREATE", "lake", lake["id"], lake_data)
+        log_audit_event(supabase, actor_id, "CREATE", "lake", created_lake["id"], lake_data)
         
-        return lake
+        if isinstance(created_lake.get("geom"), str):
+            created_lake["geom"] = _convert_wkt_to_polygon(created_lake["geom"])
+        return created_lake
 
     except HTTPException:
         raise
@@ -177,12 +185,14 @@ def update_lake(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al actualizar el lago (respuesta vacía).",
             )
+            
+        updated_lake = response.data[0]
         
-        lake = response.data[0]
+        # <-- AGREGADO: Tu lógica de auditoría para UPDATE
         actor_id = _payload.get("sub", "system")
-        log_audit_event(supabase, actor_id, "UPDATE", "lake", lake["id"], update_data)
+        log_audit_event(supabase, actor_id, "UPDATE", "lake", updated_lake["id"], update_data)
         
-        return lake
+        return updated_lake
 
     except HTTPException:
         raise
@@ -230,12 +240,14 @@ def delete_lake(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al desactivar el lago (respuesta vacía).",
             )
+            
+        deleted_lake = response.data[0]
         
-        lake = response.data[0]
+        # <-- AGREGADO: Tu lógica de auditoría para DEACTIVATE
         actor_id = _payload.get("sub", "system")
-        log_audit_event(supabase, actor_id, "DEACTIVATE", "lake", lake["id"], update_data)
+        log_audit_event(supabase, actor_id, "DEACTIVATE", "lake", deleted_lake["id"], update_data)
         
-        return lake
+        return deleted_lake
 
     except HTTPException:
         raise
@@ -245,4 +257,22 @@ def delete_lake(
             detail=f"Error en el motor de base de datos al desactivar el lago: {exc}",
         ) from exc
 
-        
+@router.get("/{lake_id}/stations", response_model=list[StationOut])
+def get_lake_stations(
+    lake_id: UUID,
+    status_filter: str | None = Query(None, description="Filtrar por estado"),
+):
+    try:
+        stations = get_lake_stations_from_db(lake_id, status_filter)
+        if stations is None:
+            raise HTTPException(404, detail="Lake not found")
+        return stations
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+
+    
