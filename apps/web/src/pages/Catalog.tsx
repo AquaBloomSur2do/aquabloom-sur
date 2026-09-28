@@ -109,7 +109,7 @@ export default function Catalog() {
                 <td className="p-4 font-medium text-gray-900">{lake.name}</td>
                 <td className="p-4 text-gray-600">{lake.region}</td>
                 <td className="p-4">
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold status-badge--${lake.status.toLowerCase()}`}>
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold status-badge--${lake.status?.toLowerCase() ?? 'default'}`}>
                     {lake.status}
                   </span>
                 </td>
