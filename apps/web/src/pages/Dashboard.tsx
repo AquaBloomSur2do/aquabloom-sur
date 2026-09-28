@@ -1,26 +1,43 @@
-import { Link } from 'react-router-dom';
+import React from 'react';
+import { DashboardCard } from '../components/DashboardCard';
 
-export function Dashboard() {
-  return (
-    <div className="dashboard-page">
-      <h1>Panel de Control</h1>
-      <p>Bienvenido al panel administrativo de AquaBloom Sur.</p>
-      
-      <div className="dashboard-grid">
-        <div className="dashboard-card">
-          <h3>Lagos Registrados</h3>
-          <p>Visualiza y gestiona todos los lagos en el sistema.</p>
-          <Link to="/lakes" className="btn-link">Ir a Lagos</Link>
+export const Dashboard: React.FC = () => {
+    return (
+        <div style={{ padding: '32px' }}>
+            <h1 style={{ marginBottom: '24px', fontSize: '2rem' }}>Dashboard General</h1>
+            
+            <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
+                gap: '24px' 
+            }}>
+                {/* Tarjeta 1: Estado Exitoso (Valor) */}
+                <DashboardCard 
+                    title="Total de Lagos" 
+                    count={14} 
+                    isLoading={false} 
+                    error={null} 
+                    linkTo="/catalog" 
+                />
+
+                {/* Tarjeta 2: Estado de Carga */}
+                <DashboardCard 
+                    title="Estaciones Activas" 
+                    count={null} 
+                    isLoading={true} 
+                    error={null} 
+                    linkTo="/catalog" 
+                />
+
+                {/* Tarjeta 3: Estado de Error */}
+                <DashboardCard 
+                    title="Usuarios Registrados" 
+                    count={null} 
+                    isLoading={false} 
+                    error="Error de conexión" 
+                    linkTo="/catalog" 
+                />
+            </div>
         </div>
-        <div className="dashboard-card">
-          <h3>Estadísticas</h3>
-          <p>Análisis y métricas de los datos recopilados.</p>
-        </div>
-        <div className="dashboard-card">
-          <h3>Configuración</h3>
-          <p>Ajusta los parámetros del sistema.</p>
-        </div>
-      </div>
-    </div>
-  );
-}
+    );
+};
