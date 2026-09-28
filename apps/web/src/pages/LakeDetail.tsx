@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { apiClient } from '../services/apiClient';
 import type { LakeDetailResponse } from '../types/lake';
-import { NotFound } from './NotFound'; // Reutilizamos la vista 404 del catálogo
+import { NotFound } from './NotFound';
 
 export function LakeDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [lake, setLake] = useState<LakeDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [isError404, setIsError404] = useState(false);
@@ -20,8 +22,8 @@ export function LakeDetail() {
         if (isMounted) setLake(data);
       } catch {
         if (isMounted) {
-          // Si el fetch falla o retorna error HTTP, forzamos la vista 404
           setIsError404(true);
+          toast.error('No se pudo cargar la información del lago.');
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -35,6 +37,19 @@ export function LakeDetail() {
     };
   }, [id]);
 
+  const handleDeactivate = async () => {
+    if (!window.confirm('¿Estás seguro de que deseas desactivar este lago del catálogo?')) return;
+    
+    try {
+      // Utilizamos el método request base especificando el método DELETE
+      await apiClient.request(`lakes/${id}`, { method: 'DELETE' });
+      toast.success('Lago desactivado exitosamente.');
+      navigate('/lakes');
+    } catch {
+      toast.error('Error al desactivar el lago. Verifica tus permisos o conexión.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="lake-detail-page p-8">
@@ -43,7 +58,6 @@ export function LakeDetail() {
     );
   }
 
-  // Criterio de Aceptación: ID inexistente presenta la vista 404 del catálogo
   if (isError404 || !lake) {
     return <NotFound />;
   }
@@ -61,6 +75,12 @@ export function LakeDetail() {
           <span className={`status-badge status-badge--${lake.status?.toLowerCase() ?? 'default'} px-3 py-1 rounded-full text-sm font-semibold`}>
             {lake.status ?? 'Sin estado'}
           </span>
+          <button 
+            onClick={handleDeactivate}
+            className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 px-4 py-2 rounded text-sm font-semibold transition-colors border border-red-200"
+          >
+            Desactivar Lago
+          </button>
           <Link 
             to={`/lakes/${id}/edit`} 
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-semibold transition-colors"
