@@ -1,40 +1,29 @@
-export type LakeStatus = 'active' | 'inactive' | 'maintenance' | 'archived' | string;
+import type { GeoJsonGeometry } from './common';
 
 export interface Station {
   id: string;
-  lake_id?: string;
+  lake_id: string;
   code: string;
   name: string;
   description?: string | null;
-  status?: string;
-  point?: {
-    type: 'Point';
-    coordinates: [number, number];
-  } | null;
-  created_at?: string | null;
-  updated_at?: string | null;
+  geom: GeoJsonGeometry;
+  status: 'ACTIVE' | 'INACTIVE' | 'MAINTENANCE';
+  created_at?: string;
+  updated_at?: string;
 }
 
-export interface LakeStation extends Station {
-  lake_id: string;
-  status: LakeStatus;
-}
-
-export interface LakeSummary {
+export interface Lake {
   id: string;
   name: string;
   region: string;
   description?: string | null;
-  status: LakeStatus;
+  geom?: GeoJsonGeometry;
+  status: 'ACTIVE' | 'INACTIVE';
+  created_at?: string;
+  updated_at?: string;
   station_count?: number;
-  stations?: LakeStation[];
-  created_at?: string | null;
-  updated_at?: string | null;
+  stations?: Station[];
 }
 
-export interface LakeDetailResponse extends LakeSummary {
-  geom?: {
-    type: 'Polygon';
-    coordinates: number[][][];
-  } | null;
-}
+export type LakeDetailResponse = Lake;
+export type LakeSummary = Omit<Lake, 'geom' | 'description' | 'stations'>;

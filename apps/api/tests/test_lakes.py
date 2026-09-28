@@ -10,6 +10,7 @@ os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 from app import auth
 from app import lakes as lakes_module
 from app.main import app
+from app.repositories import get_active_lakes
 
 
 class FakeResponse:
@@ -163,6 +164,77 @@ def test_get_lakes_list_excludes_inactive(client_with_authorized_lakes):
     assert not any(item["name"] == "Lago inactivo" for item in items)
 
 
+def test_get_active_lakes_filters_and_transforms_entities():
+    class FakeTable:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def select(self, *args, **kwargs):
+            return self
+
+        def eq(self, field, value):
+            return self
+
+        def execute(self):
+            return type("Response", (), {"data": list(self.rows)})()
+
+    class FakeClient:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def table(self, table_name):
+            assert table_name == "lakes"
+            return FakeTable(self.rows)
+
+    raw_rows = [
+        {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Lago activo",
+            "region": "Lima",
+            "description": "Activo",
+            "status": "active",
+            "geom": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]},
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-02T00:00:00Z",
+            "internal_note": "no debe exportarse",
+        },
+        {
+            "id": "22222222-2222-2222-2222-222222222222",
+            "name": "Lago inactivo",
+            "region": "Arequipa",
+            "description": "Inactivo",
+            "status": "inactive",
+            "geom": {"type": "Polygon", "coordinates": [[[0, 0], [2, 0], [2, 2], [0, 0]]]},
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-02T00:00:00Z",
+            "internal_note": "no debe exportarse",
+        },
+        {
+            "id": "33333333-3333-3333-3333-333333333333",
+            "name": "Lago activo con flag",
+            "region": "Cusco",
+            "description": "Activo por bandera",
+            "status": "inactive",
+            "is_active": True,
+            "geom": "POLYGON((0 0, 5 0, 5 5, 0 0))",
+            "created_at": "2024-01-03T00:00:00Z",
+            "updated_at": "2024-01-04T00:00:00Z",
+            "internal_metadata": {"secret": "hidden"},
+        },
+    ]
+
+    result = get_active_lakes(FakeClient(raw_rows))
+
+    assert len(result) == 2
+    assert all(item.status == "active" for item in result)
+    assert {item.name for item in result} == {"Lago activo", "Lago activo con flag"}
+    assert all("internal_note" not in item.model_dump() for item in result)
+    assert all("internal_metadata" not in item.model_dump() for item in result)
+    assert result[0].geom["type"] == "Polygon"
+    assert result[1].geom["type"] == "Polygon"
+    assert result[1].geom["coordinates"]
+
+
 def test_get_lake_by_id_returns_active_lake(client_with_authorized_lakes):
     lake_id = "11111111-1111-1111-1111-111111111111"
     response = client_with_authorized_lakes.get(f"/api/v1/lakes/{lake_id}")
@@ -248,3 +320,30 @@ def test_lake_crud_rejects_unauthorized_users(client_with_unauthorized_lakes):
         "/api/v1/lakes/11111111-1111-1111-1111-111111111111"
     )
     assert delete_response.status_code == 403
+
+
+def test_get_lake_stations_returns_500_when_lake_query_fails(monkeypatch):
+    def raise_database_unavailable(*args, **kwargs):
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(
+        lakes_module,
+        "get_lake_stations_from_db",
+        raise_database_unavailable,
+    )
+
+    response = TestClient(app).get(
+        "/api/v1/lakes/11111111-1111-1111-1111-111111111111/stations"
+    )
+
+    assert response.status_code == 500
+
+
+def test_get_lake_stations_documents_station_response_model():
+    operation = app.openapi()["paths"]["/api/v1/lakes/{lake_id}/stations"]["get"]
+    response_schema = operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]
+
+    assert response_schema["type"] == "array"
+    assert response_schema["items"]["$ref"] == "#/components/schemas/StationOut"

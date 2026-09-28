@@ -1,8 +1,6 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from shapely import from_wkt
-from shapely.geometry import mapping
 
 from app.auth import (
     require_catalog_create_permission,
@@ -10,7 +8,8 @@ from app.auth import (
     require_catalog_update_permission,
 )
 from app.database import supabase
-from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes
+from app.repositories import _convert_wkt_to_polygon, get_lake_stations_from_db
+from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes, StationOut
 from app.services import get_lake_by_id
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
@@ -25,33 +24,6 @@ def _convert_polygon_to_wkt(geom: dict) -> str | None:
         points = ", ".join([f"{lon} {lat}" for lon, lat in ring])
         rings.append(f"({points})")
     return f"POLYGON({', '.join(rings)})"
-
-
-def _convert_wkt_to_geojson(geom: object) -> object:
-    """Normaliza geometrías WKT devueltas por PostGIS a GeoJSON compatible con Pydantic."""
-    if isinstance(geom, dict):
-        return geom
-    if not isinstance(geom, str):
-        return geom
-
-    cleaned = geom.strip()
-    if not cleaned or not cleaned.upper().startswith("POLYGON"):
-        return geom
-
-    try:
-        return mapping(from_wkt(cleaned))
-    except Exception:  # noqa: BLE001
-        return geom
-
-
-def _normalize_lake_record(record: dict | None) -> dict | None:
-    if not isinstance(record, dict):
-        return record
-
-    normalized = dict(record)
-    if "geom" in normalized:
-        normalized["geom"] = _convert_wkt_to_geojson(normalized["geom"])
-    return normalized
 
 
 @router.get("", response_model=PaginatedLakes)
@@ -110,8 +82,7 @@ def get_lake(lake_id: UUID):
         )
 
     try:
-        lake = get_lake_by_id(supabase=supabase, lake_id=lake_id)
-        return _normalize_lake_record(lake)
+        return get_lake_by_id(supabase=supabase, lake_id=lake_id)
     except LookupError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -144,7 +115,11 @@ def create_lake(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error interno al persistir el registro del lago (respuesta vacía).",
             )
-        return _normalize_lake_record(response.data[0])
+
+        created_lake = response.data[0]
+        if isinstance(created_lake.get("geom"), str):
+            created_lake["geom"] = _convert_wkt_to_polygon(created_lake["geom"])
+        return created_lake
 
     except HTTPException:
         raise
@@ -202,7 +177,7 @@ def update_lake(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al actualizar el lago (respuesta vacía).",
             )
-        return _normalize_lake_record(response.data[0])
+        return response.data[0]
 
     except HTTPException:
         raise
@@ -250,7 +225,7 @@ def delete_lake(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al desactivar el lago (respuesta vacía).",
             )
-        return _normalize_lake_record(response.data[0])
+        return response.data[0]
 
     except HTTPException:
         raise
@@ -258,5 +233,23 @@ def delete_lake(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error en el motor de base de datos al desactivar el lago: {exc}",
+        ) from exc
+
+@router.get("/{lake_id}/stations", response_model=list[StationOut])
+def get_lake_stations(
+    lake_id: UUID,
+    status_filter: str | None = Query(None, description="Filtrar por estado"),
+):
+    try:
+        stations = get_lake_stations_from_db(lake_id, status_filter)
+        if stations is None:
+            raise HTTPException(404, detail="Lake not found")
+        return stations
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
         ) from exc
     

@@ -1,111 +1,92 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { apiClient, ApiError } from '../services/apiClient';
+import { useEffect, useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { apiClient } from '../services/apiClient';
 import type { LakeDetailResponse } from '../types/lake';
-import { NotFound } from './NotFound';
+import { NotFound } from './NotFound'; // Reutilizamos la vista 404 del catálogo
 
 export function LakeDetail() {
   const { id } = useParams<{ id: string }>();
   const [lake, setLake] = useState<LakeDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [notFound, setNotFound] = useState(false);
-
-  const fetchLake = useCallback(async () => {
-    if (!id) {
-      setLake(null);
-      setNotFound(true);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setNotFound(false);
-
-    try {
-      const data = await apiClient.get<LakeDetailResponse>(`lakes/${id}`);
-      setLake(data);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        setNotFound(true);
-        setLake(null);
-        return;
-      }
-
-      setError(err instanceof Error ? err.message : 'No se pudo cargar la información del lago.');
-      setLake(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  const [isError404, setIsError404] = useState(false);
 
   useEffect(() => {
-    // eslint-disable-next-line
+    let isMounted = true;
+
+    const fetchLake = async () => {
+      if (!id) return;
+      try {
+        const data = await apiClient.get<LakeDetailResponse>(`lakes/${id}`);
+        if (isMounted) setLake(data);
+      } catch {
+        if (isMounted) {
+          // Si el fetch falla o retorna error HTTP, forzamos la vista 404
+          setIsError404(true);
+        }
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
     void fetchLake();
-  }, [fetchLake]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
 
   if (loading) {
     return (
-      <div className="lake-detail-page">
-        <div className="state-panel state-panel--loading" role="status" aria-live="polite">
-          Cargando información del lago...
-        </div>
+      <div className="lake-detail-page p-8">
+        <div className="state-panel state-panel--loading">Cargando detalle del lago...</div>
       </div>
     );
   }
 
-  if (notFound) {
+  // Criterio de Aceptación: ID inexistente presenta la vista 404 del catálogo
+  if (isError404 || !lake) {
     return <NotFound />;
   }
 
-  if (error) {
-    return (
-      <div className="lake-detail-page">
-        <div className="state-panel state-panel--error" role="alert">
-          <p>{error}</p>
-          <button type="button" className="btn btn-primary" onClick={() => void fetchLake()}>
-            Reintentar
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!lake) {
-    return <NotFound />;
-  }
-
-  const stationCount = typeof lake.station_count === 'number' ? lake.station_count : lake.stations?.length ?? 0;
+  const stationCount = Array.isArray(lake.stations) ? lake.stations.length : (lake.station_count ?? 0);
 
   return (
-    <div className="lake-detail-page">
-      <div className="detail-header">
-        <Link to="/lakes" className="btn-back">
-          ← Volver
-        </Link>
-        <h1>{lake.name}</h1>
-      </div>
+    <div className="lake-detail-page p-8">
+      <header className="detail-header mb-6 flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800">{lake.name}</h1>
+          <p className="text-gray-500">{lake.region}</p>
+        </div>
+        <div className="flex gap-4 items-center">
+          <span className={`status-badge status-badge--${lake.status?.toLowerCase() ?? 'default'} px-3 py-1 rounded-full text-sm font-semibold`}>
+            {lake.status ?? 'Sin estado'}
+          </span>
+          <Link 
+            to={`/lakes/${id}/edit`} 
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-semibold transition-colors"
+          >
+            Editar Lago
+          </Link>
+        </div>
+      </header>
 
-      <div className="detail-content">
-        <section className="detail-section">
-          <h2>Información General</h2>
-          <div className="info-grid">
+      <div className="detail-content grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <section className="detail-section bg-white p-6 rounded-lg shadow border border-gray-200">
+          <h2 className="text-xl font-bold mb-4 border-b pb-2">Ficha Descriptiva</h2>
+          <div className="info-grid grid grid-cols-2 gap-4">
             <div className="info-item">
-              <label>Región:</label>
-              <p>{lake.region}</p>
+              <label className="text-xs font-bold uppercase text-gray-500">ID del Catálogo</label>
+              <p className="text-sm font-mono">{lake.id}</p>
             </div>
             <div className="info-item">
-              <label>Estado:</label>
-              <p>
-                <span className={`status-badge status-badge--${lake.status?.toLowerCase() ?? 'default'}`}>
-                  {lake.status ?? 'Sin estado'}
-                </span>
-              </p>
+              <label className="text-xs font-bold uppercase text-gray-500">Descripción</label>
+              <p className="text-sm">{lake.description ?? 'Sin descripción disponible'}</p>
             </div>
-            <div className="info-item">
-              <label>Descripción:</label>
-              <p>{lake.description ?? 'Sin descripción disponible.'}</p>
+            <div className="info-item col-span-2">
+              <label className="text-xs font-bold uppercase text-gray-500 mb-1 block">Geometría (GeoJSON)</label>
+              <pre className="bg-gray-50 p-3 rounded border text-xs overflow-auto max-h-32 text-gray-700">
+                {lake.geom ? JSON.stringify(lake.geom, null, 2) : 'Datos espaciales no disponibles'}
+              </pre>
             </div>
           </div>
         </section>
@@ -114,7 +95,7 @@ export function LakeDetail() {
           <h2 className="text-xl font-bold mb-4 border-b pb-2">
             Estaciones Registradas ({stationCount})
           </h2>
-
+          
           {lake.stations && lake.stations.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-sm">
@@ -131,8 +112,8 @@ export function LakeDetail() {
                       <td className="p-3 border-b font-mono text-xs">{station.code}</td>
                       <td className="p-3 border-b">{station.name}</td>
                       <td className="p-3 border-b">
-                        <span className={`status-badge status-badge--${station.status?.toLowerCase() ?? 'default'}`}>
-                          {station.status ?? 'Sin estado'}
+                         <span className={`status-badge status-badge--${station.status?.toLowerCase() ?? 'default'}`}>
+                          {station.status}
                         </span>
                       </td>
                     </tr>
