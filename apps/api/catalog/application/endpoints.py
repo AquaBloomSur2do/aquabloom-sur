@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth import require_catalog_create_permission
 from app.database import supabase
+from app.services import validate_station_inside_lake
 
 from .schemas import StationCreate
 
@@ -18,11 +19,30 @@ router = APIRouter()
 def create_station(lake_id: uuid.UUID, payload: StationCreate):
     """Crea una nueva estación asociada a un lago utilizando el cliente oficial de Supabase.
 
-    Implementa validación de código único y geometría WKT (SRID 4326).
+    Implementa validación de código único, límites geográficos y geometría WKT (SRID 4326).
     """
-    # 1. Validación (409 Conflict): Verificar si el código ya existe para el lake_id
+    lake_check = (
+        supabase.table("lakes")
+        .select("id, geom")
+        .eq("id", str(lake_id))
+        .execute()
+    )
+
+    if not lake_check.data:
+        raise HTTPException(
+            status_code=404,
+            detail="El lago asociado no existe.",
+        )
+
+    lake_geom = lake_check.data[0].get("geom")
+    if lake_geom:
+        try:
+            validate_station_inside_lake(lake_geojson=lake_geom, lat=payload.latitude, lon=payload.longitude)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     existing_check = (
-        supabase.table("station")
+        supabase.table("stations")
         .select("id")
         .eq("lake_id", str(lake_id))
         .eq("code", payload.code)
@@ -35,7 +55,6 @@ def create_station(lake_id: uuid.UUID, payload: StationCreate):
             detail="El código de la estación ya existe para este lago.",
         )
 
-    # 2. Inserción con PostGIS usando formato WKT
     wkt_geom = f"POINT({payload.longitude} {payload.latitude})"
 
     station_data = {
@@ -44,10 +63,10 @@ def create_station(lake_id: uuid.UUID, payload: StationCreate):
         "name": payload.name,
         "source": payload.source,
         "activity": payload.activity,
-        "geom": wkt_geom,
+        "point": wkt_geom,
     }
 
-    response = supabase.table("station").insert(station_data).execute()
+    response = supabase.table("stations").insert(station_data).execute()
 
     if not response.data:
         raise HTTPException(
