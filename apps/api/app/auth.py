@@ -85,11 +85,11 @@ def read_current_user(payload: dict = Security(verify_supabase_jwt)):  # noqa: B
 
     try:
         return get_current_user_profile(supabase, UUID(user_id), email)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al recuperar el perfil: {exc!s}",
-        )
+        ) from exc
 
 
 def require_admin(payload: dict = Security(verify_supabase_jwt)) -> dict:  # noqa: B008
@@ -137,7 +137,9 @@ def _has_permission(payload: dict, required_permission: str) -> bool:
     if isinstance(permissions, str):
         permissions = [item.strip() for item in permissions.split(",") if item.strip()]
     if isinstance(permissions, (list, tuple, set)):
-        return required_permission in [str(item).strip() for item in permissions if str(item).strip()]
+        return required_permission in [
+            str(item).strip() for item in permissions if str(item).strip()
+        ]
 
     return False
 
@@ -173,3 +175,4 @@ def require_catalog_disable_permission(
             detail="No tienes permisos para desactivar lagos.",
         )
     return payload
+

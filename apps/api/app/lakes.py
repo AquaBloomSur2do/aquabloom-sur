@@ -14,7 +14,7 @@ from app.repositories import (
     get_lakes_repository,
 )
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes, StationOut
-from app.services import disable_lake, get_lake_by_id
+from app.services import disable_lake, get_lake_by_id, log_audit_event
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
 
@@ -32,7 +32,7 @@ def _convert_polygon_to_wkt(geom: dict) -> str | None:
 
 @router.get("", response_model=PaginatedLakes)
 def get_lakes(
-    text: str | None = Query(None, description="Filtro de búsqueda por nombre"),
+    text: str | None = Query(None, min_length=3, strip_whitespace=True, description="Filtro de búsqueda por nombre"),
     region: str | None = Query(None, description="Filtro exacto por región"),
     status_filter: str | None = Query(
         None, alias="status", description="Filtro exacto por estado"
@@ -102,6 +102,10 @@ def create_lake(
             )
 
         created_lake = response.data[0]
+
+        actor_id = _payload.get("sub", "system")
+        log_audit_event(supabase, actor_id, "CREATE", "lake", created_lake["id"], lake_data)
+
         if isinstance(created_lake.get("geom"), str):
             created_lake["geom"] = _convert_wkt_to_polygon(created_lake["geom"])
         return created_lake
@@ -161,7 +165,13 @@ def update_lake(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al actualizar el lago (respuesta vacía).",
             )
-        return response.data[0]
+
+        updated_lake = response.data[0]
+
+        actor_id = _payload.get("sub", "system")
+        log_audit_event(supabase, actor_id, "UPDATE", "lake", updated_lake["id"], update_data)
+
+        return updated_lake
 
     except HTTPException:
         raise
@@ -184,7 +194,19 @@ def delete_lake(
         )
 
     try:
-        return disable_lake(lake_id=lake_id, current_user=current_user, supabase=supabase)
+        disabled_lake = disable_lake(
+            lake_id=lake_id, current_user=current_user, supabase=supabase
+        )
+        actor_id = current_user.get("sub", "system")
+        log_audit_event(
+            supabase,
+            actor_id,
+            "DEACTIVATE",
+            "lake",
+            disabled_lake["id"],
+            {"status": "inactive"},
+        )
+        return disabled_lake
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

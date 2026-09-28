@@ -58,7 +58,8 @@ class FakeTable:
         return self
 
     def execute(self):
-        items = list(self.db.lakes)
+        table_items = self.db.tables.setdefault(self.table_name, [])
+        items = list(table_items)
 
         for field, (op, value) in self._filters.items():
             if op == "eq":
@@ -77,8 +78,8 @@ class FakeTable:
             payload.setdefault("status", "active")
             payload.setdefault("created_at", "2024-01-01T00:00:00Z")
             payload.setdefault("updated_at", "2024-01-01T00:00:00Z")
-            self.db.lakes.append(payload)
-            return FakeResponse([payload], count=len(self.db.lakes))
+            table_items.append(payload)
+            return FakeResponse([payload], count=len(table_items))
 
         if self._update_payload is not None:
             for item in items:
@@ -118,6 +119,7 @@ class FakeSupabase:
                 "updated_at": "2024-01-01T00:00:00Z",
             },
         ]
+        self.tables = {"lakes": self.lakes, "audit_logs": []}
 
     def table(self, table_name):
         return FakeTable(self, table_name)

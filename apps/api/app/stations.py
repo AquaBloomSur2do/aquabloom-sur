@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.auth import require_catalog_update_permission
 from app.database import supabase
 from app.schemas import StationUpdate
-from app.services import validate_station_inside_lake
+from app.services import log_audit_event, validate_station_inside_lake
 
 router = APIRouter(prefix="/api/v1/stations", tags=["Catalog"])
 
@@ -79,9 +79,16 @@ def update_station(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="No se devolvieron datos tras la actualización.",
             )
-        return response.data[0]
+        
+        station = response.data[0]
+        actor_id = _payload.get("sub", "system")
+        log_audit_event(supabase, actor_id, "UPDATE", "station", station["id"], update_data)
+        
+        return station
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error en el motor de base de datos: {exc}",
         ) from exc
+
+    

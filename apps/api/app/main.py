@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -8,10 +8,12 @@ from app.auth import AuthException
 from app.auth import router as auth_router
 from app.config import settings
 from app.database import check_supabase_connection
+from app.dependencies import require_permission
 from app.handlers import auth_exception_handler, global_exception_handler
 from app.lakes import router as lakes_router
 from app.organizations import router as organizations_router
 from app.stations import router as stations_router
+from catalog.application.endpoints import router as catalog_router
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
@@ -58,6 +60,8 @@ app.include_router(auth_router)
 app.include_router(organizations_router)
 app.include_router(lakes_router)
 app.include_router(stations_router)
+app.include_router(catalog_router, tags=["Catalog"])
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -82,3 +86,13 @@ def health_check():
         "status": "ok" if db_status["status"] == "ok" else "degraded",
         "database": db_status,
     }
+
+
+# --- Ruta de prueba para ticket S2-038 ---
+@app.get(
+    "/api/test-permission",
+    dependencies=[Depends(require_permission("admin"))],
+    tags=["System"],
+)
+def test_permission_route() -> dict:
+    return {"message": "Acceso permitido. Tienes el rol correcto."}
