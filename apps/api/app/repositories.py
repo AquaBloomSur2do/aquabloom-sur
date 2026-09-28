@@ -128,31 +128,25 @@ def get_lakes_repository(
     limit: int = 10,
 ) -> PaginatedLakes:
     """Recupera lagos con filtros combinados y paginación."""
-    query = client.table("lakes").select("*")
+    query = client.table("lakes").select(", ".join(PUBLIC_LAKE_FIELDS), count="exact")
 
     if text:
         query = query.ilike("name", f"%{text}%")
     if region:
         query = query.eq("region", region)
-    if status_filter is not None:
-        query = query.eq("status", status_filter)
+    query = query.eq("status", status_filter or "active")
 
     start = (page - 1) * limit
     response = query.range(start, start + limit - 1).execute()
     rows = response.data or []
 
-    items = []
-    for row in rows:
-        if status_filter is None and row.get("status") != "active" and row.get("is_active") is not True:
-            continue
-        cleaned = _clean_lake_row(row)
-        items.append(LakeSummary.model_validate(cleaned))
+    items = [LakeSummary.model_validate(_clean_lake_row(row)) for row in rows]
 
     return PaginatedLakes(
         items=items,
         page=page,
         page_size=limit,
-        total=len(items),
+        total=response.count or 0,
     )
 
 

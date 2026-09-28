@@ -88,11 +88,12 @@ class FakeTable:
                 item["updated_at"] = "2024-01-02T00:00:00Z"
             return FakeResponse(items, count=len(items))
 
+        total_count = len(items)
         if self._range is not None:
             start, end = self._range
             items = items[start : end + 1]
 
-        return FakeResponse(items, count=len(items))
+        return FakeResponse(items, count=total_count)
 
 
 class FakeSupabase:
@@ -142,12 +143,10 @@ def client_with_authorized_lakes(monkeypatch):
     monkeypatch.setattr(lakes_module, "supabase", fake_db)
 
     def fake_authenticated_admin():
-        return {
-            "user_metadata": {"role": "administrador"},
-            "permissions": ["catalog:update", "catalog:disable"],
-        }
+        return {"user_metadata": {"role": "administrador"}}
 
     app.dependency_overrides[auth.verify_supabase_jwt] = fake_authenticated_admin
+    app.dependency_overrides[auth.optional_verify_supabase_jwt] = fake_authenticated_admin
     try:
         yield TestClient(app)
     finally:
@@ -304,6 +303,10 @@ def test_delete_lake_soft_deletes_and_excludes_from_list(client_with_authorized_
     assert response.status_code == 200
     assert response.json()["status"] == "inactive"
 
+    repeated_delete = client_with_authorized_lakes.delete(f"/api/v1/lakes/{lake_id}")
+    assert repeated_delete.status_code == 200
+    assert repeated_delete.json()["status"] == "inactive"
+
     after_delete = client_with_authorized_lakes.get(f"/api/v1/lakes/{lake_id}")
     assert after_delete.status_code == 200
     assert after_delete.json()["status"] == "inactive"
@@ -334,6 +337,63 @@ def test_lake_crud_rejects_unauthorized_users(client_with_unauthorized_lakes):
         "/api/v1/lakes/11111111-1111-1111-1111-111111111111"
     )
     assert delete_response.status_code == 403
+
+
+def test_supervisor_cannot_disable_lake(monkeypatch):
+    def fake_authenticated_supervisor():
+        return {"user_metadata": {"role": "supervisor"}}
+
+    app.dependency_overrides[auth.verify_supabase_jwt] = fake_authenticated_supervisor
+    try:
+        response = TestClient(app).delete(
+            "/api/v1/lakes/11111111-1111-1111-1111-111111111111"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+
+
+def test_public_cannot_filter_inactive_lakes(monkeypatch):
+    monkeypatch.setattr(lakes_module, "supabase", FakeSupabase())
+
+    response = TestClient(app).get("/api/v1/lakes?status=inactive")
+
+    assert response.status_code == 403
+
+
+def test_lakes_pagination_counts_all_active_rows_before_range(monkeypatch):
+    active_lakes = [
+        {
+            "id": str(uuid.uuid4()),
+            "name": f"Lago activo {index}",
+            "region": "Lima",
+            "description": "Activo",
+            "geom": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]},
+            "status": "active",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+        }
+        for index in range(5)
+    ]
+    rows = active_lakes + [
+        {
+            **active_lakes[0],
+            "id": str(uuid.uuid4()),
+            "name": "Lago inactivo",
+            "status": "inactive",
+        }
+    ]
+    monkeypatch.setattr(lakes_module, "supabase", FakeSupabase(rows))
+    test_client = TestClient(app)
+
+    first_page = test_client.get("/api/v1/lakes?page=1&limit=2").json()
+    second_page = test_client.get("/api/v1/lakes?page=2&limit=2").json()
+    last_page = test_client.get("/api/v1/lakes?page=3&limit=2").json()
+
+    assert first_page["total"] == second_page["total"] == last_page["total"] == 5
+    assert [len(first_page["items"]), len(second_page["items"]), len(last_page["items"])] == [2, 2, 1]
+    assert all(item["status"] == "active" for page in (first_page, second_page, last_page) for item in page["items"])
 
 
 def test_get_lake_stations_returns_500_when_lake_query_fails(monkeypatch):

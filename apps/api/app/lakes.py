@@ -3,11 +3,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.auth import (
+    optional_verify_supabase_jwt,
     require_catalog_create_permission,
     require_catalog_disable_permission,
     require_catalog_update_permission,
 )
 from app.database import supabase
+from app.permissions import CATALOG_ACTIONS, has_permission
 from app.repositories import (
     _convert_wkt_to_polygon,
     get_lake_stations_from_db,
@@ -41,8 +43,16 @@ def get_lakes(
     limit: int = Query(
         10, ge=1, le=100, description="Límite máximo de ítems por página"
     ),
+    current_user: dict | None = Depends(optional_verify_supabase_jwt),  # noqa: B008
 ):
     """Recupera el catálogo de lagos con soporte para filtros combinados y paginación."""
+    if status_filter == "inactive" and not has_permission(
+        current_user, CATALOG_ACTIONS["DISABLE"]
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para consultar lagos inactivos.",
+        )
     try:
         return get_lakes_repository(
             supabase,
