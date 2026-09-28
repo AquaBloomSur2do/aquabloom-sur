@@ -10,7 +10,7 @@ from app.auth import (
 from app.database import supabase
 from app.repositories import _convert_wkt_to_polygon, get_lake_stations_from_db
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes, StationOut
-from app.services import ( 
+from app.services import (
     get_lake_by_id,
     log_audit_event,
 )
