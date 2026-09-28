@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import { Toaster } from 'sonner';
 
 import { PublicLayout } from './layouts/PublicLayout';
 import { PrivateLayout } from './layouts/PrivateLayout';
@@ -42,30 +43,33 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route element={<PublicLayout />}>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/401" element={<Error401 />} />
-          <Route path="/403" element={<Error403 />} />
-        </Route>
-
-        <Route element={<ProtectedRoute session={session} />}>
-          <Route element={<PrivateLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/lakes" element={<LakesList />} />
-            
-            {/* INYECCIÓN ESTRATÉGICA: /new debe ir antes de /:id */}
-            <Route path="/lakes/new" element={<LakeCreate />} />
-            <Route path="/lakes/:id/edit" element={<LakeCreate />} />
-            <Route path="/lakes/:id" element={<LakeDetail />} />
+    <>
+      <Toaster position="top-right" richColors closeButton expand={false} />
+      <BrowserRouter>
+        <Routes>
+          <Route element={<PublicLayout />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/401" element={<Error401 />} />
+            <Route path="/403" element={<Error403 />} />
           </Route>
-        </Route>
 
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </BrowserRouter>
+          <Route element={<ProtectedRoute session={session} />}>
+            <Route element={<PrivateLayout />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/lakes" element={<LakesList />} />
+              
+              {/* INYECCIÓN ESTRATÉGICA: /new debe ir antes de /:id */}
+              <Route path="/lakes/new" element={<LakeCreate />} />
+              <Route path="/lakes/:id/edit" element={<LakeCreate />} />
+              <Route path="/lakes/:id" element={<LakeDetail />} />
+            </Route>
+          </Route>
+
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </>
   );
 }
 

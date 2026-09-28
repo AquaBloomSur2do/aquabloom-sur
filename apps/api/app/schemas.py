@@ -1,9 +1,12 @@
+import json
 import re
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
+from shapely.geometry import mapping
+from shapely.wkt import loads as parse_wkt
 
 
 class ErrorResponse(BaseModel):
@@ -37,9 +40,24 @@ class LakeCreate(LakeBase):
 
     @field_validator("geom")
     @classmethod
-    def validate_geom(cls, v: dict[str, Any]) -> dict[str, Any]:
+    def validate_geom(cls, v: dict[str, Any] | str) -> dict[str, Any]:
         if not isinstance(v, dict):
-            raise TypeError("La geometría debe ser un objeto JSON estructurado.")
+            if isinstance(v, str):
+                v_str = v.strip()
+                if v_str.startswith("{"):
+                    try:
+                        v = json.loads(v_str)
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        pass
+                if isinstance(v, str):
+                    try:
+                        v = mapping(parse_wkt(v_str))
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        raise ValueError(
+                            f"No se pudo parsear la geometría WKT/JSON: {v}"
+                        ) from None
+            else:
+                raise TypeError("La geometría debe ser un objeto JSON estructurado.")
         if v.get("type") != "Polygon":
             raise ValueError("La geometría debe ser estrictamente de tipo 'Polygon'.")
         coords = v.get("coordinates")
@@ -64,10 +82,25 @@ class LakeUpdate(BaseModel):
 
     @field_validator("geom")
     @classmethod
-    def validate_geom(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+    def validate_geom(cls, v: dict[str, Any] | str | None) -> dict[str, Any] | None:
         if v is not None:
             if not isinstance(v, dict):
-                raise TypeError("La geometría debe ser un objeto JSON estructurado.")
+                if isinstance(v, str):
+                    v_str = v.strip()
+                    if v_str.startswith("{"):
+                        try:
+                            v = json.loads(v_str)
+                        except (json.JSONDecodeError, TypeError, ValueError):
+                            pass
+                    if isinstance(v, str):
+                        try:
+                            v = mapping(parse_wkt(v_str))
+                        except (json.JSONDecodeError, TypeError, ValueError):
+                            raise ValueError(
+                                f"No se pudo parsear la geometría WKT/JSON: {v}"
+                            ) from None
+                else:
+                    raise TypeError("La geometría debe ser un objeto JSON estructurado.")
             if v.get("type") != "Polygon":
                 raise ValueError("La geometría debe ser un Polygon GeoJSON")
             if not v.get("coordinates"):
@@ -94,10 +127,55 @@ class LakeDetail(LakeSummary):
     created_at: datetime
     updated_at: datetime
 
+    @field_validator("geom", mode="before")
+    @classmethod
+    def parse_geom(cls, v: Any) -> dict[str, Any] | None:
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, str):
+            v_str = v.strip()
+            if v_str.startswith("{"):
+                try:
+                    return json.loads(v_str)
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    pass
+            try:
+                geom_obj = parse_wkt(v_str)
+                return mapping(geom_obj)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                raise ValueError(f"No se pudo parsear la geometría WKT/JSON: {v}") from None
+        return v
+
+
+class PaginatedLakes(BaseModel):
+    items: list[LakeSummary]
+    page: int
+    page_size: int
+    total: int
+
 
 class MembershipCreate(BaseModel):
     profile_id: UUID = Field(..., description="ID del perfil del usuario")
     role: Literal["admin", "member"] = Field(..., description="Rol en la organización")
+
+
+class UserOrganizationResponse(BaseModel):
+    id: UUID
+    name: str
+    role: str
+
+
+class OrganizationMemberResponse(BaseModel):
+    user_id: UUID
+    profile_id: UUID | None = None
+    full_name: str | None = None
+    email: str | None = None
+    role: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
 
 
 # --- Esquemas de Station ---
@@ -180,3 +258,4 @@ class GeoJSONFeature(BaseModel):
 class GeoJSONFeatureCollection(BaseModel):
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: list[GeoJSONFeature]
+

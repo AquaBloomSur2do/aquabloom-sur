@@ -1,30 +1,29 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Security, status
 
 from app.auth import verify_supabase_jwt
 from app.database import supabase
-from app.dependencies import require_permission
-from app.schemas import MembershipCreate, OrganizationCreate, OrganizationOut
-from app.services import add_organization_member, create_organization
+from app.dependencies import require_admin
+from app.schemas import (
+    MembershipCreate,
+    OrganizationCreate,
+    OrganizationMemberResponse,
+    OrganizationOut,
+    UserOrganizationResponse,
+)
+from app.services import (
+    add_organization_member,
+    create_organization,
+    get_organization_members_for_user,
+)
 
 router = APIRouter(prefix="/api/v1/organizations", tags=["Organizations"])
 
 
-# Definición estricta del esquema de respuesta (S2-040)
-class UserOrganizationResponse(BaseModel):
-    id: UUID
-    name: str
-    role: str
-
-
 @router.get("/", response_model=list[UserOrganizationResponse])
 def get_user_organizations(payload: dict = Depends(verify_supabase_jwt)):  # noqa: B008
-    """
-    Recupera las organizaciones exclusivas del usuario autenticado.
-    Impide la enumeración de organizaciones a las que no pertenece.
-    """
+    """Recupera las organizaciones exclusivas del usuario autenticado."""
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(
@@ -33,7 +32,6 @@ def get_user_organizations(payload: dict = Depends(verify_supabase_jwt)):  # noq
         )
 
     try:
-        # Consulta a la tabla intermedia 'memberships' filtrando por el usuario exacto.
         response = (
             supabase.table("memberships")
             .select("role, organizations!inner(id, name)")
@@ -41,7 +39,6 @@ def get_user_organizations(payload: dict = Depends(verify_supabase_jwt)):  # noq
             .execute()
         )
 
-        # Mapeo de la respuesta relacional de Supabase al esquema plano requerido
         organizations_list = []
         for item in response.data:
             org_data = item.get("organizations", {})
@@ -62,28 +59,70 @@ def get_user_organizations(payload: dict = Depends(verify_supabase_jwt)):  # noq
         ) from exc
 
 
+@router.get(
+    "/{organization_id}/members",
+    response_model=list[OrganizationMemberResponse],
+)
+def list_organization_members(
+    organization_id: UUID,
+    payload: dict = Security(verify_supabase_jwt),  # noqa: B008
+):
+    if supabase is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="El servicio de autenticación no está disponible",
+        )
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token sin identificador de usuario (sub).",
+        )
+
+    current_user_id = UUID(str(user_id))
+
+    try:
+        members = get_organization_members_for_user(
+            supabase, current_user_id, organization_id
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+
+    return members
+
+
 @router.post("/{id}/members")
 def create_organization_member(
-    id: UUID, 
+    id: UUID,
     membership: MembershipCreate,
-    user=Depends(verify_supabase_jwt) # noqa: B008
+    user=Depends(verify_supabase_jwt),  # noqa: B008
 ):
     try:
         return add_organization_member(
             supabase=supabase,
             org_id=id,
             profile_id=membership.profile_id,
-            role=membership.role
+            role=membership.role,
         )
-    except LookupError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("", response_model=OrganizationOut, status_code=status.HTTP_201_CREATED)
 def create_org(
     org: OrganizationCreate,
-    _current_user: dict = Depends(require_permission("admin")),  # noqa: B008
+    payload: dict = Depends(require_admin),  # noqa: B008
 ):
     org_data = {
         "name": org.name,
