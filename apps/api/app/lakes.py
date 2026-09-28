@@ -10,7 +10,7 @@ from app.auth import (
 from app.database import supabase
 from app.repositories import _convert_wkt_to_polygon, get_lake_stations_from_db
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes, StationOut
-from app.services import (  # <-- AGREGADO: Importación de tu servicio de auditoría
+from app.services import (
     get_lake_by_id,
     log_audit_event,
 )
@@ -31,7 +31,7 @@ def _convert_polygon_to_wkt(geom: dict) -> str | None:
 
 @router.get("", response_model=PaginatedLakes)
 def get_lakes(
-    text: str | None = Query(None, description="Filtro de búsqueda por nombre"),
+    text: str | None = Query(None, min_length=3, strip_whitespace=True, description="Filtro de búsqueda por nombre"),
     region: str | None = Query(None, description="Filtro exacto por región"),
     status_filter: str | None = Query(
         None, alias="status", description="Filtro exacto por estado"
@@ -121,7 +121,6 @@ def create_lake(
 
         created_lake = response.data[0]
         
-        # <-- AGREGADO: Tu lógica de auditoría para CREATE
         actor_id = _payload.get("sub", "system")
         log_audit_event(supabase, actor_id, "CREATE", "lake", created_lake["id"], lake_data)
         
@@ -188,7 +187,6 @@ def update_lake(
             
         updated_lake = response.data[0]
         
-        # <-- AGREGADO: Tu lógica de auditoría para UPDATE
         actor_id = _payload.get("sub", "system")
         log_audit_event(supabase, actor_id, "UPDATE", "lake", updated_lake["id"], update_data)
         
@@ -243,7 +241,6 @@ def delete_lake(
             
         deleted_lake = response.data[0]
         
-        # <-- AGREGADO: Tu lógica de auditoría para DEACTIVATE
         actor_id = _payload.get("sub", "system")
         log_audit_event(supabase, actor_id, "DEACTIVATE", "lake", deleted_lake["id"], update_data)
         
@@ -274,5 +271,5 @@ def get_lake_stations(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(exc),
         ) from exc
-
-    
+        
+        
