@@ -181,7 +181,6 @@ def disable_lake(lake_id: UUID, current_user: dict | None = None, supabase=None)
     return soft_delete_lake(supabase, lake_id)
 
 
-
 def create_organization(supabase, org_data: dict) -> dict:
     try:
         response = supabase.table("organizations").insert(org_data).execute()
