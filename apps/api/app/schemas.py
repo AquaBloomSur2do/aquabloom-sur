@@ -197,12 +197,17 @@ class StationUpdate(BaseModel):
         return v
 
 
+class GeoJSONPoint(BaseModel):
+    type: Literal["Point"]
+    coordinates: tuple[float, float]
+
+
 class StationOut(BaseModel):
     id: UUID
     lake_id: UUID
     code: str
     name: str
-    point: Any
+    point: GeoJSONPoint
     description: str | None = None
     status: str
     created_at: datetime

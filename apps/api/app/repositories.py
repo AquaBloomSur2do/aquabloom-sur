@@ -28,6 +28,25 @@ def _convert_wkt_to_polygon(wkt_str: str) -> dict[str, Any]:
         raise ValueError(f"Error de integridad en geometría WKT: {exc}") from exc
 
 
+def _coerce_station_point_to_geojson(value: Any) -> dict[str, Any]:
+    """Normaliza el punto de PostGIS al GeoJSON esperado por los clientes."""
+    if isinstance(value, dict):
+        if value.get("type") != "Point":
+            raise ValueError("La geometría de la estación debe ser un GeoJSON Point.")
+        return value
+
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("La geometría de la estación no contiene un punto válido.")
+
+    try:
+        geometry = from_wkt(value.strip())
+        if geometry.geom_type != "Point":
+            raise ValueError("La geometría de la estación debe ser de tipo Point.")
+        return mapping(geometry)
+    except Exception as exc:
+        raise ValueError(f"Error de integridad en el punto de la estación: {exc}") from exc
+
+
 def _coerce_geom_to_geojson(value: Any) -> dict[str, Any] | None:
     """Convierte geometrías WKT a GeoJSON para que la entidad de dominio permanezca limpia."""
     if isinstance(value, dict):
@@ -115,6 +134,12 @@ def get_lake_stations_from_db(
         query = query.eq("status", status_filter)
 
     stations_response = query.execute()
-    return stations_response.data
+    return [
+        {
+            **station,
+            "point": _coerce_station_point_to_geojson(station.get("point")),
+        }
+        for station in (stations_response.data or [])
+    ]
 
 
