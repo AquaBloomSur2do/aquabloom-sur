@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class StationBase(BaseModel):
+    code: str = Field(..., description="Código único de la estación")
     name: str = Field(..., description="Nombre de la estación")
     latitude: float = Field(
         ..., 
@@ -24,6 +25,7 @@ class StationCreate(StationBase):
     lake_id: UUID
 
 class StationUpdate(BaseModel):
+    code: str | None = None
     name: str | None = None
     latitude: float | None = Field(None, ge=-90.0, le=90.0)
     longitude: float | None = Field(None, ge=-180.0, le=180.0)
@@ -32,10 +34,11 @@ class StationUpdate(BaseModel):
 
 class StationSummary(BaseModel):
     station_id: UUID
+    code: str
     name: str
     lake_id: UUID
 
 class StationDetail(StationBase):
     station_id: UUID
     lake_id: UUID
-    
+ 
