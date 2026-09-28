@@ -10,6 +10,7 @@ def test_estacion_coordenadas_validas():
     # Debe pasar sin errores
     estacion = StationCreate(
         lake_id=uuid4(),
+        code="VILL-01",
         name="Estación Villarrica Centro",
         latitude=-39.28,
         longitude=-72.22,
