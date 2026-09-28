@@ -28,7 +28,7 @@ const getStationCount = (lake: LakeSummary): number => {
     return lake.station_count;
   }
 
-  if (Array.isArray(lake.stations)) {
+  if ('stations' in lake && Array.isArray(lake.stations)) {
     return lake.stations.length;
   }
 
