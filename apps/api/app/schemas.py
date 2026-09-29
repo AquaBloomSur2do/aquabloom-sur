@@ -65,6 +65,20 @@ class LakeCreate(LakeBase):
             raise ValueError("El polígono debe contener un arreglo de coordenadas válido.")
         return v
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "name": "Lago Panguipulli",
+                "region": "Región de Los Ríos",
+                "description": "Lago de origen glaciar",
+                "geom": {
+                    "type": "Polygon",
+                    "coordinates": [[[-72.1, -39.6], [-72.2, -39.6], [-72.2, -39.7], [-72.1, -39.7], [-72.1, -39.6]]]
+                }
+            }
+        }
+    }
+
 
 class LakeUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
@@ -148,6 +162,17 @@ class PaginatedLakes(BaseModel):
     page_size: int
     total: int
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "items": [],
+                "page": 1,
+                "page_size": 10,
+                "total": 45
+            }
+        }
+    }
+
 
 class MembershipCreate(BaseModel):
     profile_id: UUID = Field(..., description="ID del perfil del usuario")
@@ -195,6 +220,20 @@ class StationUpdate(BaseModel):
         if v is not None and not v.strip():
             raise ValueError("El nombre de la estación no puede ser una cadena vacía.")
         return v
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "name": "Estación Centro (Reubicada)",
+                "description": "Mantenimiento preventivo completado",
+                "coordinates": {
+                    "latitude": -39.642,
+                    "longitude": -72.335
+                },
+                "status": "active"
+            }
+        }
+    }
 
 
 class GeoJSONPoint(BaseModel):
@@ -256,4 +295,4 @@ class GeoJSONFeature(BaseModel):
 class GeoJSONFeatureCollection(BaseModel):
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: list[GeoJSONFeature]
-
+    
