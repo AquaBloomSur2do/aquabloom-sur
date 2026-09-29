@@ -8,7 +8,10 @@ from app.auth import (
     require_catalog_update_permission,
 )
 from app.database import supabase
-from app.repositories import _convert_wkt_to_polygon, get_lake_stations_from_db
+from app.repositories import (
+    _convert_wkt_to_polygon,
+    get_lake_stations_from_db,
+)
 from app.responses import COMMON_ERRORS
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes, StationOut
 from app.services import (
