@@ -27,47 +27,62 @@ export const Login = () => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-gray-900 text-white">
-      <h1 className="text-3xl font-bold mb-6">AquaBloom Sur</h1>
-      <h2 className="text-xl mb-4">Iniciar Sesión</h2>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-md space-y-8">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold mb-2">AquaBloom Sur</h1>
+          <h2 className="text-xl text-gray-300 mb-8">Iniciar Sesión</h2>
+        </div>
 
-      <form onSubmit={handleLogin} className="flex flex-col items-center gap-4">
-        <label className="flex flex-col gap-1 w-full">
-          <span>Correo Electrónico</span>
-          <input
-            type="email"
-            className="text-black px-3 py-2 rounded"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            disabled={isLoading}
-          />
-        </label>
-
-        <label className="flex flex-col gap-1 w-full">
-          <span>Contraseña</span>
-          <input
-            type="password"
-            className="text-black px-3 py-2 rounded"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            disabled={isLoading}
-          />
-        </label>
-
-        {error && (
-          <p className="text-red-500 text-sm max-w-xs text-center">{error}</p>
-        )}
-
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="mt-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded font-medium transition-colors w-full"
+        <form
+          onSubmit={handleLogin}
+          className="flex flex-col gap-5 bg-gray-800 p-6 md:p-8 rounded-xl shadow-lg border border-gray-700"
         >
-          {isLoading ? 'Verificando...' : 'Ingresar'}
-        </button>
-      </form>
+          <label className="flex flex-col gap-1.5 w-full">
+            <span className="text-sm font-medium text-gray-300">
+              Correo Electrónico
+            </span>
+            <input
+              type="email"
+              className="text-black px-4 py-2.5 rounded-lg w-full focus:ring-2 focus:ring-blue-500 focus:outline-none transition-shadow"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              disabled={isLoading}
+              placeholder="tu@correo.cl"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1.5 w-full">
+            <span className="text-sm font-medium text-gray-300">
+              Contraseña
+            </span>
+            <input
+              type="password"
+              className="text-black px-4 py-2.5 rounded-lg w-full focus:ring-2 focus:ring-blue-500 focus:outline-none transition-shadow"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              disabled={isLoading}
+              placeholder="••••••••"
+            />
+          </label>
+
+          {error && (
+            <p className="text-red-400 text-sm text-center bg-red-900/30 p-2 rounded border border-red-800">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="mt-4 px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-semibold transition-colors w-full shadow-md"
+          >
+            {isLoading ? 'Verificando...' : 'Ingresar'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 };
