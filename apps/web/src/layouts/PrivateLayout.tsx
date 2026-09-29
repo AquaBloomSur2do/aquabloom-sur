@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/useAuth';
 import { supabase } from '../lib/supabase';
 
 const MENU_ITEMS = [
@@ -20,6 +21,7 @@ export const PrivateLayout = () => {
   // 1. Estado inicial nulo para prevenir Flickering (Requisito PR)
   const [userRole, setUserRole] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
   useEffect(() => {
     const fetchSession = async () => {
@@ -40,7 +42,7 @@ export const PrivateLayout = () => {
   }, [navigate]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await logout();
     navigate('/login', { replace: true });
   };
 

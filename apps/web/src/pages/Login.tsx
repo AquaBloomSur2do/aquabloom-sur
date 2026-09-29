@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/useAuth';
 
 export const Login = () => {
   const [email, setEmail] = useState('');
@@ -8,23 +8,21 @@ export const Login = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (authError) {
-      setError('Credenciales inválidas. Verifica tu correo y contraseña.');
-      setIsLoading(false);
-      console.error(authError);
-    } else {
+    try {
+      await login({ email, password });
       navigate('/dashboard', { replace: true });
+    } catch (authError) {
+      setError('Credenciales inválidas. Verifica tu correo y contraseña.');
+      console.error(authError);
+    } finally {
+      setIsLoading(false);
     }
   };
 

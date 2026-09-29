@@ -34,25 +34,29 @@ class FakeResponse:
 
 class MagicSupabaseMock:
     def __init__(self):
-        self.insert_payload = None
+        self.inserted_data = None
 
     def __call__(self, *args, **kwargs): return self
 
-    def _insert(self, payload, *args, **kwargs):
-        self.insert_payload = payload
+    def insert(self, payload, *args, **kwargs):
+        self.inserted_data = payload
         return self
 
-    def _execute(self, *args, **kwargs):
-        if self.insert_payload is not None:
-            inserted = {**fake_data[0], **self.insert_payload, "status": "active"}
-            return FakeResponse(data=[inserted])
-        return FakeResponse()
+    def execute(self, *args, **kwargs):
+        response = FakeResponse()
+        if self.inserted_data is not None:
+            response.data = [
+                {
+                    **self.inserted_data,
+                    "id": fake_data[0]["id"],
+                    "status": "active",
+                    "created_at": fake_data[0]["created_at"],
+                    "updated_at": fake_data[0]["updated_at"],
+                }
+            ]
+        return response
 
     def __getattr__(self, name):
-        if name == "insert":
-            return self._insert
-        if name == "execute":
-            return self._execute
         return lambda *args, **kwargs: self
 
 @pytest.fixture

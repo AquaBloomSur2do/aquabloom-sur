@@ -1,13 +1,14 @@
 import { Navigate, Outlet } from 'react-router-dom';
-import type { Session } from '@supabase/supabase-js';
+import { useAuth } from '../contexts/useAuth';
 
 interface ProtectedRouteProps {
-  session: Session | null;
   redirectPath?: string;
 }
 
-export const ProtectedRoute = ({ session, redirectPath = '/login' }: ProtectedRouteProps) => {
-  if (!session) {
+export const ProtectedRoute = ({ redirectPath = '/login' }: ProtectedRouteProps) => {
+  const { user } = useAuth();
+
+  if (!user) {
     return <Navigate to={redirectPath} replace />;
   }
 
