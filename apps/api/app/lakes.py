@@ -9,7 +9,13 @@ from app.auth import (
     require_catalog_update_permission,
 )
 from app.database import supabase
-
+from app.permissions import CATALOG_ACTIONS, has_permission
+from app.repositories import (
+    _convert_wkt_to_polygon,
+    get_lake_stations_from_db,
+    get_lakes_repository,
+)
+from app.responses import COMMON_ERRORS
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes, StationOut
 from app.services import disable_lake, get_lake_by_id, log_audit_event
 
@@ -79,7 +85,6 @@ def get_lake(lake_id: UUID):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
-
 
 
 @router.post("", response_model=LakeDetail, status_code=status.HTTP_201_CREATED, responses={**COMMON_ERRORS})
@@ -230,7 +235,7 @@ def delete_lake(
         ) from exc
 
 
- main
+@router.get("/{lake_id}/stations", response_model=list[StationOut], responses={**COMMON_ERRORS})
 def get_lake_stations(
     lake_id: UUID,
     status_filter: str | None = Query(None, description="Filtrar por estado"),
@@ -247,4 +252,4 @@ def get_lake_stations(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(exc),
         ) from exc
-
+    
