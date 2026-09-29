@@ -69,7 +69,9 @@ export default function Catalog() {
 
       {/* Barra de Filtros y Búsqueda con reseteo directo de página */}
       <div className="mb-6 flex gap-4 items-center">
+        <label htmlFor="catalog-search" className="sr-only">Buscar lago por nombre</label>
         <input
+          id="catalog-search"
           type="text"
           placeholder="Buscar lago por nombre..."
           value={searchTerm}
@@ -77,7 +79,7 @@ export default function Catalog() {
             setSearchTerm(e.target.value);
             setCurrentPage(1); // CRITERIO DE ACEPTACIÓN: Reseteo automático a página 1 al filtrar
           }}
-          className="px-4 py-2 border border-gray-300 rounded-lg w-full max-w-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-4 py-2 border border-gray-300 rounded-lg w-full max-w-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         />
       </div>
 
@@ -94,7 +96,7 @@ export default function Catalog() {
           <p className="text-red-600 mb-4">{error}</p>
           <button
             onClick={() => void fetchCatalog(currentPage, searchTerm)}
-            className="px-6 py-2 bg-red-600 text-white font-medium rounded hover:bg-red-700 transition-colors cursor-pointer"
+            className="px-6 py-2 bg-red-600 text-white font-medium rounded hover:bg-red-700 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             Reintentar Conexión
           </button>
@@ -127,7 +129,7 @@ export default function Catalog() {
                       </span>
                     </td>
                     <td className="p-4">
-                      <Link to={`/lakes/${lake.id}`} className="text-blue-600 font-medium hover:text-blue-800 hover:underline">
+                      <Link to={`/lakes/${lake.id}`} className="text-blue-600 font-medium hover:text-blue-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
                         Ver Detalles
                       </Link>
                     </td>
