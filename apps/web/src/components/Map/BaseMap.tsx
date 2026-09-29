@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Map as MapLibreMap,
   NavigationControl,
+  Popup,
   type GeoJSONSource,
   type LngLatLike,
+  type MapLayerMouseEvent,
 } from 'maplibre-gl';
+import { useNavigate } from 'react-router-dom';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -25,6 +28,7 @@ export default function BaseMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -71,12 +75,15 @@ export default function BaseMap({
 
     const mapData = geometries as Parameters<GeoJSONSource['setData']>[0];
     const existingSource = map.getSource(sourceId);
+    
+    // Si la capa ya existe (ej. al filtrar), solo actualizamos los datos y salimos
     if (existingSource) {
       (existingSource as GeoJSONSource).setData(mapData);
       return;
     }
 
     map.addSource(sourceId, { type: 'geojson', data: mapData });
+    
     map.addLayer({
       id: `${sourceId}-fill`,
       type: 'fill',
@@ -106,7 +113,49 @@ export default function BaseMap({
         'circle-stroke-width': 1.5,
       },
     });
-  }, [geometries, mapLoaded]);
+
+    const handleFeatureClick = (e: MapLayerMouseEvent) => {
+      if (!e.features || e.features.length === 0) return;
+      
+      const properties = e.features[0].properties;
+      const name = properties.nombre || 'Sin nombre';
+      const id = properties.id;
+
+      // Inyectamos HTML puro para el Popup nativo
+      const htmlContent = `
+        <div style="display: flex; flex-direction: column; gap: 8px; font-family: sans-serif;">
+          <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #111827;">${name}</h3>
+          <button id="btn-detail-${id}" style="color: #2563eb; text-decoration: underline; background: none; border: none; padding: 0; text-align: left; cursor: pointer; font-size: 14px;">
+            Ver detalle completo
+          </button>
+        </div>
+      `;
+
+      const popup = new Popup({ closeButton: true, closeOnClick: true })
+        .setLngLat(e.lngLat)
+        .setHTML(htmlContent)
+        .addTo(map);
+
+      // Atamos el botón a React Router para proteger el estado (SPA Navigation)
+      document.getElementById(`btn-detail-${id}`)?.addEventListener('click', () => {
+         navigate(`/lakes/${id}`); 
+         popup.remove();
+      });
+    };
+
+    // Estilos de cursor para que el usuario sepa que es interactivo
+    const setCursorPointer = () => { map.getCanvas().style.cursor = 'pointer'; };
+    const resetCursor = () => { map.getCanvas().style.cursor = ''; };
+
+    // Atar los eventos de clic tanto a los polígonos (lagos) como a los puntos (estaciones)
+    const interactiveLayers = [`${sourceId}-fill`, `${sourceId}-point`];
+    interactiveLayers.forEach(layerId => {
+      map.on('click', layerId, handleFeatureClick);
+      map.on('mouseenter', layerId, setCursorPointer);
+      map.on('mouseleave', layerId, resetCursor);
+    });
+
+  }, [geometries, mapLoaded, navigate]);
 
   return <div ref={containerRef} style={{ width: '100%', height: 400 }} />;
 }
