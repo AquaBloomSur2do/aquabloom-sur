@@ -38,13 +38,16 @@ export const Login = () => {
           onSubmit={handleLogin}
           className="flex flex-col gap-5 bg-gray-800 p-6 md:p-8 rounded-xl shadow-lg border border-gray-700"
         >
-          <label className="flex flex-col gap-1.5 w-full">
+          <label htmlFor="login-email" className="flex flex-col gap-1.5 w-full">
             <span className="text-sm font-medium text-gray-300">
               Correo Electrónico
             </span>
             <input
               type="email"
-              className="text-black px-4 py-2.5 rounded-lg w-full focus:ring-2 focus:ring-blue-500 focus:outline-none transition-shadow"
+              id="login-email"
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? 'login-error' : undefined}
+              className="text-black px-4 py-2.5 rounded-lg w-full focus:ring-2 focus:ring-blue-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 transition-shadow"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -53,13 +56,16 @@ export const Login = () => {
             />
           </label>
 
-          <label className="flex flex-col gap-1.5 w-full">
+          <label htmlFor="login-password" className="flex flex-col gap-1.5 w-full">
             <span className="text-sm font-medium text-gray-300">
               Contraseña
             </span>
             <input
               type="password"
-              className="text-black px-4 py-2.5 rounded-lg w-full focus:ring-2 focus:ring-blue-500 focus:outline-none transition-shadow"
+              id="login-password"
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? 'login-error' : undefined}
+              className="text-black px-4 py-2.5 rounded-lg w-full focus:ring-2 focus:ring-blue-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 transition-shadow"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -69,7 +75,7 @@ export const Login = () => {
           </label>
 
           {error && (
-            <p className="text-red-400 text-sm text-center bg-red-900/30 p-2 rounded border border-red-800">
+            <p id="login-error" role="alert" className="text-red-400 text-sm text-center bg-red-900/30 p-2 rounded border border-red-800">
               {error}
             </p>
           )}
@@ -77,7 +83,7 @@ export const Login = () => {
           <button
             type="submit"
             disabled={isLoading}
-            className="mt-4 px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-semibold transition-colors w-full shadow-md"
+            className="mt-4 px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-semibold transition-colors w-full shadow-md focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
           >
             {isLoading ? 'Verificando...' : 'Ingresar'}
           </button>
@@ -86,3 +92,4 @@ export const Login = () => {
     </div>
   );
 };
+
