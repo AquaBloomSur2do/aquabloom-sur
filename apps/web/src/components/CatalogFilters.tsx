@@ -42,20 +42,24 @@ export const CatalogFilters: React.FC = () => {
 
     return (
         <div className="flex gap-4 p-4 bg-gray-50 rounded-lg">
+            <label htmlFor="catalog-filter-search" className="sr-only">Buscar lago por nombre</label>
             <input
+                id="catalog-filter-search"
                 type="text"
                 aria-label="Buscar lago por nombre"
                 placeholder="Buscar lago por nombre..."
                 value={localText}
                 onChange={(e) => setLocalText(e.target.value)}
-                className="border p-2 rounded w-full"
+                className="border p-2 rounded w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             />
 
+            <label htmlFor="catalog-filter-region" className="sr-only">Filtrar por región</label>
             <select
+                id="catalog-filter-region"
                 aria-label="Filtrar por región"
                 value={region}
                 onChange={(e) => updateFilter("region", e.target.value)}
-                className="border p-2 rounded"
+                className="border p-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
                 <option value="">Todas las regiones</option>
                 {REGIONES_CHILE.map(r => (
@@ -63,11 +67,13 @@ export const CatalogFilters: React.FC = () => {
                 ))}
             </select>
 
+            <label htmlFor="catalog-filter-status" className="sr-only">Filtrar por estado de la estación</label>
             <select
+                id="catalog-filter-status"
                 aria-label="Filtrar por estado de la estación"
                 value={status}
                 onChange={(e) => updateFilter("status", e.target.value)}
-                className="border p-2 rounded"
+                className="border p-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
                 <option value="">Todos los estados</option>
                 {OPCIONES_ESTADO.map(opt => (

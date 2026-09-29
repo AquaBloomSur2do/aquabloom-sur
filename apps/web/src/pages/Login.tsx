@@ -32,11 +32,14 @@ export const Login = () => {
       <h2 className="text-xl mb-4">Iniciar Sesión</h2>
 
       <form onSubmit={handleLogin} className="flex flex-col items-center gap-4">
-        <label className="flex flex-col gap-1 w-full">
+        <label htmlFor="login-email" className="flex flex-col gap-1 w-full">
           <span>Correo Electrónico</span>
           <input
             type="email"
-            className="text-black px-3 py-2 rounded"
+            id="login-email"
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? 'login-error' : undefined}
+            className="text-black px-3 py-2 rounded focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -44,11 +47,14 @@ export const Login = () => {
           />
         </label>
 
-        <label className="flex flex-col gap-1 w-full">
+        <label htmlFor="login-password" className="flex flex-col gap-1 w-full">
           <span>Contraseña</span>
           <input
             type="password"
-            className="text-black px-3 py-2 rounded"
+            id="login-password"
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? 'login-error' : undefined}
+            className="text-black px-3 py-2 rounded focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
@@ -57,13 +63,13 @@ export const Login = () => {
         </label>
 
         {error && (
-          <p className="text-red-500 text-sm max-w-xs text-center">{error}</p>
+          <p id="login-error" role="alert" className="text-red-500 text-sm max-w-xs text-center">{error}</p>
         )}
 
         <button
           type="submit"
           disabled={isLoading}
-          className="mt-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded font-medium transition-colors w-full"
+          className="mt-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded font-medium transition-colors w-full focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
         >
           {isLoading ? 'Verificando...' : 'Ingresar'}
         </button>
