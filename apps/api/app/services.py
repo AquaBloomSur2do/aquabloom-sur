@@ -5,10 +5,26 @@ from shapely.geometry import Point, shape
 from supabase import Client
 
 from app.permissions import CATALOG_ACTIONS, has_permission
-from app.repositories import get_lake_by_id as get_active_lake_by_id
-from app.repositories import soft_delete_lake
+from app.repositories import (
+    count_active_lakes,
+    count_active_stations,
+    count_visible_organizations,
+    soft_delete_lake,
+)
+from app.repositories import (
+    get_lake_by_id as get_active_lake_by_id,
+)
+from app.schemas import DashboardSummaryResponse
 
 from .repositories import get_active_memberships
+
+
+def get_dashboard_summary(supabase: Client, user_data: dict) -> DashboardSummaryResponse:
+    return DashboardSummaryResponse(
+        active_lakes_count=count_active_lakes(supabase),
+        active_stations_count=count_active_stations(supabase),
+        visible_organizations_count=count_visible_organizations(supabase, user_data),
+    )
 
 
 def validate_station_inside_lake(lake_geojson: dict, lat: float, lon: float) -> None:

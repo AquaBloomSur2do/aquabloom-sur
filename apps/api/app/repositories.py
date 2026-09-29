@@ -6,6 +6,7 @@ from shapely.geometry import mapping
 from supabase import Client
 
 from app.database import supabase
+from app.permissions import has_permission
 from app.schemas import LakeDetail, LakeSummary, PaginatedLakes
 
 PUBLIC_LAKE_FIELDS = (
@@ -117,6 +118,51 @@ def get_active_memberships(client: Client, user_id: UUID) -> list[dict]:
     )
 
     return response.data or []
+
+
+def count_active_lakes(client: Client) -> int:
+    response = (
+        client.table("lakes")
+        .select("id", count="exact", head=True)
+        .eq("status", "active")
+        .execute()
+    )
+    return response.count or 0
+
+
+def count_active_stations(client: Client) -> int:
+    response = (
+        client.table("stations")
+        .select("id", count="exact", head=True)
+        .eq("status", "active")
+        .execute()
+    )
+    return response.count or 0
+
+
+def count_visible_organizations(client: Client, user_data: dict) -> int:
+    if has_permission(user_data, "admin"):
+        response = (
+            client.table("organizations")
+            .select("id", count="exact", head=True)
+            .eq("status", "active")
+            .execute()
+        )
+        return response.count or 0
+
+    user_id = user_data.get("sub") or user_data.get("id")
+    if not user_id:
+        return 0
+
+    response = (
+        client.table("memberships")
+        .select("organization_id, organizations!inner(id)", count="exact", head=True)
+        .eq("user_id", str(user_id))
+        .eq("status", "active")
+        .eq("organizations.status", "active")
+        .execute()
+    )
+    return response.count or 0
 
 
 def get_lake_stations_from_db(
