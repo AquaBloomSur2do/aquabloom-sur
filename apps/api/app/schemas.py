@@ -15,6 +15,12 @@ class ErrorResponse(BaseModel):
     details: dict | None = None
 
 
+class DashboardSummaryResponse(BaseModel):
+    active_lakes_count: int
+    active_stations_count: int
+    visible_organizations_count: int
+
+
 # --- Esquemas de Lake ---
 
 
@@ -295,4 +301,4 @@ class GeoJSONFeature(BaseModel):
 class GeoJSONFeatureCollection(BaseModel):
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: list[GeoJSONFeature]
-    
+ main

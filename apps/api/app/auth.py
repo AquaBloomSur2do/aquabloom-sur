@@ -8,10 +8,12 @@ from pydantic import BaseModel
 from app.config import settings
 
 from .database import supabase
+from .permissions import CATALOG_ACTIONS, has_permission
 from .services import get_current_user_profile
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
 
 
 class AuthException(Exception):
@@ -71,6 +73,14 @@ def verify_supabase_jwt(
         raise AuthException("Token JWT alterado o inválido.", {"code": "INVALID_TOKEN"})
 
 
+def optional_verify_supabase_jwt(
+    credentials: HTTPAuthorizationCredentials | None = Security(optional_security),  # noqa: B008
+) -> dict | None:
+    if credentials is None:
+        return None
+    return verify_supabase_jwt(credentials)
+
+
 @router.get("/me", response_model=CurrentUserResponse)
 def read_current_user(payload: dict = Security(verify_supabase_jwt)):  # noqa: B008
     user_id = payload.get("sub")
@@ -108,50 +118,10 @@ def require_admin(payload: dict = Security(verify_supabase_jwt)) -> dict:  # noq
     return payload
 
 
-ROLE_PERMISSIONS = {
-    "administrador": [
-        "catalog:view",
-        "catalog:create",
-        "catalog:update",
-        "catalog:disable",
-    ],
-    "investigador": ["catalog:view", "catalog:create", "catalog:update"],
-    "supervisor": ["catalog:view", "catalog:update"],
-    "auditor": ["catalog:view"],
-    "usuario": ["catalog:view"],
-}
-
-
-def _has_permission(payload: dict, required_permission: str) -> bool:
-    metadata = payload.get("user_metadata") or payload.get("app_metadata") or {}
-    if not isinstance(metadata, dict):
-        metadata = {}
-
-    role = str(
-        payload.get("role")
-        or metadata.get("role")
-        or (payload.get("user_metadata") or {}).get("role")
-        or ""
-    ).lower()
-
-    if role and required_permission in ROLE_PERMISSIONS.get(role, []):
-        return True
-
-    permissions = payload.get("permissions") or metadata.get("permissions") or []
-    if isinstance(permissions, str):
-        permissions = [item.strip() for item in permissions.split(",") if item.strip()]
-    if isinstance(permissions, (list, tuple, set)):
-        return required_permission in [
-            str(item).strip() for item in permissions if str(item).strip()
-        ]
-
-    return False
-
-
 def require_catalog_create_permission(
     payload: dict = Security(verify_supabase_jwt),  # noqa: B008
 ) -> dict:
-    if not _has_permission(payload, "catalog:create"):
+    if not has_permission(payload, CATALOG_ACTIONS["CREATE"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permisos para crear lagos.",
@@ -162,7 +132,7 @@ def require_catalog_create_permission(
 def require_catalog_update_permission(
     payload: dict = Security(verify_supabase_jwt),  # noqa: B008
 ) -> dict:
-    if not _has_permission(payload, "catalog:update"):
+    if not has_permission(payload, CATALOG_ACTIONS["UPDATE"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permisos para actualizar lagos.",
@@ -173,7 +143,7 @@ def require_catalog_update_permission(
 def require_catalog_disable_permission(
     payload: dict = Security(verify_supabase_jwt),  # noqa: B008
 ) -> dict:
-    if not _has_permission(payload, "catalog:disable"):
+    if not has_permission(payload, CATALOG_ACTIONS["DISABLE"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permisos para desactivar lagos.",

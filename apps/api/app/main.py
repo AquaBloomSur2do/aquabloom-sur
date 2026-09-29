@@ -7,6 +7,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.auth import AuthException
 from app.auth import router as auth_router
 from app.config import settings
+from app.dashboard import router as dashboard_router
 from app.database import check_supabase_connection
 from app.dependencies import require_permission
 from app.handlers import auth_exception_handler, global_exception_handler
@@ -20,6 +21,7 @@ tags_metadata = [
     {"name": "Auth", "description": "Autenticación de usuarios."},
     {"name": "Organizations", "description": "Gestión de organizaciones de usuarios."},
     {"name": "Catalog", "description": "Catálogo de lagos y estaciones."},
+    {"name": "Dashboard", "description": "Resumen de métricas del dashboard."},
 ]
 
 app = FastAPI(
@@ -30,16 +32,6 @@ app = FastAPI(
     openapi_tags=tags_metadata,
 )
 
-# Habilitar CORS para el frontend React
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept"],
-)
-
-# --- Integración de Manejadores Globales (S2-008) ---
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request, exc):
     return JSONResponse(
@@ -71,6 +63,16 @@ app.include_router(organizations_router)
 app.include_router(lakes_router)
 app.include_router(stations_router)
 app.include_router(catalog_router, tags=["Catalog"])
+app.include_router(dashboard_router)
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
+)
 
 
 @app.get("/")
