@@ -43,7 +43,11 @@ def verify_supabase_jwt(
     credentials: HTTPAuthorizationCredentials = Security(security),  # noqa: B008
 ) -> dict:
     token = credentials.credentials
-    secret = settings.supabase_jwt_secret
+    secret = (
+        settings.supabase_jwt_secret.get_secret_value()
+        if hasattr(settings.supabase_jwt_secret, "get_secret_value")
+        else settings.supabase_jwt_secret
+    )
     issuer = f"{settings.supabase_url}/auth/v1"
 
     try:

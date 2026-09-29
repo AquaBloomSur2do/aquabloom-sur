@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     # Variables obligatorias (sin valor por defecto)
     supabase_url: str
     supabase_key: SecretStr
+    supabase_jwt_secret: SecretStr
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
