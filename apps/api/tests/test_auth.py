@@ -28,9 +28,9 @@ fake_data = [{
 }]
 
 class FakeResponse:
-    def __init__(self):
-        self.data = fake_data
-        self.count = len(fake_data)
+    def __init__(self, data=None):
+        self.data = fake_data if data is None else data
+        self.count = len(self.data)
 
 class MagicSupabaseMock:
     def __init__(self):

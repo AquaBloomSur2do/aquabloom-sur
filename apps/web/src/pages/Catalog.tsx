@@ -81,6 +81,7 @@ export default function Catalog() {
         </Link>
       </div>
 
+      {/* Barra de Filtros y Búsqueda con reseteo directo de página */}
       <div className="mb-6 flex gap-4 items-center w-full">
         <label htmlFor="catalog-search" className="sr-only">Buscar lago por nombre</label>
         <input
@@ -92,7 +93,7 @@ export default function Catalog() {
             setSearchTerm(e.target.value);
             setCurrentPage(1);
           }}
-          className="px-4 py-2 border border-gray-300 rounded-lg w-full max-w-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          className="px-4 py-2 border border-gray-300 rounded-lg w-full max-w-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         />
       </div>
 
@@ -110,7 +111,7 @@ export default function Catalog() {
           <p className="text-red-600 mb-4">{error}</p>
           <button
             onClick={() => void fetchCatalog(currentPage, searchTerm)}
-            className="px-6 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            className="px-6 py-2 bg-red-600 text-white font-medium rounded hover:bg-red-700 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             Reintentar Conexión
           </button>
@@ -164,7 +165,7 @@ export default function Catalog() {
                     <td className="p-3 md:p-4 text-right">
                       <Link
                         to={`/lakes/${lake.id}`}
-                        className="text-blue-600 font-medium hover:text-blue-800 hover:underline whitespace-nowrap inline-block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-sm"
+                        className="text-blue-600 font-medium hover:text-blue-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-sm"
                       >
                         Ver Detalles
                       </Link>

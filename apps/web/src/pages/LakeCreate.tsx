@@ -91,12 +91,19 @@ export default function LakeCreate() {
     let geom;
     try {
       geom = JSON.parse(geoJsonStr);
-      if (geom.type !== 'Polygon') throw new Error('Tipo debe ser Polygon');
-      if (!geom.coordinates || !Array.isArray(geom.coordinates))
-        throw new Error('Coordenadas inválidas');
+      if (geom.type !== 'Polygon') {
+        setFieldErrors({ geometry: 'El GeoJSON es inválido. El tipo debe ser estrictamente "Polygon".' });
+        toast.error('GeoJSON inválido');
+        return;
+      }
+      if (!geom.coordinates || !Array.isArray(geom.coordinates)) {
+        setFieldErrors({ geometry: 'El GeoJSON carece de un arreglo de coordenadas válido.' });
+        toast.error('Coordenadas inválidas en GeoJSON');
+        return;
+      }
     } catch {
-      setFieldErrors({ geometry: 'Error de sintaxis: GeoJSON inválido. Asegura que el tipo sea "Polygon".' });
-      toast.error('GeoJSON inválido');
+      setFieldErrors({ geometry: 'Error de sintaxis: El texto proporcionado no es un JSON válido.' });
+      toast.error('Error de sintaxis JSON');
       return;
     }
 

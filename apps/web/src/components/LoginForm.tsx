@@ -51,35 +51,39 @@ export default function LoginForm() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 max-w-sm mx-auto p-6 border rounded-lg shadow-md bg-white">
       <h2 className="text-2xl font-semibold mb-2 text-gray-800">Iniciar Sesión</h2>
       
-      {error && <p className="text-red-500 text-sm font-medium">{error}</p>}
+      {error && <p id="login-form-error" role="alert" className="text-red-500 text-sm font-medium">{error}</p>}
       
       <div className="flex flex-col gap-1">
-        <label htmlFor="email" className="text-sm text-gray-600">Correo electrónico</label>
+        <label htmlFor="login-form-email" className="text-sm text-gray-600">Correo electrónico</label>
         <input 
           type="email" 
-          id="email"
+          id="login-form-email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="border border-gray-300 p-2 rounded focus:outline-none focus:border-blue-500"
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? 'login-form-error' : undefined}
+          className="border border-gray-300 p-2 rounded focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
           disabled={isLoading}
         />
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="password" className="text-sm text-gray-600">Contraseña</label>
+        <label htmlFor="login-form-password" className="text-sm text-gray-600">Contraseña</label>
         <input 
           type="password" 
-          id="password"
+          id="login-form-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="border border-gray-300 p-2 rounded focus:outline-none focus:border-blue-500"
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? 'login-form-error' : undefined}
+          className="border border-gray-300 p-2 rounded focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
           disabled={isLoading}
         />
       </div>
 
       <button 
         type="submit" 
-        className="bg-blue-600 text-white font-medium p-2 rounded hover:bg-blue-700 transition-colors mt-2 disabled:bg-blue-400 disabled:cursor-not-allowed"
+        className="bg-blue-600 text-white font-medium p-2 rounded hover:bg-blue-700 transition-colors mt-2 disabled:bg-blue-400 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
         disabled={isLoading}
       >
         {isLoading ? 'Ingresando...' : 'Ingresar'}
@@ -87,7 +91,7 @@ export default function LoginForm() {
 
       <a 
         href="#" 
-        className="text-sm text-gray-400 cursor-not-allowed pointer-events-none text-center mt-2" 
+        className="text-sm text-gray-400 cursor-not-allowed pointer-events-none text-center mt-2 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" 
         aria-disabled="true"
         tabIndex={-1}
       >
