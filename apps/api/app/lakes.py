@@ -15,6 +15,7 @@ from app.repositories import (
     get_lake_stations_from_db,
     get_lakes_repository,
 )
+from app.responses import COMMON_ERRORS
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes, StationOut
 from app.services import disable_lake, get_lake_by_id, log_audit_event
 
@@ -32,7 +33,7 @@ def _convert_polygon_to_wkt(geom: dict) -> str | None:
     return f"POLYGON({', '.join(rings)})"
 
 
-@router.get("", response_model=PaginatedLakes)
+@router.get("", response_model=PaginatedLakes, responses={**COMMON_ERRORS})
 def get_lakes(
     text: str | None = Query(None, min_length=3, strip_whitespace=True, description="Filtro de búsqueda por nombre"),
     region: str | None = Query(None, description="Filtro exacto por región"),
@@ -69,7 +70,7 @@ def get_lakes(
         ) from exc
 
 
-@router.get("/{lake_id}", response_model=LakeDetail)
+@router.get("/{lake_id}", response_model=LakeDetail, responses={**COMMON_ERRORS})
 def get_lake(lake_id: UUID):
     if supabase is None:
         raise HTTPException(
@@ -86,7 +87,7 @@ def get_lake(lake_id: UUID):
         ) from exc
 
 
-@router.post("", response_model=LakeDetail, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=LakeDetail, status_code=status.HTTP_201_CREATED, responses={**COMMON_ERRORS})
 def create_lake(
     lake_create: LakeCreate,
     _payload: dict = Depends(require_catalog_create_permission),  # noqa: B008
@@ -129,7 +130,7 @@ def create_lake(
         ) from exc
 
 
-@router.patch("/{lake_id}", response_model=LakeDetail)
+@router.patch("/{lake_id}", response_model=LakeDetail, responses={**COMMON_ERRORS})
 def update_lake(
     lake_id: UUID,
     lake_update: LakeUpdate,
@@ -192,7 +193,7 @@ def update_lake(
         ) from exc
 
 
-@router.delete("/{lake_id}", response_model=LakeDetail)
+@router.delete("/{lake_id}", response_model=LakeDetail, responses={**COMMON_ERRORS})
 def delete_lake(
     lake_id: UUID,
     current_user: dict = Depends(require_catalog_disable_permission),  # noqa: B008
@@ -234,7 +235,7 @@ def delete_lake(
         ) from exc
 
 
-@router.get("/{lake_id}/stations", response_model=list[StationOut])
+@router.get("/{lake_id}/stations", response_model=list[StationOut], responses={**COMMON_ERRORS})
 def get_lake_stations(
     lake_id: UUID,
     status_filter: str | None = Query(None, description="Filtrar por estado"),
@@ -251,3 +252,4 @@ def get_lake_stations(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(exc),
         ) from exc
+    
