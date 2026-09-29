@@ -60,7 +60,7 @@ export default function LoginForm() {
           id="login-form-email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          aria-invalid={Boolean(error && !email.trim())}
+          aria-invalid={Boolean(error)}
           aria-describedby={error ? 'login-form-error' : undefined}
           className="border border-gray-300 p-2 rounded focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
           disabled={isLoading}
@@ -74,7 +74,7 @@ export default function LoginForm() {
           id="login-form-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          aria-invalid={Boolean(error && !password.trim())}
+          aria-invalid={Boolean(error)}
           aria-describedby={error ? 'login-form-error' : undefined}
           className="border border-gray-300 p-2 rounded focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
           disabled={isLoading}
