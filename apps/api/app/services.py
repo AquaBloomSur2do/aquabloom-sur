@@ -4,6 +4,10 @@ from fastapi import HTTPException, status
 from shapely.geometry import Point, shape
 from supabase import Client
 
+from app.permissions import CATALOG_ACTIONS, has_permission
+from app.repositories import get_lake_by_id as get_active_lake_by_id
+from app.repositories import soft_delete_lake
+
 from .repositories import get_active_memberships
 
 
@@ -20,6 +24,7 @@ def get_current_user_profile(client: Client, user_id: UUID, email: str | None) -
         client.table("profiles").upsert(
             {"id": str(user_id), "email": email},
             on_conflict="id",
+            ignore_duplicates=True,
         ).execute()
     except Exception:  # noqa: BLE001, S110
         pass
@@ -138,11 +143,20 @@ def add_organization_member(supabase, org_id: UUID, profile_id: UUID, role: str)
 
 
 def get_lake_by_id(supabase, lake_id: UUID) -> dict:
-    response = supabase.table("lakes").select("*").eq("id", str(lake_id)).execute()
+    return get_active_lake_by_id(supabase, lake_id)
 
-    if not response.data:
-        raise LookupError("Lago no encontrado")
-    return response.data[0]
+
+def disable_lake(lake_id: UUID, current_user: dict | None = None, supabase=None) -> dict:
+    if not has_permission(current_user, CATALOG_ACTIONS["DISABLE"]):
+        raise PermissionError("No tienes permisos para desactivar lagos.")
+
+    if supabase is None:
+        raise ValueError("La conexión a la base de datos es requerida para desactivar un lago.")
+
+    try:
+        return soft_delete_lake(supabase, lake_id)
+    except LookupError as exc:
+        raise LookupError("Lago no encontrado") from exc
 
 
 def create_organization(supabase, org_data: dict) -> dict:

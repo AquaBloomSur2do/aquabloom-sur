@@ -6,7 +6,7 @@ from shapely.geometry import mapping
 from supabase import Client
 
 from app.database import supabase
-from app.schemas import LakeDetail
+from app.schemas import LakeDetail, LakeSummary, PaginatedLakes
 
 PUBLIC_LAKE_FIELDS = (
     "id",
@@ -141,5 +141,69 @@ def get_lake_stations_from_db(
         }
         for station in (stations_response.data or [])
     ]
+
+
+def get_lakes_repository(
+    client: Client,
+    *,
+    text: str | None = None,
+    region: str | None = None,
+    status_filter: str | None = None,
+    page: int = 1,
+    limit: int = 10,
+) -> PaginatedLakes:
+    """Recupera lagos con filtros combinados y paginación."""
+    query = client.table("lakes").select(", ".join(PUBLIC_LAKE_FIELDS), count="exact")
+
+    if text:
+        query = query.ilike("name", f"%{text}%")
+    if region:
+        query = query.eq("region", region)
+    query = query.eq("status", status_filter or "active")
+
+    start = (page - 1) * limit
+    response = query.range(start, start + limit - 1).execute()
+    rows = response.data or []
+
+    items = [LakeSummary.model_validate(_clean_lake_row(row)) for row in rows]
+
+    return PaginatedLakes(
+        items=items,
+        page=page,
+        page_size=limit,
+        total=response.count or 0,
+    )
+
+
+def get_lake_by_id(client: Client, lake_id: str | UUID) -> dict[str, Any]:
+    """Devuelve un lago por id completo, normalizando su geometría."""
+    lake_id_str = str(lake_id)
+    response = client.table("lakes").select("*").eq("id", lake_id_str).execute()
+    if not response.data:
+        raise LookupError(f"Lago con id {lake_id_str} no existe.")
+
+    lake = response.data[0]
+    if "geom" in lake:
+        lake["geom"] = _coerce_geom_to_geojson(lake["geom"]) or {
+            "type": "Polygon",
+            "coordinates": [],
+        }
+    return lake
+
+
+def soft_delete_lake(client: Client, lake_id: str | UUID) -> dict[str, Any]:
+    """Desactiva un lago sin borrarlo físicamente."""
+    lake_id_str = str(lake_id)
+    response = client.table("lakes").update({"status": "inactive"}).eq("id", lake_id_str).execute()
+    if not response.data:
+        raise LookupError(f"Lago con id {lake_id_str} no existe.")
+
+    lake = response.data[0]
+    if "geom" in lake:
+        lake["geom"] = _coerce_geom_to_geojson(lake["geom"]) or {
+            "type": "Polygon",
+            "coordinates": [],
+        }
+    return lake
 
 
