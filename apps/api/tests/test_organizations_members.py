@@ -124,9 +124,7 @@ def test_get_organization_members_maps_profile_name_to_full_name():
         def table(self, table_name):
             return FakeQuery(table_name)
 
-    members = get_organization_members_for_user(
-        FakeClient(), user_id, organization_id
-    )
+    members = get_organization_members_for_user(FakeClient(), user_id, organization_id)
 
     assert members[0]["full_name"] == "Ana Ejemplo"
     assert members[0]["email"] == "ana@example.test"

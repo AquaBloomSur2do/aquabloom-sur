@@ -32,6 +32,7 @@ app = FastAPI(
     openapi_tags=tags_metadata,
 )
 
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request, exc):
     return JSONResponse(

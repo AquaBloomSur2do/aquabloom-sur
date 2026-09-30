@@ -6,13 +6,17 @@ from pydantic import BaseModel, Field
 
 class GeoJsonPoint(BaseModel):
     type: Literal["Point"] = "Point"
-    coordinates: list[float] = Field(..., description="Coordenadas en formato [longitud, latitud]")
+    coordinates: list[float] = Field(
+        ..., description="Coordenadas en formato [longitud, latitud]"
+    )
 
 
 class StationBase(BaseModel):
     code: str = Field(..., description="Código único de la estación")
     name: str = Field(..., description="Nombre de la estación")
-    status: str = Field("active", description="Estado de la estación (active, inactive)")
+    status: str = Field(
+        "active", description="Estado de la estación (active, inactive)"
+    )
     source: str = Field(..., description="Fuente de la estación (ej. DGA)")
     activity: str = Field(..., description="Actividad de la estación")
     point: GeoJsonPoint = Field(..., description="Geometría GeoJSON Point [lon, lat]")
@@ -43,4 +47,3 @@ class StationResponse(StationBase):
 
     class Config:
         from_attributes = True
-                

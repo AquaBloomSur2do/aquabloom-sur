@@ -5,8 +5,11 @@ from shapely.geometry import Point, shape
 from supabase import Client
 
 from app.permissions import CATALOG_ACTIONS, has_permission
-from app.repositories import (count_active_lakes, count_active_stations,
-                              count_visible_organizations)
+from app.repositories import (
+    count_active_lakes,
+    count_active_stations,
+    count_visible_organizations,
+)
 from app.repositories import get_lake_by_id as get_active_lake_by_id
 from app.repositories import soft_delete_lake
 from app.schemas import DashboardSummaryResponse
@@ -14,7 +17,9 @@ from app.schemas import DashboardSummaryResponse
 from .repositories import get_active_memberships
 
 
-def get_dashboard_summary(supabase: Client, user_data: dict) -> DashboardSummaryResponse:
+def get_dashboard_summary(
+    supabase: Client, user_data: dict
+) -> DashboardSummaryResponse:
     return DashboardSummaryResponse(
         active_lakes_count=count_active_lakes(supabase),
         active_stations_count=count_active_stations(supabase),
@@ -27,7 +32,9 @@ def validate_station_inside_lake(lake_geojson: dict, lat: float, lon: float) -> 
     lake_polygon = shape(lake_geojson)
 
     if not lake_polygon.contains(station_point):
-        raise ValueError("Las coordenadas de la estación están fuera del polígono del lago.")
+        raise ValueError(
+            "Las coordenadas de la estación están fuera del polígono del lago."
+        )
 
 
 def get_current_user_profile(client: Client, user_id: UUID, email: str | None) -> dict:
@@ -120,10 +127,17 @@ def add_organization_member(
         .maybe_single()
         .execute()
     )
-    if not requester_membership.data or requester_membership.data.get("role") != "admin":
-        raise PermissionError("Solo un administrador activo de la organización puede agregar miembros.")
+    if (
+        not requester_membership.data
+        or requester_membership.data.get("role") != "admin"
+    ):
+        raise PermissionError(
+            "Solo un administrador activo de la organización puede agregar miembros."
+        )
 
-    profile_res = supabase.table("profiles").select("id").eq("id", str(profile_id)).execute()
+    profile_res = (
+        supabase.table("profiles").select("id").eq("id", str(profile_id)).execute()
+    )
     if not profile_res.data:
         raise LookupError("Perfil inexistente")
 
@@ -169,12 +183,16 @@ def get_lake_by_id(supabase, lake_id: UUID) -> dict:
     return get_active_lake_by_id(supabase, lake_id)
 
 
-def disable_lake(lake_id: UUID, current_user: dict | None = None, supabase=None) -> dict:
+def disable_lake(
+    lake_id: UUID, current_user: dict | None = None, supabase=None
+) -> dict:
     if not has_permission(current_user, CATALOG_ACTIONS["DISABLE"]):
         raise PermissionError("No tienes permisos para desactivar lagos.")
 
     if supabase is None:
-        raise ValueError("La conexión a la base de datos es requerida para desactivar un lago.")
+        raise ValueError(
+            "La conexión a la base de datos es requerida para desactivar un lago."
+        )
 
     try:
         return soft_delete_lake(supabase, lake_id)
@@ -203,15 +221,24 @@ def create_organization(supabase, org_data: dict) -> dict:
         ) from exc
 
 
-def log_audit_event(supabase, actor_id: str, action: str, resource_type: str, resource_id: str, details: dict | None = None) -> None:
+def log_audit_event(
+    supabase,
+    actor_id: str,
+    action: str,
+    resource_type: str,
+    resource_id: str,
+    details: dict | None = None,
+) -> None:
     """Registra un evento de auditoría sin bloquear la transacción principal HTTP."""
     try:
-        supabase.table("audit_logs").insert({
-            "actor_id": actor_id,
-            "action": action,
-            "resource_type": resource_type,
-            "resource_id": str(resource_id),
-            "details": details or {}
-        }).execute()
+        supabase.table("audit_logs").insert(
+            {
+                "actor_id": actor_id,
+                "action": action,
+                "resource_type": resource_type,
+                "resource_id": str(resource_id),
+                "details": details or {},
+            }
+        ).execute()
     except Exception as e:  # noqa: BLE001
         print(f"Alerta: Fallo silencioso en auditoría: {e}")

@@ -69,9 +69,11 @@ def verify_supabase_jwt(
                 )
             signing_key = secret
         elif algorithm in ASYMMETRIC_JWT_ALGORITHMS:
-            signing_key = get_supabase_jwks_client(
-                settings.supabase_url
-            ).get_signing_key_from_jwt(token).key
+            signing_key = (
+                get_supabase_jwks_client(settings.supabase_url)
+                .get_signing_key_from_jwt(token)
+                .key
+            )
         else:
             raise jwt.InvalidAlgorithmError("Algoritmo JWT no permitido")
 
@@ -171,4 +173,3 @@ def require_catalog_disable_permission(
             detail="No tienes permisos para desactivar lagos.",
         )
     return payload
-

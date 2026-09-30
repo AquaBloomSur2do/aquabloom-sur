@@ -68,7 +68,9 @@ class LakeCreate(LakeBase):
             raise ValueError("La geometría debe ser estrictamente de tipo 'Polygon'.")
         coords = v.get("coordinates")
         if not coords or not isinstance(coords, list) or len(coords) == 0:
-            raise ValueError("El polígono debe contener un arreglo de coordenadas válido.")
+            raise ValueError(
+                "El polígono debe contener un arreglo de coordenadas válido."
+            )
         return v
 
     model_config = {
@@ -79,8 +81,16 @@ class LakeCreate(LakeBase):
                 "description": "Lago de origen glaciar",
                 "geom": {
                     "type": "Polygon",
-                    "coordinates": [[[-72.1, -39.6], [-72.2, -39.6], [-72.2, -39.7], [-72.1, -39.7], [-72.1, -39.6]]]
-                }
+                    "coordinates": [
+                        [
+                            [-72.1, -39.6],
+                            [-72.2, -39.6],
+                            [-72.2, -39.7],
+                            [-72.1, -39.7],
+                            [-72.1, -39.6],
+                        ]
+                    ],
+                },
             }
         }
     }
@@ -120,7 +130,9 @@ class LakeUpdate(BaseModel):
                                 f"No se pudo parsear la geometría WKT/JSON: {v}"
                             ) from None
                 else:
-                    raise TypeError("La geometría debe ser un objeto JSON estructurado.")
+                    raise TypeError(
+                        "La geometría debe ser un objeto JSON estructurado."
+                    )
             if v.get("type") != "Polygon":
                 raise ValueError("La geometría debe ser un Polygon GeoJSON")
             if not v.get("coordinates"):
@@ -158,7 +170,9 @@ class LakeDetail(LakeSummary):
                 geom_obj = parse_wkt(v_str)
                 return mapping(geom_obj)
             except (json.JSONDecodeError, TypeError, ValueError):
-                raise ValueError(f"No se pudo parsear la geometría WKT/JSON: {v}") from None
+                raise ValueError(
+                    f"No se pudo parsear la geometría WKT/JSON: {v}"
+                ) from None
         return v
 
 
@@ -170,12 +184,7 @@ class PaginatedLakes(BaseModel):
 
     model_config = {
         "json_schema_extra": {
-            "example": {
-                "items": [],
-                "page": 1,
-                "page_size": 10,
-                "total": 45
-            }
+            "example": {"items": [], "page": 1, "page_size": 10, "total": 45}
         }
     }
 
@@ -238,11 +247,8 @@ class StationUpdate(BaseModel):
             "example": {
                 "name": "Estación Centro (Reubicada)",
                 "description": "Mantenimiento preventivo completado",
-                "coordinates": {
-                    "latitude": -39.642,
-                    "longitude": -72.335
-                },
-                "status": "active"
+                "coordinates": {"latitude": -39.642, "longitude": -72.335},
+                "status": "active",
             }
         }
     }

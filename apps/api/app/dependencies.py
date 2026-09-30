@@ -9,7 +9,9 @@ from app.permissions import has_permission
 __all__ = ["mock_get_current_user", "require_permission"]
 
 
-def mock_get_current_user(authorization: Annotated[str | None, Header()] = None) -> dict | None:
+def mock_get_current_user(
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict | None:
     """Mock temporal para evaluar el criterio de aceptación del ticket."""
     if not authorization:
         return None

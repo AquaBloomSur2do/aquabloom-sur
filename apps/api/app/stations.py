@@ -45,17 +45,17 @@ def update_station(
         if coords:
             lat = coords["latitude"]
             lon = coords["longitude"]
-            
-            # Validación geoespacial 
+
+            # Validación geoespacial
             lake_id = existing.data[0].get("lake_id")
             if lake_id:
-                lake_res = supabase.table("lakes").select("geom").eq("id", lake_id).execute()
+                lake_res = (
+                    supabase.table("lakes").select("geom").eq("id", lake_id).execute()
+                )
                 if lake_res.data and lake_res.data[0].get("geom"):
                     try:
                         validate_station_inside_lake(
-                            lake_geojson=lake_res.data[0]["geom"], 
-                            lat=lat, 
-                            lon=lon
+                            lake_geojson=lake_res.data[0]["geom"], lat=lat, lon=lon
                         )
                     except ValueError as e:
                         raise HTTPException(status_code=422, detail=str(e))
@@ -80,15 +80,16 @@ def update_station(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="No se devolvieron datos tras la actualización.",
             )
-        
+
         station = response.data[0]
         actor_id = _payload.get("sub", "system")
-        log_audit_event(supabase, actor_id, "UPDATE", "station", station["id"], update_data)
-        
+        log_audit_event(
+            supabase, actor_id, "UPDATE", "station", station["id"], update_data
+        )
+
         return station
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error en el motor de base de datos: {exc}",
         ) from exc
-    

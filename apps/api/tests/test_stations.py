@@ -58,7 +58,10 @@ class FakeSupabase:
                 {
                     "id": "11111111-1111-1111-1111-111111111111",
                     "geom": lake_geom
-                    or {"type": "Polygon", "coordinates": [[[0, 0], [0, 10], [10, 10], [10, 0], [0, 0]]]},
+                    or {
+                        "type": "Polygon",
+                        "coordinates": [[[0, 0], [0, 10], [10, 10], [10, 0], [0, 0]]],
+                    },
                 }
             ],
             "stations": stations or [],

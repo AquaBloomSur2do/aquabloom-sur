@@ -5,11 +5,19 @@ from fastapi import APIRouter, Depends, HTTPException, Security, status
 from app.auth import verify_supabase_jwt
 from app.database import supabase
 from app.dependencies import require_admin
-from app.schemas import (MembershipCreate, OrganizationCreate,
-                         OrganizationMemberResponse, OrganizationOut,
-                         ProfileOption, UserOrganizationResponse)
-from app.services import (add_organization_member, create_organization,
-                          get_organization_members_for_user)
+from app.schemas import (
+    MembershipCreate,
+    OrganizationCreate,
+    OrganizationMemberResponse,
+    OrganizationOut,
+    ProfileOption,
+    UserOrganizationResponse,
+)
+from app.services import (
+    add_organization_member,
+    create_organization,
+    get_organization_members_for_user,
+)
 
 router = APIRouter(prefix="/api/v1/organizations", tags=["Organizations"])
 
@@ -17,10 +25,7 @@ router = APIRouter(prefix="/api/v1/organizations", tags=["Organizations"])
 @router.get("/profiles", response_model=list[ProfileOption])
 def list_profiles_for_members(payload: dict = Depends(require_admin)):  # noqa: B008
     response = (
-        supabase.table("profiles")
-        .select("id, email, name")
-        .order("name")
-        .execute()
+        supabase.table("profiles").select("id, email, name").order("name").execute()
     )
     return response.data or []
 
@@ -147,4 +152,3 @@ def create_org(
         }
     ).execute()
     return organization
-
