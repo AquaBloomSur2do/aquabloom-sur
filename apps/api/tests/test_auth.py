@@ -1,8 +1,13 @@
 import os
+import time
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
+from cryptography.hazmat.primitives.asymmetric import ec
+from pydantic import SecretStr
 
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
@@ -241,4 +246,56 @@ def test_permiso_insuficiente(client):
     assert response.status_code == 403
     assert "message" in response.json()
     assert response.json()["message"] == "No tienes permisos para crear lagos."
+
+
+def test_verifica_token_es256_con_jwks(monkeypatch):
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    issuer = f"{auth.settings.supabase_url.rstrip('/')}/auth/v1"
+    token = auth.jwt.encode(
+        {
+            "sub": "123e4567-e89b-12d3-a456-426614174000",
+            "aud": "authenticated",
+            "iss": issuer,
+            "exp": int(time.time()) + 60,
+        },
+        private_key,
+        algorithm="ES256",
+        headers={"kid": "test-ecc-key"},
+    )
+
+    class FakeJwksClient:
+        def get_signing_key_from_jwt(self, _token):
+            return SimpleNamespace(key=private_key.public_key())
+
+    monkeypatch.setattr(
+        auth, "get_supabase_jwks_client", lambda _url: FakeJwksClient()
+    )
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    payload = auth.verify_supabase_jwt(credentials)
+
+    assert payload["sub"] == "123e4567-e89b-12d3-a456-426614174000"
+
+
+def test_verifica_token_hs256_legacy(monkeypatch):
+    legacy_secret = "unit-test-legacy-secret-with-at-least-32-bytes"
+    monkeypatch.setattr(
+        auth.settings, "supabase_jwt_secret", SecretStr(legacy_secret)
+    )
+    issuer = f"{auth.settings.supabase_url.rstrip('/')}/auth/v1"
+    token = auth.jwt.encode(
+        {
+            "sub": "123e4567-e89b-12d3-a456-426614174000",
+            "aud": "authenticated",
+            "iss": issuer,
+            "exp": int(time.time()) + 60,
+        },
+        legacy_secret,
+        algorithm="HS256",
+    )
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    payload = auth.verify_supabase_jwt(credentials)
+
+    assert payload["sub"] == "123e4567-e89b-12d3-a456-426614174000"
     

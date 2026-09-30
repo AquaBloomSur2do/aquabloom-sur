@@ -61,7 +61,7 @@ def update_station(
                         raise HTTPException(status_code=422, detail=str(e))
 
             # PostGIS espera longitud primero, luego latitud: 'POINT(lon lat)'
-            update_data["geom"] = f"POINT({lon} {lat})"
+            update_data["point"] = f"POINT({lon} {lat})"
 
     # 3. Optimización: Interceptar transacciones vacías
     if not update_data:

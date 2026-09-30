@@ -202,6 +202,12 @@ class OrganizationMemberResponse(BaseModel):
     updated_at: datetime
 
 
+class ProfileOption(BaseModel):
+    id: UUID
+    email: str | None = None
+    name: str
+
+
 # --- Esquemas de Station ---
 
 

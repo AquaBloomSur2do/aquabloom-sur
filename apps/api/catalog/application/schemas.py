@@ -19,14 +19,12 @@ class StationBase(BaseModel):
 
 
 class StationCreate(BaseModel):
-    code: str
-    name: str
+    code: str = Field(..., min_length=1, max_length=100)
+    name: str = Field(..., min_length=1, max_length=255)
     latitude: float = Field(..., ge=-90.0, le=90.0)
     longitude: float = Field(..., ge=-180.0, le=180.0)
-    source: str
-    activity: str
+    description: str | None = None
     status: str | None = "active"
-    lake_id: UUID
 
 
 class StationUpdate(BaseModel):

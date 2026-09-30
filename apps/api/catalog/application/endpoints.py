@@ -61,8 +61,8 @@ def create_station(lake_id: uuid.UUID, payload: StationCreate):
         "lake_id": str(lake_id),
         "code": payload.code,
         "name": payload.name,
-        "source": payload.source,
-        "activity": payload.activity,
+        "description": payload.description,
+        "status": payload.status or "active",
         "point": wkt_geom,
     }
 

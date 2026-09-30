@@ -1,3 +1,4 @@
+from functools import lru_cache
 from uuid import UUID
 
 import jwt
@@ -14,6 +15,7 @@ from .services import get_current_user_profile
 router = APIRouter(prefix="/auth", tags=["Auth"])
 security = HTTPBearer()
 optional_security = HTTPBearer(auto_error=False)
+ASYMMETRIC_JWT_ALGORITHMS = {"ES256", "RS256", "EdDSA"}
 
 
 class AuthException(Exception):
@@ -41,22 +43,42 @@ class CurrentUserResponse(BaseModel):
     memberships: list[MembershipResponse]
 
 
+@lru_cache(maxsize=4)
+def get_supabase_jwks_client(project_url: str) -> jwt.PyJWKClient:
+    jwks_url = f"{project_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+    return jwt.PyJWKClient(jwks_url)
+
+
 def verify_supabase_jwt(
     credentials: HTTPAuthorizationCredentials = Security(security),  # noqa: B008
 ) -> dict:
     token = credentials.credentials
-    secret = (
-        settings.supabase_jwt_secret.get_secret_value()
-        if hasattr(settings.supabase_jwt_secret, "get_secret_value")
-        else settings.supabase_jwt_secret
-    )
-    issuer = f"{settings.supabase_url}/auth/v1"
+    issuer = f"{settings.supabase_url.rstrip('/')}/auth/v1"
 
     try:
+        algorithm = jwt.get_unverified_header(token).get("alg")
+        if algorithm == "HS256":
+            secret = (
+                settings.supabase_jwt_secret.get_secret_value()
+                if hasattr(settings.supabase_jwt_secret, "get_secret_value")
+                else settings.supabase_jwt_secret
+            )
+            if not secret:
+                raise jwt.InvalidTokenError(
+                    "No está configurado el secreto legacy para tokens HS256"
+                )
+            signing_key = secret
+        elif algorithm in ASYMMETRIC_JWT_ALGORITHMS:
+            signing_key = get_supabase_jwks_client(
+                settings.supabase_url
+            ).get_signing_key_from_jwt(token).key
+        else:
+            raise jwt.InvalidAlgorithmError("Algoritmo JWT no permitido")
+
         payload = jwt.decode(
             token,
-            secret,
-            algorithms=["HS256"],
+            signing_key,
+            algorithms=[algorithm],
             audience="authenticated",
             issuer=issuer,
         )

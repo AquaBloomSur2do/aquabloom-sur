@@ -70,6 +70,7 @@ def get_organization_members_for_user(
         .select("id, role, status")
         .eq("user_id", str(user_id))
         .eq("organization_id", str(organization_id))
+        .eq("status", "active")
         .maybe_single()
         .execute()
     )
@@ -78,34 +79,31 @@ def get_organization_members_for_user(
 
     response = (
         client.table("memberships")
-        .select(
-            "id, user_id, role, status, created_at, updated_at, "
-            "profile:profiles!user_id(id, email, full_name)"
-        )
+        .select("id, user_id, role, status, created_at, updated_at")
         .eq("organization_id", str(organization_id))
         .order("created_at", desc=False)
         .execute()
     )
 
     members = response.data or []
+    user_ids = list({str(member["user_id"]) for member in members})
+    profiles = (
+        client.table("profiles")
+        .select("id, email, name")
+        .in_("id", user_ids)
+        .execute()
+        .data
+        if user_ids
+        else []
+    )
+    profiles_by_id = {str(profile["id"]): profile for profile in profiles or []}
+
     return [
         {
             "user_id": UUID(str(member["user_id"])),
-            "profile_id": (
-                UUID(str(member["profile"]["id"]))
-                if member.get("profile") and member["profile"].get("id")
-                else None
-            ),
-            "full_name": (
-                member.get("profile", {}).get("full_name")
-                if member.get("profile")
-                else None
-            ),
-            "email": (
-                member.get("profile", {}).get("email")
-                if member.get("profile")
-                else None
-            ),
+            "profile_id": UUID(str(member["user_id"])),
+            "full_name": profiles_by_id.get(str(member["user_id"]), {}).get("name"),
+            "email": profiles_by_id.get(str(member["user_id"]), {}).get("email"),
             "role": member["role"],
             "status": member["status"],
             "created_at": member["created_at"],
@@ -115,7 +113,21 @@ def get_organization_members_for_user(
     ]
 
 
-def add_organization_member(supabase, org_id: UUID, profile_id: UUID, role: str) -> dict:
+def add_organization_member(
+    supabase, org_id: UUID, profile_id: UUID, role: str, requester_user_id: UUID
+) -> dict:
+    requester_membership = (
+        supabase.table("memberships")
+        .select("role")
+        .eq("organization_id", str(org_id))
+        .eq("user_id", str(requester_user_id))
+        .eq("status", "active")
+        .maybe_single()
+        .execute()
+    )
+    if not requester_membership.data or requester_membership.data.get("role") != "admin":
+        raise PermissionError("Solo un administrador activo de la organización puede agregar miembros.")
+
     profile_res = supabase.table("profiles").select("id").eq("id", str(profile_id)).execute()
     if not profile_res.data:
         raise LookupError("Perfil inexistente")
@@ -124,7 +136,7 @@ def add_organization_member(supabase, org_id: UUID, profile_id: UUID, role: str)
         supabase.table("memberships")
         .select("id")
         .eq("organization_id", str(org_id))
-        .eq("profile_id", str(profile_id))
+        .eq("user_id", str(profile_id))
         .execute()
     )
     if member_res.data:
@@ -134,7 +146,7 @@ def add_organization_member(supabase, org_id: UUID, profile_id: UUID, role: str)
         admin_res = (
             supabase.table("memberships")
             .select("id")
-            .eq("profile_id", str(profile_id))
+            .eq("user_id", str(profile_id))
             .eq("role", "admin")
             .neq("organization_id", str(org_id))
             .execute()
@@ -147,7 +159,7 @@ def add_organization_member(supabase, org_id: UUID, profile_id: UUID, role: str)
         .insert(
             {
                 "organization_id": str(org_id),
-                "profile_id": str(profile_id),
+                "user_id": str(profile_id),
                 "role": role,
                 "status": "active",
             }
