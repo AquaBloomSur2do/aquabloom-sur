@@ -1,10 +1,9 @@
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
-
 from app.auth import verify_supabase_jwt
 from app.permissions import has_permission
+from fastapi import Depends, Header, HTTPException, status
 
 __all__ = ["mock_get_current_user", "require_permission"]
 

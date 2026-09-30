@@ -2,11 +2,10 @@ from functools import lru_cache
 from uuid import UUID
 
 import jwt
+from app.config import settings
 from fastapi import APIRouter, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
-
-from app.config import settings
 
 from .database import supabase
 from .permissions import CATALOG_ACTIONS, has_permission
