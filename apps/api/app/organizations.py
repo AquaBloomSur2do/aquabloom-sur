@@ -1,22 +1,15 @@
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, Security, status
+
 from app.auth import verify_supabase_jwt
 from app.database import supabase
 from app.dependencies import require_admin
-from app.schemas import (
-    MembershipCreate,
-    OrganizationCreate,
-    OrganizationMemberResponse,
-    OrganizationOut,
-    ProfileOption,
-    UserOrganizationResponse,
-)
-from app.services import (
-    add_organization_member,
-    create_organization,
-    get_organization_members_for_user,
-)
-from fastapi import APIRouter, Depends, HTTPException, Security, status
+from app.schemas import (MembershipCreate, OrganizationCreate,
+                         OrganizationMemberResponse, OrganizationOut,
+                         ProfileOption, UserOrganizationResponse)
+from app.services import (add_organization_member, create_organization,
+                          get_organization_members_for_user)
 
 router = APIRouter(prefix="/api/v1/organizations", tags=["Organizations"])
 

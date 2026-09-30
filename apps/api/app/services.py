@@ -1,19 +1,15 @@
 from uuid import UUID
 
-from app.permissions import CATALOG_ACTIONS, has_permission
-from app.repositories import (
-    count_active_lakes,
-    count_active_stations,
-    count_visible_organizations,
-    soft_delete_lake,
-)
-from app.repositories import (
-    get_lake_by_id as get_active_lake_by_id,
-)
-from app.schemas import DashboardSummaryResponse
 from fastapi import HTTPException, status
 from shapely.geometry import Point, shape
 from supabase import Client
+
+from app.permissions import CATALOG_ACTIONS, has_permission
+from app.repositories import (count_active_lakes, count_active_stations,
+                              count_visible_organizations)
+from app.repositories import get_lake_by_id as get_active_lake_by_id
+from app.repositories import soft_delete_lake
+from app.schemas import DashboardSummaryResponse
 
 from .repositories import get_active_memberships
 

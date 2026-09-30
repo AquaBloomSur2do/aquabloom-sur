@@ -1,8 +1,9 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+
 from app.auth import verify_supabase_jwt
 from app.database import supabase
 from app.schemas import DashboardSummaryResponse
 from app.services import get_dashboard_summary
-from fastapi import APIRouter, Depends, HTTPException, status
 
 router = APIRouter(prefix="/api/v1/dashboard", tags=["Dashboard"])
 
