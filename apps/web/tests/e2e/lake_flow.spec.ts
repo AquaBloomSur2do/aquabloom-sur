@@ -3,11 +3,6 @@ import { test, expect } from '@playwright/test';
 test('S2-088: Flujo E2E - Login, Catálogo, Mapa y Limpieza', async ({ page }) => {
   page.on('dialog', dialog => dialog.accept());
 
- import { test, expect } from '@playwright/test';
-
-test('S2-088: Flujo E2E - Login, Catálogo, Mapa y Limpieza', async ({ page }) => {
-  page.on('dialog', dialog => dialog.accept());
-
   // ==========================================
   // 1. LOGIN SEGURO 
   // ==========================================
@@ -22,8 +17,6 @@ test('S2-088: Flujo E2E - Login, Catálogo, Mapa y Limpieza', async ({ page }) =
   // ==========================================
   // 2. DASHBOARD Y NAVEGACIÓN LATERAL
   // ==========================================
-  // La aserción de la UI fallará más rápido y con una traza clara si el login falla.
-  // Si se inyecta el usuario semilla correctamente en el CI, el test pasará en verde.
   await page.waitForURL('**/dashboard', { timeout: 15000 });
   await expect(page.locator('h1', { hasText: 'Dashboard General' })).toBeVisible({ timeout: 10000 });
 
@@ -90,4 +83,3 @@ test('S2-088: Flujo E2E - Login, Catálogo, Mapa y Limpieza', async ({ page }) =
   // FIX: Ajustamos la validación final también
   await expect(page.locator('h1', { hasText: 'Listado de Lagos' })).toBeVisible({ timeout: 15000 });
 });
-
