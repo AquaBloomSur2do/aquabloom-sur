@@ -1,8 +1,7 @@
 import logging
 
-from supabase import Client, create_client
-
 from app.config import settings
+from supabase import Client, create_client
 
 logger = logging.getLogger(__name__)
 
@@ -49,4 +48,3 @@ def check_supabase_connection() -> dict:
         return {"status": "ok", "connection": "successful"}
     except Exception:  # noqa: BLE001
         return {"status": "error", "detail": "Fallo de red o permisos insuficientes."}
-

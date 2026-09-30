@@ -56,11 +56,11 @@ def has_permission(user_data: dict | None, required_permission: str) -> bool:
             sources.append(metadata)
 
     roles = {
-        str(source["role"]).strip().lower()
-        for source in sources
-        if source.get("role")
+        str(source["role"]).strip().lower() for source in sources if source.get("role")
     }
-    if required_permission == "admin" and roles.intersection({"admin", "administrador"}):
+    if required_permission == "admin" and roles.intersection(
+        {"admin", "administrador"}
+    ):
         return True
 
     if required_permission in CATALOG_ACTIONS.values():
@@ -80,5 +80,3 @@ def has_permission(user_data: dict | None, required_permission: str) -> bool:
     if required_permission == CATALOG_ACTIONS["READ"]:
         permission_values.add("catalog:view")
     return required_permission in permission_values
-
-

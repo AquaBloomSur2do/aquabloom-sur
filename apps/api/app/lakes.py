@@ -1,7 +1,5 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-
 from app.auth import (
     optional_verify_supabase_jwt,
     require_catalog_create_permission,
@@ -18,6 +16,7 @@ from app.repositories import (
 from app.responses import COMMON_ERRORS
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes, StationOut
 from app.services import disable_lake, get_lake_by_id, log_audit_event
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
 
@@ -35,7 +34,12 @@ def _convert_polygon_to_wkt(geom: dict) -> str | None:
 
 @router.get("", response_model=PaginatedLakes, responses={**COMMON_ERRORS})
 def get_lakes(
-    text: str | None = Query(None, min_length=3, strip_whitespace=True, description="Filtro de búsqueda por nombre"),
+    text: str | None = Query(
+        None,
+        min_length=3,
+        strip_whitespace=True,
+        description="Filtro de búsqueda por nombre",
+    ),
     region: str | None = Query(None, description="Filtro exacto por región"),
     status_filter: str | None = Query(
         None, alias="status", description="Filtro exacto por estado"
@@ -87,7 +91,12 @@ def get_lake(lake_id: UUID):
         ) from exc
 
 
-@router.post("", response_model=LakeDetail, status_code=status.HTTP_201_CREATED, responses={**COMMON_ERRORS})
+@router.post(
+    "",
+    response_model=LakeDetail,
+    status_code=status.HTTP_201_CREATED,
+    responses={**COMMON_ERRORS},
+)
 def create_lake(
     lake_create: LakeCreate,
     _payload: dict = Depends(require_catalog_create_permission),  # noqa: B008
@@ -115,7 +124,9 @@ def create_lake(
         created_lake = response.data[0]
 
         actor_id = _payload.get("sub", "system")
-        log_audit_event(supabase, actor_id, "CREATE", "lake", created_lake["id"], lake_data)
+        log_audit_event(
+            supabase, actor_id, "CREATE", "lake", created_lake["id"], lake_data
+        )
 
         if isinstance(created_lake.get("geom"), str):
             created_lake["geom"] = _convert_wkt_to_polygon(created_lake["geom"])
@@ -180,7 +191,9 @@ def update_lake(
         updated_lake = response.data[0]
 
         actor_id = _payload.get("sub", "system")
-        log_audit_event(supabase, actor_id, "UPDATE", "lake", updated_lake["id"], update_data)
+        log_audit_event(
+            supabase, actor_id, "UPDATE", "lake", updated_lake["id"], update_data
+        )
 
         return updated_lake
 
@@ -235,7 +248,9 @@ def delete_lake(
         ) from exc
 
 
-@router.get("/{lake_id}/stations", response_model=list[StationOut], responses={**COMMON_ERRORS})
+@router.get(
+    "/{lake_id}/stations", response_model=list[StationOut], responses={**COMMON_ERRORS}
+)
 def get_lake_stations(
     lake_id: UUID,
     status_filter: str | None = Query(None, description="Filtrar por estado"),
@@ -252,4 +267,3 @@ def get_lake_stations(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(exc),
         ) from exc
-    

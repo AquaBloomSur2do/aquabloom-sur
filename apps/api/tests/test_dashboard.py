@@ -46,9 +46,7 @@ class FakeCountClient:
 
 
 def test_dashboard_summary_returns_exact_counts_for_authenticated_admin(monkeypatch):
-    fake_supabase = FakeCountClient(
-        {"lakes": 17, "stations": 42, "organizations": 5}
-    )
+    fake_supabase = FakeCountClient({"lakes": 17, "stations": 42, "organizations": 5})
     payload = {"sub": "admin-user", "user_metadata": {"role": "administrador"}}
     app.dependency_overrides[verify_supabase_jwt] = lambda: payload
     monkeypatch.setattr("app.dashboard.supabase", fake_supabase)
@@ -69,7 +67,10 @@ def test_dashboard_summary_returns_exact_counts_for_authenticated_admin(monkeypa
         "stations",
         "organizations",
     ]
-    assert all(query["options"] == {"count": "exact", "head": True} for query in fake_supabase.queries)
+    assert all(
+        query["options"] == {"count": "exact", "head": True}
+        for query in fake_supabase.queries
+    )
     assert all(query["columns"] == "id" for query in fake_supabase.queries)
     assert fake_supabase.queries[0]["filters"] == [("status", "active")]
     assert fake_supabase.queries[1]["filters"] == [("status", "active")]
@@ -77,9 +78,7 @@ def test_dashboard_summary_returns_exact_counts_for_authenticated_admin(monkeypa
 
 
 def test_dashboard_summary_counts_only_user_visible_organizations(monkeypatch):
-    fake_supabase = FakeCountClient(
-        {"lakes": 3, "stations": 8, "memberships": 2}
-    )
+    fake_supabase = FakeCountClient({"lakes": 3, "stations": 8, "memberships": 2})
     payload = {"sub": "member-user", "user_metadata": {"role": "investigador"}}
     app.dependency_overrides[verify_supabase_jwt] = lambda: payload
     monkeypatch.setattr("app.dashboard.supabase", fake_supabase)

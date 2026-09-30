@@ -1,10 +1,9 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
-
 from app.auth import require_catalog_create_permission
 from app.database import supabase
 from app.services import validate_station_inside_lake
+from fastapi import APIRouter, Depends, HTTPException
 
 from .schemas import StationCreate
 
@@ -22,10 +21,7 @@ def create_station(lake_id: uuid.UUID, payload: StationCreate):
     Implementa validación de código único, límites geográficos y geometría WKT (SRID 4326).
     """
     lake_check = (
-        supabase.table("lakes")
-        .select("id, geom")
-        .eq("id", str(lake_id))
-        .execute()
+        supabase.table("lakes").select("id, geom").eq("id", str(lake_id)).execute()
     )
 
     if not lake_check.data:
@@ -37,7 +33,9 @@ def create_station(lake_id: uuid.UUID, payload: StationCreate):
     lake_geom = lake_check.data[0].get("geom")
     if lake_geom:
         try:
-            validate_station_inside_lake(lake_geojson=lake_geom, lat=payload.latitude, lon=payload.longitude)
+            validate_station_inside_lake(
+                lake_geojson=lake_geom, lat=payload.latitude, lon=payload.longitude
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -61,8 +59,8 @@ def create_station(lake_id: uuid.UUID, payload: StationCreate):
         "lake_id": str(lake_id),
         "code": payload.code,
         "name": payload.name,
-        "source": payload.source,
-        "activity": payload.activity,
+        "description": payload.description,
+        "status": payload.status or "active",
         "point": wkt_geom,
     }
 

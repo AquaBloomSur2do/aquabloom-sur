@@ -1,9 +1,3 @@
-from fastapi import Depends, FastAPI
-from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from starlette.exceptions import HTTPException as StarletteHTTPException
-
 from app.auth import AuthException
 from app.auth import router as auth_router
 from app.config import settings
@@ -15,6 +9,11 @@ from app.lakes import router as lakes_router
 from app.organizations import router as organizations_router
 from app.stations import router as stations_router
 from catalog.application.endpoints import router as catalog_router
+from fastapi import Depends, FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
@@ -31,6 +30,7 @@ app = FastAPI(
     servers=[{"url": "http://localhost:8000"}],
     openapi_tags=tags_metadata,
 )
+
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request, exc):

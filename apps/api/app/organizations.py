@@ -1,7 +1,5 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Security, status
-
 from app.auth import verify_supabase_jwt
 from app.database import supabase
 from app.dependencies import require_admin
@@ -10,6 +8,7 @@ from app.schemas import (
     OrganizationCreate,
     OrganizationMemberResponse,
     OrganizationOut,
+    ProfileOption,
     UserOrganizationResponse,
 )
 from app.services import (
@@ -17,8 +16,17 @@ from app.services import (
     create_organization,
     get_organization_members_for_user,
 )
+from fastapi import APIRouter, Depends, HTTPException, Security, status
 
 router = APIRouter(prefix="/api/v1/organizations", tags=["Organizations"])
+
+
+@router.get("/profiles", response_model=list[ProfileOption])
+def list_profiles_for_members(payload: dict = Depends(require_admin)):  # noqa: B008
+    response = (
+        supabase.table("profiles").select("id, email, name").order("name").execute()
+    )
+    return response.data or []
 
 
 @router.get("/", response_model=list[UserOrganizationResponse])
@@ -104,7 +112,7 @@ def list_organization_members(
 def create_organization_member(
     id: UUID,
     membership: MembershipCreate,
-    user=Depends(verify_supabase_jwt),  # noqa: B008
+    payload: dict = Depends(verify_supabase_jwt),  # noqa: B008
 ):
     try:
         return add_organization_member(
@@ -112,7 +120,10 @@ def create_organization_member(
             org_id=id,
             profile_id=membership.profile_id,
             role=membership.role,
+            requester_user_id=UUID(str(payload["sub"])),
         )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -130,5 +141,13 @@ def create_org(
         "description": org.description,
         "status": "active",
     }
-    return create_organization(supabase, org_data)
-
+    organization = create_organization(supabase, org_data)
+    supabase.table("memberships").insert(
+        {
+            "organization_id": str(organization["id"]),
+            "user_id": str(payload["sub"]),
+            "role": "admin",
+            "status": "active",
+        }
+    ).execute()
+    return organization

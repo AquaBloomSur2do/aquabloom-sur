@@ -1,42 +1,51 @@
 import os
+import time
+from types import SimpleNamespace
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-secret")
 
 # Importamos la clase original de Supabase para interceptarla desde la raíz
-from supabase.client import Client as SupabaseClient
-
 from app import auth
 from app import lakes as lakes_module
 from app.main import app
+from supabase.client import Client as SupabaseClient
 
 # Datos falsos exactos para evitar que los validadores de la API colapsen
-fake_data = [{
-    "id": "11111111-1111-1111-1111-111111111111",
-    "name": "Lago admin",
-    "region": "Araucania",
-    "description": "Creación autorizada",
-    "geom": {"type": "Polygon", "coordinates": [[[0, 0], [5, 0], [5, 5], [0, 0]]]},
-    "status": "active",
-    "created_at": "2024-01-01T00:00:00Z",
-    "updated_at": "2024-01-01T00:00:00Z",
-}]
+fake_data = [
+    {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "name": "Lago admin",
+        "region": "Araucania",
+        "description": "Creación autorizada",
+        "geom": {"type": "Polygon", "coordinates": [[[0, 0], [5, 0], [5, 5], [0, 0]]]},
+        "status": "active",
+        "created_at": "2024-01-01T00:00:00Z",
+        "updated_at": "2024-01-01T00:00:00Z",
+    }
+]
+
 
 class FakeResponse:
     def __init__(self, data=None):
         self.data = fake_data if data is None else data
         self.count = len(self.data)
 
+
 class MagicSupabaseMock:
     def __init__(self):
         self.inserted_data = None
 
-    def __call__(self, *args, **kwargs): return self
+    def __call__(self, *args, **kwargs):
+        return self
 
     def insert(self, payload, *args, **kwargs):
         self.inserted_data = payload
@@ -59,16 +68,18 @@ class MagicSupabaseMock:
     def __getattr__(self, name):
         return lambda *args, **kwargs: self
 
+
 @pytest.fixture
 def client(monkeypatch):
     # PARCHE MAESTRO: Intercepta cualquier uso de Supabase en todo el proyecto
     # garantizando que ninguna prueba intente conectarse a internet.
     monkeypatch.setattr(SupabaseClient, "table", lambda self, name: MagicSupabaseMock())
-    
+
     app.dependency_overrides.clear()
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
 
 dummy_payload = {
     "name": "Lago Villarrica",
@@ -123,7 +134,18 @@ class FakeTable:
 
     def execute(self):
         if self.table_name == "profiles":
-            return type("Response", (), {"data": [{"id": "123e4567-e89b-12d3-a456-426614174000", "email": "user@test.com"}]})()
+            return type(
+                "Response",
+                (),
+                {
+                    "data": [
+                        {
+                            "id": "123e4567-e89b-12d3-a456-426614174000",
+                            "email": "user@test.com",
+                        }
+                    ]
+                },
+            )()
         if self.table_name == "memberships":
             return type(
                 "Response",
@@ -135,7 +157,11 @@ class FakeTable:
                             "user_id": "123e4567-e89b-12d3-a456-426614174000",
                             "role": "admin",
                             "status": "active",
-                            "organization": {"id": "22222222-2222-2222-2222-222222222222", "name": "Org", "status": "active"},
+                            "organization": {
+                                "id": "22222222-2222-2222-2222-222222222222",
+                                "name": "Org",
+                                "status": "active",
+                            },
                         }
                     ]
                 },
@@ -149,7 +175,11 @@ class FakeTable:
                     rows = [item for item in rows if str(item.get(field)) != str(value)]
                 elif op == "ilike":
                     pattern = value.replace("%", "").lower()
-                    rows = [item for item in rows if pattern in str(item.get(field, "")).lower()]
+                    rows = [
+                        item
+                        for item in rows
+                        if pattern in str(item.get(field, "")).lower()
+                    ]
             if self._range is not None:
                 start, end = self._range
                 rows = rows[start : end + 1]
@@ -166,7 +196,10 @@ class FakeSupabase:
                     "name": "Lago Villarrica",
                     "region": "Araucania",
                     "description": "Creación autorizada",
-                    "geom": {"type": "Polygon", "coordinates": [[[0, 0], [5, 0], [5, 5], [0, 0]]]},
+                    "geom": {
+                        "type": "Polygon",
+                        "coordinates": [[[0, 0], [5, 0], [5, 5], [0, 0]]],
+                    },
                     "status": "active",
                     "created_at": "2024-01-01T00:00:00Z",
                     "updated_at": "2024-01-01T00:00:00Z",
@@ -179,7 +212,11 @@ class FakeSupabase:
                     "user_id": "123e4567-e89b-12d3-a456-426614174000",
                     "role": "admin",
                     "status": "active",
-                    "organization": {"id": "22222222-2222-2222-2222-222222222222", "name": "Org", "status": "active"},
+                    "organization": {
+                        "id": "22222222-2222-2222-2222-222222222222",
+                        "name": "Org",
+                        "status": "active",
+                    },
                 }
             ],
         }
@@ -214,20 +251,24 @@ def test_integracion_auth_me_y_lakes(monkeypatch):
 
     app.dependency_overrides.clear()
 
+
 def test_token_ausente(client):
     response = client.post("/api/v1/lakes", json=dummy_payload)
     assert response.status_code == 401
     assert "message" in response.json()
     assert response.json()["message"] == "Not authenticated"
 
+
 def test_token_vencido(client):
     def mock_expired():
         raise HTTPException(status_code=401, detail="Token expired")
+
     app.dependency_overrides[auth.verify_supabase_jwt] = mock_expired
-    
+
     response = client.post("/api/v1/lakes", json=dummy_payload)
     assert response.status_code == 401
     assert response.json()["message"] == "Token expired"
+
 
 def test_permiso_correcto(client):
     app.dependency_overrides[auth.verify_supabase_jwt] = lambda: mock_admin_token
@@ -235,10 +276,61 @@ def test_permiso_correcto(client):
     assert response.status_code == 201
     assert response.json()["name"] == dummy_payload["name"]
 
+
 def test_permiso_insuficiente(client):
-    app.dependency_overrides[auth.verify_supabase_jwt] = lambda: {"sub": "user-456", "user_metadata": {"role": "usuario"}}
+    app.dependency_overrides[auth.verify_supabase_jwt] = lambda: {
+        "sub": "user-456",
+        "user_metadata": {"role": "usuario"},
+    }
     response = client.post("/api/v1/lakes", json=dummy_payload)
     assert response.status_code == 403
     assert "message" in response.json()
     assert response.json()["message"] == "No tienes permisos para crear lagos."
-    
+
+
+def test_verifica_token_es256_con_jwks(monkeypatch):
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    issuer = f"{auth.settings.supabase_url.rstrip('/')}/auth/v1"
+    token = auth.jwt.encode(
+        {
+            "sub": "123e4567-e89b-12d3-a456-426614174000",
+            "aud": "authenticated",
+            "iss": issuer,
+            "exp": int(time.time()) + 60,
+        },
+        private_key,
+        algorithm="ES256",
+        headers={"kid": "test-ecc-key"},
+    )
+
+    class FakeJwksClient:
+        def get_signing_key_from_jwt(self, _token):
+            return SimpleNamespace(key=private_key.public_key())
+
+    monkeypatch.setattr(auth, "get_supabase_jwks_client", lambda _url: FakeJwksClient())
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    payload = auth.verify_supabase_jwt(credentials)
+
+    assert payload["sub"] == "123e4567-e89b-12d3-a456-426614174000"
+
+
+def test_verifica_token_hs256_legacy(monkeypatch):
+    legacy_secret = "unit-test-legacy-secret-with-at-least-32-bytes"
+    monkeypatch.setattr(auth.settings, "supabase_jwt_secret", SecretStr(legacy_secret))
+    issuer = f"{auth.settings.supabase_url.rstrip('/')}/auth/v1"
+    token = auth.jwt.encode(
+        {
+            "sub": "123e4567-e89b-12d3-a456-426614174000",
+            "aud": "authenticated",
+            "iss": issuer,
+            "exp": int(time.time()) + 60,
+        },
+        legacy_secret,
+        algorithm="HS256",
+    )
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    payload = auth.verify_supabase_jwt(credentials)
+
+    assert payload["sub"] == "123e4567-e89b-12d3-a456-426614174000"

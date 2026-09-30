@@ -70,7 +70,9 @@ class FakeTable:
             elif op == "ilike":
                 pattern = value.replace("%", "")
                 items = [
-                    item for item in items if pattern.lower() in str(item.get(field, "")).lower()
+                    item
+                    for item in items
+                    if pattern.lower() in str(item.get(field, "")).lower()
                 ]
 
         if self._insert_payload is not None:
@@ -99,28 +101,38 @@ class FakeTable:
 
 class FakeSupabase:
     def __init__(self, initial_lakes=None):
-        self.lakes = initial_lakes if initial_lakes is not None else [
-            {
-                "id": "11111111-1111-1111-1111-111111111111",
-                "name": "Lago activo",
-                "region": "Lima",
-                "description": "Activo",
-                "geom": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]},
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z",
-            },
-            {
-                "id": "22222222-2222-2222-2222-222222222222",
-                "name": "Lago inactivo",
-                "region": "Arequipa",
-                "description": "Inactivo",
-                "geom": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]},
-                "status": "inactive",
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z",
-            },
-        ]
+        self.lakes = (
+            initial_lakes
+            if initial_lakes is not None
+            else [
+                {
+                    "id": "11111111-1111-1111-1111-111111111111",
+                    "name": "Lago activo",
+                    "region": "Lima",
+                    "description": "Activo",
+                    "geom": {
+                        "type": "Polygon",
+                        "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]],
+                    },
+                    "status": "active",
+                    "created_at": "2024-01-01T00:00:00Z",
+                    "updated_at": "2024-01-01T00:00:00Z",
+                },
+                {
+                    "id": "22222222-2222-2222-2222-222222222222",
+                    "name": "Lago inactivo",
+                    "region": "Arequipa",
+                    "description": "Inactivo",
+                    "geom": {
+                        "type": "Polygon",
+                        "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]],
+                    },
+                    "status": "inactive",
+                    "created_at": "2024-01-01T00:00:00Z",
+                    "updated_at": "2024-01-01T00:00:00Z",
+                },
+            ]
+        )
         self.tables = {"lakes": self.lakes, "audit_logs": []}
 
     def table(self, table_name):
@@ -129,25 +141,32 @@ class FakeSupabase:
 
 @pytest.fixture
 def client_with_authorized_lakes(monkeypatch):
-    fake_db = FakeSupabase([
-        {
-            "id": "11111111-1111-1111-1111-111111111111",
-            "name": "Lago activo",
-            "region": "Lima",
-            "description": "Lago activo",
-            "geom": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]},
-            "status": "active",
-            "created_at": "2024-01-01T00:00:00Z",
-            "updated_at": "2024-01-01T00:00:00Z",
-        }
-    ])
+    fake_db = FakeSupabase(
+        [
+            {
+                "id": "11111111-1111-1111-1111-111111111111",
+                "name": "Lago activo",
+                "region": "Lima",
+                "description": "Lago activo",
+                "geom": {
+                    "type": "Polygon",
+                    "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]],
+                },
+                "status": "active",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-01T00:00:00Z",
+            }
+        ]
+    )
     monkeypatch.setattr(lakes_module, "supabase", fake_db)
 
     def fake_authenticated_admin():
         return {"user_metadata": {"role": "administrador"}}
 
     app.dependency_overrides[auth.verify_supabase_jwt] = fake_authenticated_admin
-    app.dependency_overrides[auth.optional_verify_supabase_jwt] = fake_authenticated_admin
+    app.dependency_overrides[auth.optional_verify_supabase_jwt] = (
+        fake_authenticated_admin
+    )
     try:
         yield TestClient(app)
     finally:
@@ -207,7 +226,10 @@ def test_get_active_lakes_filters_and_transforms_entities():
             "region": "Lima",
             "description": "Activo",
             "status": "active",
-            "geom": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]},
+            "geom": {
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]],
+            },
             "created_at": "2024-01-01T00:00:00Z",
             "updated_at": "2024-01-02T00:00:00Z",
             "internal_note": "no debe exportarse",
@@ -218,7 +240,10 @@ def test_get_active_lakes_filters_and_transforms_entities():
             "region": "Arequipa",
             "description": "Inactivo",
             "status": "inactive",
-            "geom": {"type": "Polygon", "coordinates": [[[0, 0], [2, 0], [2, 2], [0, 0]]]},
+            "geom": {
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [2, 0], [2, 2], [0, 0]]],
+            },
             "created_at": "2024-01-01T00:00:00Z",
             "updated_at": "2024-01-02T00:00:00Z",
             "internal_note": "no debe exportarse",
@@ -265,7 +290,10 @@ def test_create_lake_requires_permission_and_persists(client_with_authorized_lak
         "name": "Lago nuevo",
         "region": "Cusco",
         "description": "Lago recién creado",
-        "geom": {"type": "Polygon", "coordinates": [[[0, 0], [10, 0], [10, 10], [0, 0]]]},
+        "geom": {
+            "type": "Polygon",
+            "coordinates": [[[0, 0], [10, 0], [10, 10], [0, 0]]],
+        },
     }
 
     response = client_with_authorized_lakes.post("/api/v1/lakes", json=payload)
@@ -284,7 +312,9 @@ def test_update_lake_changes_name_and_persists(client_with_authorized_lakes):
     lake_id = "11111111-1111-1111-1111-111111111111"
     payload = {"name": "Nombre actualizado", "description": "Descripción actualizada"}
 
-    response = client_with_authorized_lakes.patch(f"/api/v1/lakes/{lake_id}", json=payload)
+    response = client_with_authorized_lakes.patch(
+        f"/api/v1/lakes/{lake_id}", json=payload
+    )
 
     assert response.status_code == 200
     data = response.json()
@@ -370,7 +400,10 @@ def test_lakes_pagination_counts_all_active_rows_before_range(monkeypatch):
             "name": f"Lago activo {index}",
             "region": "Lima",
             "description": "Activo",
-            "geom": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]},
+            "geom": {
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]],
+            },
             "status": "active",
             "created_at": "2024-01-01T00:00:00Z",
             "updated_at": "2024-01-01T00:00:00Z",
@@ -393,8 +426,16 @@ def test_lakes_pagination_counts_all_active_rows_before_range(monkeypatch):
     last_page = test_client.get("/api/v1/lakes?page=3&limit=2").json()
 
     assert first_page["total"] == second_page["total"] == last_page["total"] == 5
-    assert [len(first_page["items"]), len(second_page["items"]), len(last_page["items"])] == [2, 2, 1]
-    assert all(item["status"] == "active" for page in (first_page, second_page, last_page) for item in page["items"])
+    assert [
+        len(first_page["items"]),
+        len(second_page["items"]),
+        len(last_page["items"]),
+    ] == [2, 2, 1]
+    assert all(
+        item["status"] == "active"
+        for page in (first_page, second_page, last_page)
+        for item in page["items"]
+    )
 
 
 def test_get_lake_stations_returns_500_when_lake_query_fails(monkeypatch):

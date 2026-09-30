@@ -58,7 +58,10 @@ class FakeSupabase:
                 {
                     "id": "11111111-1111-1111-1111-111111111111",
                     "geom": lake_geom
-                    or {"type": "Polygon", "coordinates": [[[0, 0], [0, 10], [10, 10], [10, 0], [0, 0]]]},
+                    or {
+                        "type": "Polygon",
+                        "coordinates": [[[0, 0], [0, 10], [10, 10], [10, 0], [0, 0]]],
+                    },
                 }
             ],
             "stations": stations or [],
@@ -88,13 +91,10 @@ def test_crear_estacion_codigo_duplicado(monkeypatch):
     monkeypatch.setattr("catalog.application.endpoints.supabase", fake_db)
 
     payload = StationCreate(
-        lake_id=lake_id,
         code="ST-001",
         name="Nueva",
         latitude=5.0,
         longitude=5.0,
-        source="DGA",
-        activity="Monitoreo",
     )
 
     with pytest.raises(HTTPException) as exc_info:
@@ -108,13 +108,10 @@ def test_crear_estacion_codigo_duplicado(monkeypatch):
 def test_crear_estacion_coordenadas_fuera_de_rango():
     with pytest.raises(ValidationError):
         StationCreate(
-            lake_id=uuid.uuid4(),
             code="ST-002",
             name="Fuera de rango",
             latitude=91.0,
             longitude=0.0,
-            source="DGA",
-            activity="Monitoreo",
         )
 
 
@@ -124,13 +121,10 @@ def test_crear_estacion_punto_fuera_del_lago(monkeypatch):
     monkeypatch.setattr("catalog.application.endpoints.supabase", fake_db)
 
     payload = StationCreate(
-        lake_id=lake_id,
         code="ST-003",
         name="Fuera del lago",
         latitude=15.0,
         longitude=15.0,
-        source="DGA",
-        activity="Monitoreo",
     )
 
     with pytest.raises(HTTPException) as exc_info:

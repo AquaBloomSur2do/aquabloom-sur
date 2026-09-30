@@ -1,13 +1,12 @@
 from typing import Any
 from uuid import UUID
 
-from shapely import from_wkt
-from shapely.geometry import mapping
-from supabase import Client
-
 from app.database import supabase
 from app.permissions import has_permission
 from app.schemas import LakeDetail, LakeSummary, PaginatedLakes
+from shapely import from_wkt
+from shapely.geometry import mapping
+from supabase import Client
 
 PUBLIC_LAKE_FIELDS = (
     "id",
@@ -45,7 +44,9 @@ def _coerce_station_point_to_geojson(value: Any) -> dict[str, Any]:
             raise ValueError("La geometría de la estación debe ser de tipo Point.")
         return mapping(geometry)
     except Exception as exc:
-        raise ValueError(f"Error de integridad en el punto de la estación: {exc}") from exc
+        raise ValueError(
+            f"Error de integridad en el punto de la estación: {exc}"
+        ) from exc
 
 
 def _coerce_geom_to_geojson(value: Any) -> dict[str, Any] | None:
@@ -90,7 +91,9 @@ def get_active_lakes(client: Client) -> list[LakeDetail]:
     """Obtiene únicamente los lagos activos y devuelve entidades de dominio limpias."""
     response = (
         client.table("lakes")
-        .select("id, name, region, description, status, geom, created_at, updated_at, is_active")
+        .select(
+            "id, name, region, description, status, geom, created_at, updated_at, is_active"
+        )
         .execute()
     )
 
@@ -98,7 +101,9 @@ def get_active_lakes(client: Client) -> list[LakeDetail]:
     active_lakes: list[LakeDetail] = []
 
     for raw_row in items:
-        is_active = raw_row.get("status") == "active" or raw_row.get("is_active") is True
+        is_active = (
+            raw_row.get("status") == "active" or raw_row.get("is_active") is True
+        )
         if is_active:
             clean_row = _clean_lake_row(raw_row)
             active_lakes.append(LakeDetail.model_validate(clean_row))
@@ -240,7 +245,12 @@ def get_lake_by_id(client: Client, lake_id: str | UUID) -> dict[str, Any]:
 def soft_delete_lake(client: Client, lake_id: str | UUID) -> dict[str, Any]:
     """Desactiva un lago sin borrarlo físicamente."""
     lake_id_str = str(lake_id)
-    response = client.table("lakes").update({"status": "inactive"}).eq("id", lake_id_str).execute()
+    response = (
+        client.table("lakes")
+        .update({"status": "inactive"})
+        .eq("id", lake_id_str)
+        .execute()
+    )
     if not response.data:
         raise LookupError(f"Lago con id {lake_id_str} no existe.")
 
@@ -251,5 +261,3 @@ def soft_delete_lake(client: Client, lake_id: str | UUID) -> dict[str, Any]:
             "coordinates": [],
         }
     return lake
-
-
