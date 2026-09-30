@@ -47,11 +47,13 @@ export default function BaseMap({
             attribution: '&copy; OpenStreetMap contributors',
           },
         },
-        layers: [{
-          id: 'openstreetmap',
-          type: 'raster',
-          source: 'openstreetmap',
-        }],
+        layers: [
+          {
+            id: 'openstreetmap',
+            type: 'raster',
+            source: 'openstreetmap',
+          },
+        ],
       },
     });
 
@@ -75,15 +77,14 @@ export default function BaseMap({
 
     const mapData = geometries as Parameters<GeoJSONSource['setData']>[0];
     const existingSource = map.getSource(sourceId);
-    
-    // Si la capa ya existe (ej. al filtrar), solo actualizamos los datos y salimos
+
     if (existingSource) {
       (existingSource as GeoJSONSource).setData(mapData);
       return;
     }
 
     map.addSource(sourceId, { type: 'geojson', data: mapData });
-    
+
     map.addLayer({
       id: `${sourceId}-fill`,
       type: 'fill',
@@ -116,12 +117,11 @@ export default function BaseMap({
 
     const handleFeatureClick = (e: MapLayerMouseEvent) => {
       if (!e.features || e.features.length === 0) return;
-      
+
       const properties = e.features[0].properties;
       const name = properties.nombre || 'Sin nombre';
       const id = properties.id;
 
-      // Inyectamos HTML puro para el Popup nativo
       const htmlContent = `
         <div style="display: flex; flex-direction: column; gap: 8px; font-family: sans-serif;">
           <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #111827;">${name}</h3>
@@ -136,26 +136,33 @@ export default function BaseMap({
         .setHTML(htmlContent)
         .addTo(map);
 
-      // Atamos el botón a React Router para proteger el estado (SPA Navigation)
-      document.getElementById(`btn-detail-${id}`)?.addEventListener('click', () => {
-         navigate(`/lakes/${id}`); 
-         popup.remove();
-      });
+      document
+        .getElementById(`btn-detail-${id}`)
+        ?.addEventListener('click', () => {
+          navigate(`/lakes/${id}`);
+          popup.remove();
+        });
     };
 
-    // Estilos de cursor para que el usuario sepa que es interactivo
-    const setCursorPointer = () => { map.getCanvas().style.cursor = 'pointer'; };
-    const resetCursor = () => { map.getCanvas().style.cursor = ''; };
+    const setCursorPointer = () => {
+      map.getCanvas().style.cursor = 'pointer';
+    };
+    const resetCursor = () => {
+      map.getCanvas().style.cursor = '';
+    };
 
-    // Atar los eventos de clic tanto a los polígonos (lagos) como a los puntos (estaciones)
     const interactiveLayers = [`${sourceId}-fill`, `${sourceId}-point`];
-    interactiveLayers.forEach(layerId => {
+    interactiveLayers.forEach((layerId) => {
       map.on('click', layerId, handleFeatureClick);
       map.on('mouseenter', layerId, setCursorPointer);
       map.on('mouseleave', layerId, resetCursor);
     });
-
   }, [geometries, mapLoaded, navigate]);
 
-  return <div ref={containerRef} style={{ width: '100%', height: 400 }} />;
+  return (
+    <div
+      ref={containerRef}
+      className="w-full h-full min-h-[300px] md:min-h-[400px] z-0"
+    />
+  );
 }

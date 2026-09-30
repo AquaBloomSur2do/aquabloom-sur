@@ -28,15 +28,35 @@ fake_data = [{
 }]
 
 class FakeResponse:
-    def __init__(self):
-        self.data = fake_data
-        self.count = len(fake_data)
+    def __init__(self, data=None):
+        self.data = fake_data if data is None else data
+        self.count = len(self.data)
 
 class MagicSupabaseMock:
+    def __init__(self):
+        self.inserted_data = None
+
     def __call__(self, *args, **kwargs): return self
+
+    def insert(self, payload, *args, **kwargs):
+        self.inserted_data = payload
+        return self
+
+    def execute(self, *args, **kwargs):
+        response = FakeResponse()
+        if self.inserted_data is not None:
+            response.data = [
+                {
+                    **self.inserted_data,
+                    "id": fake_data[0]["id"],
+                    "status": "active",
+                    "created_at": fake_data[0]["created_at"],
+                    "updated_at": fake_data[0]["updated_at"],
+                }
+            ]
+        return response
+
     def __getattr__(self, name):
-        if name == "execute":
-            return lambda *args, **kwargs: FakeResponse()
         return lambda *args, **kwargs: self
 
 @pytest.fixture

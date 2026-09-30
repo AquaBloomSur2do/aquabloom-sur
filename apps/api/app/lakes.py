@@ -3,17 +3,21 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.auth import (
+    optional_verify_supabase_jwt,
     require_catalog_create_permission,
     require_catalog_disable_permission,
     require_catalog_update_permission,
 )
 from app.database import supabase
-from app.repositories import _convert_wkt_to_polygon, get_lake_stations_from_db
-from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes, StationOut
-from app.services import (
-    get_lake_by_id,
-    log_audit_event,
+from app.permissions import CATALOG_ACTIONS, has_permission
+from app.repositories import (
+    _convert_wkt_to_polygon,
+    get_lake_stations_from_db,
+    get_lakes_repository,
 )
+from app.responses import COMMON_ERRORS
+from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes, StationOut
+from app.services import disable_lake, get_lake_by_id, log_audit_event
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
 
@@ -29,7 +33,7 @@ def _convert_polygon_to_wkt(geom: dict) -> str | None:
     return f"POLYGON({', '.join(rings)})"
 
 
-@router.get("", response_model=PaginatedLakes)
+@router.get("", response_model=PaginatedLakes, responses={**COMMON_ERRORS})
 def get_lakes(
     text: str | None = Query(None, min_length=3, strip_whitespace=True, description="Filtro de búsqueda por nombre"),
     region: str | None = Query(None, description="Filtro exacto por región"),
@@ -40,35 +44,25 @@ def get_lakes(
     limit: int = Query(
         10, ge=1, le=100, description="Límite máximo de ítems por página"
     ),
+    current_user: dict | None = Depends(optional_verify_supabase_jwt),  # noqa: B008
 ):
     """Recupera el catálogo de lagos con soporte para filtros combinados y paginación."""
+    if status_filter == "inactive" and not has_permission(
+        current_user, CATALOG_ACTIONS["DISABLE"]
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para consultar lagos inactivos.",
+        )
     try:
-        query = supabase.table("lakes").select("*", count="exact")
-
-        if status_filter:
-            query = query.eq("status", status_filter)
-        else:
-            query = query.neq("status", "inactive")
-
-        if text:
-            query = query.ilike("name", f"%{text}%")
-        if region:
-            query = query.eq("region", region)
-
-        start = (page - 1) * limit
-        end = start + limit - 1
-        query = query.range(start, end)
-
-        response = query.execute()
-        total_count = response.count if response.count is not None else 0
-
-        return {
-            "items": response.data,
-            "page": page,
-            "page_size": limit,
-            "total": total_count,
-        }
-
+        return get_lakes_repository(
+            supabase,
+            text=text,
+            region=region,
+            status_filter=status_filter,
+            page=page,
+            limit=limit,
+        )
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -76,7 +70,7 @@ def get_lakes(
         ) from exc
 
 
-@router.get("/{lake_id}", response_model=LakeDetail)
+@router.get("/{lake_id}", response_model=LakeDetail, responses={**COMMON_ERRORS})
 def get_lake(lake_id: UUID):
     if supabase is None:
         raise HTTPException(
@@ -86,13 +80,14 @@ def get_lake(lake_id: UUID):
 
     try:
         return get_lake_by_id(supabase=supabase, lake_id=lake_id)
-    except LookupError as e:
+    except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        )
+            detail=str(exc),
+        ) from exc
 
-@router.post("", response_model=LakeDetail, status_code=status.HTTP_201_CREATED)
+
+@router.post("", response_model=LakeDetail, status_code=status.HTTP_201_CREATED, responses={**COMMON_ERRORS})
 def create_lake(
     lake_create: LakeCreate,
     _payload: dict = Depends(require_catalog_create_permission),  # noqa: B008
@@ -104,8 +99,6 @@ def create_lake(
         )
 
     lake_data = lake_create.model_dump()
-
-    # Mapeo de GeoJSON a WKT para compatibilidad con PostGIS
     geom = lake_data.get("geom")
     if geom:
         lake_data["geom"] = _convert_polygon_to_wkt(geom)
@@ -120,10 +113,10 @@ def create_lake(
             )
 
         created_lake = response.data[0]
-        
+
         actor_id = _payload.get("sub", "system")
         log_audit_event(supabase, actor_id, "CREATE", "lake", created_lake["id"], lake_data)
-        
+
         if isinstance(created_lake.get("geom"), str):
             created_lake["geom"] = _convert_wkt_to_polygon(created_lake["geom"])
         return created_lake
@@ -137,7 +130,7 @@ def create_lake(
         ) from exc
 
 
-@router.patch("/{lake_id}", response_model=LakeDetail)
+@router.patch("/{lake_id}", response_model=LakeDetail, responses={**COMMON_ERRORS})
 def update_lake(
     lake_id: UUID,
     lake_update: LakeUpdate,
@@ -167,7 +160,6 @@ def update_lake(
     if "id" in update_data:
         del update_data["id"]
 
-    # Mapeo de GeoJSON a WKT para actualizaciones de geometría
     if update_data.get("geom"):
         update_data["geom"] = _convert_polygon_to_wkt(update_data["geom"])
 
@@ -184,12 +176,12 @@ def update_lake(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al actualizar el lago (respuesta vacía).",
             )
-            
+
         updated_lake = response.data[0]
-        
+
         actor_id = _payload.get("sub", "system")
         log_audit_event(supabase, actor_id, "UPDATE", "lake", updated_lake["id"], update_data)
-        
+
         return updated_lake
 
     except HTTPException:
@@ -201,10 +193,10 @@ def update_lake(
         ) from exc
 
 
-@router.delete("/{lake_id}", response_model=LakeDetail)
+@router.delete("/{lake_id}", response_model=LakeDetail, responses={**COMMON_ERRORS})
 def delete_lake(
     lake_id: UUID,
-    _payload: dict = Depends(require_catalog_disable_permission),  # noqa: B008
+    current_user: dict = Depends(require_catalog_disable_permission),  # noqa: B008
 ):
     if supabase is None:
         raise HTTPException(
@@ -213,48 +205,37 @@ def delete_lake(
         )
 
     try:
-        existing = supabase.table("lakes").select("*").eq("id", str(lake_id)).execute()
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error en el motor de base de datos al verificar el lago: {exc}",
-        ) from exc
-
-    if not existing.data:
+        disabled_lake = disable_lake(
+            lake_id=lake_id, current_user=current_user, supabase=supabase
+        )
+        actor_id = current_user.get("sub", "system")
+        log_audit_event(
+            supabase,
+            actor_id,
+            "DEACTIVATE",
+            "lake",
+            disabled_lake["id"],
+            {"status": "inactive"},
+        )
+        return disabled_lake
+    except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"El lago con id {lake_id} no existe.",
-        )
-
-    update_data = {"status": "inactive"}
-    
-    try:
-        response = (
-            supabase.table("lakes").update(update_data).eq("id", str(lake_id)).execute()
-        )
-
-        if not response.data:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error al desactivar el lago (respuesta vacía).",
-            )
-            
-        deleted_lake = response.data[0]
-        
-        actor_id = _payload.get("sub", "system")
-        log_audit_event(supabase, actor_id, "DEACTIVATE", "lake", deleted_lake["id"], update_data)
-        
-        return deleted_lake
-
-    except HTTPException:
-        raise
+            detail=str(exc),
+        ) from exc
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error en el motor de base de datos al desactivar el lago: {exc}",
         ) from exc
 
-@router.get("/{lake_id}/stations", response_model=list[StationOut])
+
+@router.get("/{lake_id}/stations", response_model=list[StationOut], responses={**COMMON_ERRORS})
 def get_lake_stations(
     lake_id: UUID,
     status_filter: str | None = Query(None, description="Filtrar por estado"),
@@ -271,5 +252,4 @@ def get_lake_stations(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(exc),
         ) from exc
-        
-        
+    

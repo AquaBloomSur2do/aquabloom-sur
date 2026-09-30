@@ -4,13 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth import require_catalog_update_permission
 from app.database import supabase
+from app.responses import COMMON_ERRORS
 from app.schemas import StationUpdate
 from app.services import log_audit_event, validate_station_inside_lake
 
 router = APIRouter(prefix="/api/v1/stations", tags=["Catalog"])
 
 
-@router.patch("/{station_id}")
+@router.patch("/{station_id}", responses={**COMMON_ERRORS})
 def update_station(
     station_id: UUID,
     station_update: StationUpdate,
@@ -90,5 +91,4 @@ def update_station(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error en el motor de base de datos: {exc}",
         ) from exc
-
     
