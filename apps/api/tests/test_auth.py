@@ -13,12 +13,11 @@ os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-secret")
 
-from supabase.client import Client as SupabaseClient
-
 # Importamos la clase original de Supabase para interceptarla desde la raíz
 from app import auth
 from app import lakes as lakes_module
 from app.main import app
+from supabase.client import Client as SupabaseClient
 
 # Datos falsos exactos para evitar que los validadores de la API colapsen
 fake_data = [

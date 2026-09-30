@@ -1,7 +1,5 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-
 from app.auth import (
     optional_verify_supabase_jwt,
     require_catalog_create_permission,
@@ -18,6 +16,7 @@ from app.repositories import (
 from app.responses import COMMON_ERRORS
 from app.schemas import LakeCreate, LakeDetail, LakeUpdate, PaginatedLakes, StationOut
 from app.services import disable_lake, get_lake_by_id, log_audit_event
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])
 
