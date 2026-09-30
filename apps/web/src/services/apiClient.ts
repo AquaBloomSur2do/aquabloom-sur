@@ -3,8 +3,7 @@ import { supabase } from '../lib/supabase';
 // Lightweight fetch-based API client for Vite + TypeScript
 
 const BASE_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1')
-  .replace(/\/+$/g, '')
-  .replace(/\/+/g, '/');
+  .replace(/\/+$/g, '');
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 

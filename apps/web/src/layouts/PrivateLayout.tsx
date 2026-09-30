@@ -14,7 +14,12 @@ const MENU_ITEMS = [
     label: 'Catálogo de Lagos',
     allowedRoles: ['administrador', 'investigador'],
   },
-  { path: '/admin', label: 'Administración', allowedRoles: ['administrador'] },
+  {
+    path: '/stations',
+    label: 'Estaciones',
+    allowedRoles: ['administrador', 'investigador'],
+  },
+  { path: '/organizations', label: 'Administración', allowedRoles: ['administrador'] },
 ];
 
 export const PrivateLayout = () => {

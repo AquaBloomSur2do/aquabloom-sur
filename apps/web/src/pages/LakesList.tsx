@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/apiClient';
+import { useAuth } from '../contexts/useAuth';
 import type { LakeSummary } from '../types/lake';
 
 const normalizeLakesResponse = (payload: unknown): LakeSummary[] => {
@@ -37,6 +38,11 @@ const getStationCount = (lake: LakeSummary): number => {
 
 export function LakesList() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const role = String(
+    user?.app_metadata?.role ?? user?.user_metadata?.role ?? '',
+  ).toLowerCase();
+  const canCreateLake = ['administrador', 'investigador'].includes(role);
   const [lakes, setLakes] = useState<LakeSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +88,11 @@ export function LakesList() {
           <p className="eyebrow">Catálogo</p>
           <h1>Listado de Lagos</h1>
         </div>
+        {canCreateLake && (
+          <Link to="/lakes/new" className="btn btn-primary">
+            + Registrar Lago
+          </Link>
+        )}
       </div>
 
       {loading && (

@@ -7,6 +7,9 @@ import { Home } from './pages/Home';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { LakesList } from './pages/LakesList';
+import { StationsList } from './pages/StationsList';
+import { OrganizationsList } from './pages/OrganizationsList';
+import { StationForm } from './pages/StationForm';
 import { LakeDetail } from './pages/LakeDetail';
 import { NotFound } from './pages/NotFound';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -33,6 +36,11 @@ function App() {
             <Route element={<PrivateLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/lakes" element={<LakesList />} />
+              <Route path="/stations" element={<StationsList />} />
+              <Route path="/organizations" element={<OrganizationsList />} />
+              <Route path="/admin" element={<OrganizationsList />} />
+              <Route path="/lakes/:lakeId/stations/new" element={<StationForm />} />
+              <Route path="/lakes/:lakeId/stations/:stationId/edit" element={<StationForm />} />
               
               {/* INYECCIÓN ESTRATÉGICA: /new debe ir antes de /:id */}
               <Route path="/lakes/new" element={<LakeCreate />} />

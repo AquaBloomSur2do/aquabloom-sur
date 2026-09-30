@@ -15,7 +15,8 @@ export const Dashboard: React.FC = () => {
           count={14}
           isLoading={false}
           error={null}
-          linkTo="/catalog"
+          linkTo="/lakes"
+          linkLabel="Ver lagos"
         />
 
         {/* Tarjeta 2: Estado de Carga */}
@@ -24,7 +25,8 @@ export const Dashboard: React.FC = () => {
           count={null}
           isLoading={true}
           error={null}
-          linkTo="/catalog"
+          linkTo="/stations"
+          linkLabel="Ver estaciones"
         />
 
         {/* Tarjeta 3: Estado de Error */}
@@ -33,7 +35,8 @@ export const Dashboard: React.FC = () => {
           count={null}
           isLoading={false}
           error="Error de conexión"
-          linkTo="/catalog"
+          linkTo="/lakes"
+          linkLabel="Ir al catálogo"
         />
       </div>
     </div>
