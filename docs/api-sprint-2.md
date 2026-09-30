@@ -142,14 +142,49 @@ export const fetchLakeStations = async (session, lakeId, statusFilter = '') => {
 };
 
 
-### 2. Actualizar una Estación
+### 2. Crear una Estación
+
+Ruta: POST /api/v1/lakes/{lake_id}/stations
+
+* **Permisos requeridos:** catalog:create (mediante la dependencia require_catalog_create_permission).
+* **Descripción:** Registra una nueva estación asociada a un lago. Ejecuta validación geoespacial en la API.
+
+# Payload de Envío:
+
+{
+  "code": "EST-02",
+  "name": "Estación Norte",
+  "description": "Nueva estación de monitoreo",
+  "coordinates": {
+    "latitude": -39.640,
+    "longitude": -72.330
+  },
+  "status": "active"
+}
+
+
+# Ejemplo de consumo (React):
+
+export const createStation = async (session, lakeId, stationData) => {
+  const response = await fetch(`/api/v1/lakes/${lakeId}/stations`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(stationData)
+  });
+  return await response.json();
+};
+
+### 3. Actualizar una Estación
 
 Ruta: PATCH /api/v1/stations/{station_id}
 
 * **Permisos requeridos:** catalog:update (mediante la dependencia require_catalog_update_permission).
 * **Descripción:** Modificación parcial de la estación. Si se envían coordenadas, la API ejecuta una validación geoespacial con PostGIS para garantizar que el nuevo punto esté dentro del lago asociado.
 
-Payload de Envío (Objeto de Coordenadas):
+# Payload de Envío (Objeto de Coordenadas):
 
 {
   "name": "Estación Centro (Reubicada)",
@@ -160,7 +195,6 @@ Payload de Envío (Objeto de Coordenadas):
   },
   "status": "active"
 }
-
 
 # Ejemplo de consumo (React):
 
