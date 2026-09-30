@@ -8,15 +8,19 @@ test('S2-088: Flujo E2E - Login, Catálogo, Mapa y Limpieza', async ({ page }) =
   // ==========================================
   await page.goto('/login');
   
-  const loginResponse = page.waitForResponse(response => 
-    response.url().includes('token') && response.status() === 200
+  await page.getByLabel('Correo Electrónico').fill('admin@aquabloom.cl'); 
+  await page.getByLabel('Contraseña').fill('AquaBloom2026!');
+
+  // Capturamos la petición POST de autenticación (Supabase Auth usa 'token')
+  const loginResponsePromise = page.waitForResponse(response => 
+    response.url().includes('token') && response.request().method() === 'POST'
   );
   
-  await page.fill('#login-email', 'admin@aquabloom.cl'); 
-  await page.fill('#login-password', 'AquaBloom2026!');
-  await page.locator('button[type="submit"]').click();
+  await page.getByRole('button', { name: 'Ingresar' }).click();
   
-  await loginResponse;
+  // Verificamos que la API haya respondido con éxito (ej. 200 OK)
+  const response = await loginResponsePromise;
+  expect(response.ok()).toBeTruthy();
 
   // ==========================================
   // 2. DASHBOARD Y NAVEGACIÓN LATERAL

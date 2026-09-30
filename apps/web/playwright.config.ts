@@ -20,11 +20,12 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     }
   ],
-  // Levanta Vite automáticamente para las pruebas
+  // Levanta TODA la infraestructura (Backend + Frontend) automáticamente
   webServer: {
-    command: 'pnpm run dev',
+    command: 'docker compose up -d && pnpm run dev',
     url: 'http://localhost:5173',
-    reuseExistingServer: true,
+    reuseExistingServer: !process.env.CI,
     timeout: 120000,
   },
 });
+

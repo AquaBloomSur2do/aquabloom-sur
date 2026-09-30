@@ -28,12 +28,46 @@ jobs:
           
       - name: Instalar dependencias
         run: pnpm install
+
+      - name: Preparar variables de entorno (Web)
+        run: |
+          cat > .env <<EOF
+          VITE_API_URL=http://localhost:8000/api/v1
+          VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          E2E_SUPABASE_EMAIL=admin@aquabloom.cl
+          E2E_SUPABASE_PASSWORD=AquaBloom2026!
+          EOF
+
+      - name: Preparar variables de entorno (API)
+        run: |
+          cat > ../api/.env <<EOF
+          ENVIRONMENT=development
+          CORS_ORIGINS=http://localhost:5173
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
+          SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }}
+          EOF
         
       - name: Ejecutar Linter
         run: pnpm run lint
         
       - name: Compilar
         run: pnpm run build
+
+      - name: Instalar navegadores de Playwright
+        run: pnpm exec playwright install --with-deps
+
+      - name: Ejecutar pruebas E2E (con Docker)
+        run: pnpm exec playwright test
+
+      - name: Subir reporte de Playwright (Debug)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 3
 
   api-ci:
     name: Validar API
@@ -53,11 +87,14 @@ jobs:
       - name: Instalar dependencias
         run: |
           pip install -r requirements.txt
-          pip install ruff
+          pip install ruff pytest httpx
           
       - name: Ejecutar Linter
         run: ruff check .
         
       - name: Compilar
         run: python -m compileall .
-              
+
+      - name: Ejecutar pruebas unitarias
+        run: pytest
+
