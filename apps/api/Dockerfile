@@ -11,8 +11,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. Copiar el código fuente ajustando los permisos al nuevo usuario
-COPY --chown=appuser:appgroup app/ ./app/
+# 5. Copiar todo el código fuente (incluyendo app, catalog, etc.) ajustando los permisos
+COPY --chown=appuser:appgroup . .
 
 # 6. Exponer el puerto en el que corre FastAPI
 EXPOSE 8000
