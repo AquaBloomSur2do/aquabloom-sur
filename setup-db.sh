@@ -1,6 +1,6 @@
 #!/bin/bash
 echo "Vaciando base de pruebas y preparando esquemas..."
-docker compose exec -T db psql -U postgres -d aquabloom -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO postgres; GRANT ALL ON SCHEMA public TO public; CREATE SCHEMA IF NOT EXISTS auth;"
+docker compose exec -T db psql -U postgres -d aquabloom -c "DROP SCHEMA IF EXISTS public CASCADE; DROP SCHEMA IF EXISTS auth CASCADE; CREATE SCHEMA public; CREATE SCHEMA auth; GRANT ALL ON SCHEMA public TO postgres; GRANT ALL ON SCHEMA public TO public;"
 
 echo "Construyendo tablas..."
 for file in database/migrations/*.sql; do 
