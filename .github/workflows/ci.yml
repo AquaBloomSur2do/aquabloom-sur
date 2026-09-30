@@ -29,11 +29,25 @@ jobs:
       - name: Instalar dependencias
         run: pnpm install
 
-      - name: Preparar variables de entorno (CI)
+      - name: Preparar variables de entorno (Web)
         run: |
-          cp .env.example .env
-          cp ../../.env.example ../../.env || true
-          cp ../api/.env.example ../api/.env || true
+          cat > .env <<EOF
+          VITE_API_URL=http://localhost:8000/api/v1
+          VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          E2E_SUPABASE_EMAIL=admin@aquabloom.cl
+          E2E_SUPABASE_PASSWORD=AquaBloom2026!
+          EOF
+
+      - name: Preparar variables de entorno (API)
+        run: |
+          cat > ../api/.env <<EOF
+          ENVIRONMENT=development
+          CORS_ORIGINS=http://localhost:5173
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
+          SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }}
+          EOF
         
       - name: Ejecutar Linter
         run: pnpm run lint
