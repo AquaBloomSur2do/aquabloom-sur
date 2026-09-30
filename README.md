@@ -265,3 +265,20 @@ El archivo `compose.yaml` define servicios de API, web y PostGIS. Su configuraci
 	```
 
 5. Abre un Pull Request hacia `main`. Describe el objetivo y los cambios, enlaza el ticket, indica las pruebas ejecutadas y anota cualquier configuración, migración o variable de entorno nueva. Para cambios visuales, añade capturas cuando ayuden a revisar el resultado. Atiende los comentarios de revisión y espera las aprobaciones y verificaciones requeridas antes de integrar.
+
+## Configuración y Ejecución del Entorno Docker (S2-089)
+
+Para levantar el entorno de desarrollo local con Docker Compose y evitar errores de validación o dependencias faltantes (`shapely`, módulos del backend), sigue estos pasos:
+
+### 1. Configuración del archivo `.env`
+Asegúrate de que tu archivo `.env` en la raíz contenga todas las variables requeridas (tanto de PostgreSQL como de Supabase):
+
+```env
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=tu_contrasena_segura_aqui
+POSTGRES_DB=aquabloom
+VITE_API_URL=http://localhost:5000/api/v1
+SUPABASE_URL=http://tu-url-de-supabase
+SUPABASE_ANON_KEY=tu_clave_anonima_aqui
+SUPABASE_KEY=tu_clave_secreta_aqui
+SUPABASE_JWT_SECRET=tu_jwt_secret_aqui
