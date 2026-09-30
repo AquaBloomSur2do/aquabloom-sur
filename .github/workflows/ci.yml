@@ -28,6 +28,12 @@ jobs:
           
       - name: Instalar dependencias
         run: pnpm install
+
+      - name: Preparar variables de entorno (CI)
+        run: |
+          cp .env.example .env
+          cp ../../.env.example ../../.env || true
+          cp ../api/.env.example ../api/.env || true
         
       - name: Ejecutar Linter
         run: pnpm run lint
@@ -37,12 +43,6 @@ jobs:
 
       - name: Instalar navegadores de Playwright
         run: pnpm exec playwright install --with-deps
-
-      - name: Preparar variables de entorno (CI)
-        run: |
-          cp .env.example .env
-          cp ../../.env.example ../../.env || true
-          cp ../api/.env.example ../api/.env || true
 
       - name: Ejecutar pruebas E2E (con Docker)
         run: pnpm exec playwright test

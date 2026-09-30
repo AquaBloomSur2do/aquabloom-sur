@@ -4,15 +4,23 @@ test('S2-088: Flujo E2E - Login, Catálogo, Mapa y Limpieza', async ({ page }) =
   page.on('dialog', dialog => dialog.accept());
 
   // ==========================================
-  // 1. LOGIN SEGURO 
+  // 1. LOGIN SEGURO Y ESPERA DE RED
   // ==========================================
   await page.goto('/login');
   
-  // CORRECCIÓN: Eliminamos el anti-patrón de waitForResponse.
-  // Playwright hará el auto-wait implícito mediante las acciones de UI.
   await page.getByLabel('Correo Electrónico').fill('admin@aquabloom.cl'); 
   await page.getByLabel('Contraseña').fill('AquaBloom2026!');
+
+  // Capturamos la petición POST de autenticación (Supabase Auth usa 'token')
+  const loginResponsePromise = page.waitForResponse(response => 
+    response.url().includes('token') && response.request().method() === 'POST'
+  );
+  
   await page.getByRole('button', { name: 'Ingresar' }).click();
+  
+  // Verificamos que la API haya respondido con éxito (ej. 200 OK)
+  const response = await loginResponsePromise;
+  expect(response.ok()).toBeTruthy();
 
   // ==========================================
   // 2. DASHBOARD Y NAVEGACIÓN LATERAL
@@ -22,6 +30,9 @@ test('S2-088: Flujo E2E - Login, Catálogo, Mapa y Limpieza', async ({ page }) =
 
   // NAVEGACIÓN SEGURA: Usamos el enlace del Sidebar
   await page.locator('nav a', { hasText: 'Catálogo de Lagos' }).click();
+  
+  // FIX: Ajustamos el texto esperado del H1 según el snapshot del DOM
+  await expect(page.locator('h1', { hasText: 'Listado de Lagos' })).toBeVisible({ timeout: 15000 });
 
   // ==========================================
   // 3. CREACIÓN DEL LAGO
@@ -83,3 +94,4 @@ test('S2-088: Flujo E2E - Login, Catálogo, Mapa y Limpieza', async ({ page }) =
   // FIX: Ajustamos la validación final también
   await expect(page.locator('h1', { hasText: 'Listado de Lagos' })).toBeVisible({ timeout: 15000 });
 });
+
