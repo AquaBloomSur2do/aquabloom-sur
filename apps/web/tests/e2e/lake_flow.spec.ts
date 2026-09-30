@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test('S2-088: Flujo E2E - Login, Catálogo, Mapa y Limpieza', async ({ page }) => {
   page.on('dialog', dialog => dialog.accept());
 
-// ==========================================
+  // ==========================================
   // 1. LOGIN SEGURO Y ESPERA DE RED
   // ==========================================
   await page.goto('/login');
@@ -12,10 +12,10 @@ test('S2-088: Flujo E2E - Login, Catálogo, Mapa y Limpieza', async ({ page }) =
     response.url().includes('token') && response.status() === 200
   );
   
-  // CORRECCIÓN: Usar los IDs de la tarea S2-081
-  await page.fill('#login-form-email', 'admin@aquabloom.cl'); 
-  await page.fill('#login-form-password', 'AquaBloom2026!');
-  await page.locator('button[type="submit"]').click();
+  // CORRECCIÓN: Usar locators de accesibilidad (getByLabel/getByRole) en lugar de IDs frágiles
+  await page.getByLabel('Correo Electrónico').fill('admin@aquabloom.cl'); 
+  await page.getByLabel('Contraseña').fill('AquaBloom2026!');
+  await page.getByRole('button', { name: 'Ingresar' }).click();
   
   await loginResponse;
 
