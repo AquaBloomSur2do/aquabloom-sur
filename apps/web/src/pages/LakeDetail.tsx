@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { apiClient } from '../services/apiClient';
+import { ApiError, apiClient } from '../services/apiClient';
 import type { LakeDetailResponse } from '../types/lake';
 import type { Station } from '../types/station';
 import { NotFound } from './NotFound';
@@ -15,6 +15,8 @@ export function LakeDetail() {
   const [stations, setStations] = useState<Station[]>([]);
   const [loading, setLoading] = useState(true);
   const [isError404, setIsError404] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [stationsError, setStationsError] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -22,18 +24,27 @@ export function LakeDetail() {
       if (!id) return;
       setLoading(true);
       try {
-        const [lakeData, stationsData] = await Promise.all([
+        const [lakeResult, stationsResult] = await Promise.allSettled([
           apiClient.get<LakeDetailResponse>(`lakes/${id}`),
           apiClient.get<Station[]>(`lakes/${id}/stations`),
         ]);
         if (mounted) {
-          setLake(lakeData);
-          setStations(Array.isArray(stationsData) ? stationsData : []);
-        }
-      } catch {
-        if (mounted) {
-          setIsError404(true);
-          toast.error('No se pudo cargar la información.');
+          if (lakeResult.status === 'fulfilled') {
+            setLake(lakeResult.value);
+          } else if (
+            lakeResult.reason instanceof ApiError &&
+            lakeResult.reason.status === 404
+          ) {
+            setIsError404(true);
+          } else {
+            setDetailError('No se pudo cargar la información del lago.');
+          }
+
+          if (stationsResult.status === 'fulfilled') {
+            setStations(Array.isArray(stationsResult.value) ? stationsResult.value : []);
+          } else {
+            setStationsError(true);
+          }
         }
       } finally {
         if (mounted) setLoading(false);
@@ -60,7 +71,17 @@ export function LakeDetail() {
     return (
       <div className="p-8 text-center text-gray-500">Cargando detalle...</div>
     );
-  if (isError404 || !lake) return <NotFound />;
+  if (isError404) return <NotFound />;
+  if (detailError || !lake) {
+    return (
+      <div className="state-panel state-panel--error" role="alert">
+        <p>{detailError ?? 'No se pudo cargar la información del lago.'}</p>
+        <Link to="/lakes" className="btn btn-primary">
+          Volver al catálogo
+        </Link>
+      </div>
+    );
+  }
 
   const activeStations = stations.filter(
     (s) => s.status?.toLowerCase() === 'active'
@@ -140,12 +161,21 @@ export function LakeDetail() {
           <section className="bg-white p-5 md:p-6 rounded-xl shadow-sm border border-gray-200">
             <div className="flex justify-between items-center mb-4 border-b border-gray-100 pb-2">
               <h2 className="text-lg font-bold text-gray-800">Estaciones</h2>
-              <span className="text-xs font-bold bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                {activeStations.length} activas
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                  {activeStations.length} activas
+                </span>
+                <Link className="btn btn-secondary" to={`/lakes/${id}/stations/new`}>
+                  Registrar estación
+                </Link>
+              </div>
             </div>
 
-            {stations.length > 0 ? (
+            {stationsError ? (
+              <p className="state-panel state-panel--error" role="alert">
+                No se pudieron cargar las estaciones de este lago.
+              </p>
+            ) : stations.length > 0 ? (
               <div className="overflow-x-auto -mx-5 md:mx-0">
                 <table className="w-full text-left text-sm min-w-[300px]">
                   <thead>
@@ -157,6 +187,7 @@ export function LakeDetail() {
                       <th className="p-3 font-semibold rounded-tr-lg text-right">
                         Estado
                       </th>
+                      <th className="p-3 font-semibold text-right">Acción</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -175,6 +206,11 @@ export function LakeDetail() {
                           <span
                             className={`inline-block w-2.5 h-2.5 rounded-full ${s.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`}
                           ></span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <Link className="btn btn-secondary" to={`/lakes/${id}/stations/${s.id}/edit`}>
+                            Editar
+                          </Link>
                         </td>
                       </tr>
                     ))}
