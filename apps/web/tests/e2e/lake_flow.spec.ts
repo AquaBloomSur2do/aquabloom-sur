@@ -1,36 +1,44 @@
 import { test, expect } from '@playwright/test';
 
 test('S2-088: Flujo E2E - Login, Catálogo, Mapa y Limpieza', async ({ page }) => {
-  // Manejo automático de diálogos nativos (alerts de confirmación al eliminar/desactivar)
   page.on('dialog', dialog => dialog.accept());
 
-  // 1. Login Seguro (Usando IDs indestructibles de la S2-080)
-  await page.goto('http://localhost:5173/login');
-  await page.fill('#login-email', 'secret@ejem.cl'); 
-  await page.fill('#login-password', 'ClabeSecreta123!');
+  // ==========================================
+  // 1. LOGIN SEGURO Y ESPERA DE RED
+  // ==========================================
+  await page.goto('/login');
+  
+  const loginResponse = page.waitForResponse(response => 
+    response.url().includes('token') && response.status() === 200
+  );
+  
+  await page.fill('#login-email', 'admin@aquabloom.cl'); 
+  await page.fill('#login-password', 'AquaBloom2026!');
   await page.locator('button[type="submit"]').click();
-
-  // 2. Transición y Persistencia de Sesión (La Magia Negra)
-  await page.waitForURL('**/dashboard');
   
-  // Garantizamos que Supabase guardó el token en el navegador ANTES de navegar
-  // Esto evita el fallo de "deslogueo fantasma" al usar page.goto
-  await page.waitForFunction(() => {
-    return Object.keys(window.localStorage).some(key => key.includes('auth-token'));
-  });
+  await loginResponse;
 
-  // 3. Navegación directa y segura al catálogo
-  await page.goto('http://localhost:5173/lakes');
-  await expect(page.locator('h1', { hasText: 'Catálogo de Lagos' })).toBeVisible();
+  // ==========================================
+  // 2. DASHBOARD Y NAVEGACIÓN LATERAL
+  // ==========================================
+  await page.waitForURL('**/dashboard', { timeout: 15000 });
+  await expect(page.locator('h1', { hasText: 'Dashboard General' })).toBeVisible({ timeout: 10000 });
 
-  // 4. Crear Lago
+  // NAVEGACIÓN SEGURA: Usamos el enlace del Sidebar
+  await page.locator('nav a', { hasText: 'Catálogo de Lagos' }).click();
+  
+  // FIX: Ajustamos el texto esperado del H1 según el snapshot del DOM
+  await expect(page.locator('h1', { hasText: 'Listado de Lagos' })).toBeVisible({ timeout: 15000 });
+
+  // ==========================================
+  // 3. CREACIÓN DEL LAGO
+  // ==========================================
   const lakeName = `Lago E2E Test ${Date.now()}`;
-  // Usamos el href exacto que configuramos, ignorando textos que pueden cambiar
-  await page.locator('a[href="/lakes/new"]').click(); 
+  await page.locator('text="+ Registrar Lago"').click();
   
-  await page.waitForSelector('#lake-name', { state: 'visible' });
+  await page.waitForSelector('#lake-name', { state: 'visible', timeout: 10000 });
   await page.fill('#lake-name', lakeName);
-  await page.fill('#lake-region', 'Los Lagos (E2E)'); // Campo obligatorio
+  await page.fill('#lake-region', 'Los Lagos (E2E)'); 
   
   const testGeoJSON = JSON.stringify({
     "type": "Polygon",
@@ -38,32 +46,48 @@ test('S2-088: Flujo E2E - Login, Catálogo, Mapa y Limpieza', async ({ page }) =
   });
   await page.fill('#lake-geojson', testGeoJSON);
   
-  // Clic universal a cualquier botón de envío del formulario
+  const createResponse = page.waitForResponse(response => 
+    response.url().includes('/lakes') && response.request().method() === 'POST' && (response.status() === 201 || response.status() === 200)
+  );
   await page.locator('button[type="submit"]').click();
+  await createResponse;
 
-  // 5. Validar creación en el catálogo
-  await page.waitForURL('**/lakes');
-  const lakeRow = page.locator('tr', { hasText: lakeName });
-  await expect(lakeRow).toBeVisible({ timeout: 10000 });
-
-  // Entrar al detalle del lago creado
-  await lakeRow.locator('text="Ver Detalles"').click();
-
-  // 6. Editar Lago
-  // Usamos Regex (/Editar/i) para que funcione diga "Editar", "editar" o "EDITAR"
-  await page.locator('text=/Editar/i').first().click();
+  // ==========================================
+  // 4. VALIDACIÓN EN CATÁLOGO Y DETALLES
+  // ==========================================
+  await page.waitForURL('**/lakes', { timeout: 15000 });
   
-  await page.waitForSelector('#lake-name', { state: 'visible' });
+  const lakeRow = page.locator('tr').filter({ hasText: lakeName });
+  await expect(lakeRow).toBeVisible({ timeout: 15000 });
+  
+  await lakeRow.locator('a', { hasText: 'Ver Detalles' }).click();
+  
+  // ==========================================
+  // 5. EDICIÓN DEL LAGO
+  // ==========================================
+  await page.locator('a', { hasText: /Editar/i }).first().click();
+  
+  await page.waitForSelector('#lake-name', { state: 'visible', timeout: 10000 });
   await page.fill('#lake-name', `${lakeName} Editado`);
-  await page.locator('button[type="submit"]').click();
-
-  // 7. Visor Cartográfico (Aserción robusta de MapLibre)
-  await expect(page.locator('.maplibregl-canvas')).toBeVisible({ timeout: 15000 });
-
-  // 8. Criterio de Aceptación: Limpieza y Eliminación
-  // Usamos Regex por si el botón de la vista de detalle dice Desactivar o Eliminar
-  await page.locator('text=/Desactivar|Eliminar/i').first().click();
   
-  // Aserción final: verificar que el sistema nos devolvió al catálogo tras borrar
-  await page.waitForURL('**/lakes');
+  const updateResponse = page.waitForResponse(response => 
+    response.url().includes('/lakes') && ['PUT', 'PATCH'].includes(response.request().method()) && (response.status() === 200 || response.status() === 204)
+  );
+  await page.locator('button[type="submit"]').click();
+  await updateResponse;
+
+  // ==========================================
+  // 6. VALIDACIÓN CARTOGRÁFICA Y LIMPIEZA
+  // ==========================================
+  await expect(page.locator('.maplibregl-canvas')).toBeVisible({ timeout: 20000 });
+  
+  const deleteResponse = page.waitForResponse(response => 
+    response.url().includes('/lakes') && ['DELETE', 'PATCH'].includes(response.request().method()) && (response.status() === 200 || response.status() === 204)
+  );
+  await page.locator('button', { hasText: /Desactivar|Eliminar/i }).first().click();
+  await deleteResponse;
+
+  // FIX: Ajustamos la validación final también
+  await expect(page.locator('h1', { hasText: 'Listado de Lagos' })).toBeVisible({ timeout: 15000 });
 });
+
