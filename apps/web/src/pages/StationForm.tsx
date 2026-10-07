@@ -69,25 +69,28 @@ export function StationForm() {
     setError(null);
     setIsSubmitting(true);
     const coordinates = {
-      latitude: Number(latitude),
-      longitude: Number(longitude),
+      latitude: Number(String(latitude).replace(',', '.')),
+      longitude: Number(String(longitude).replace(',', '.')),
     };
 
     try {
       if (isEditMode && stationId) {
+        // Enviar solo los campos definidos para PATCH en StationUpdate
         await apiClient.patch(`stations/${stationId}`, {
-          name: name.trim(),
+          name: name.trim() || null,
           description: description.trim() || null,
           coordinates,
           status,
         });
         toast.success('Estación actualizada.');
       } else {
+        // Enviar payload plano para POST (ajustado a las expectativas típicas)
         await apiClient.post(`lakes/${lakeId}/stations`, {
           code: code.trim(),
           name: name.trim(),
           description: description.trim() || null,
-          ...coordinates,
+          latitude: coordinates.latitude,
+          longitude: coordinates.longitude,
         });
         toast.success('Estación creada.');
       }
@@ -143,11 +146,11 @@ export function StationForm() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="block text-sm font-semibold text-gray-700">
             Latitud
-            <input className="mt-1 w-full p-2 border rounded" type="number" step="any" min="-90" max="90" value={latitude} onChange={(event) => setLatitude(event.target.value)} required />
+            <input className="mt-1 w-full p-2 border rounded" type="text" value={latitude} onChange={(event) => setLatitude(event.target.value)} required />
           </label>
           <label className="block text-sm font-semibold text-gray-700">
             Longitud
-            <input className="mt-1 w-full p-2 border rounded" type="number" step="any" min="-180" max="180" value={longitude} onChange={(event) => setLongitude(event.target.value)} required />
+            <input className="mt-1 w-full p-2 border rounded" type="text" value={longitude} onChange={(event) => setLongitude(event.target.value)} required />
           </label>
         </div>
 

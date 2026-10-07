@@ -2,10 +2,11 @@ from functools import lru_cache
 from uuid import UUID
 
 import jwt
-from app.config import settings
 from fastapi import APIRouter, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
+
+from app.config import settings
 
 from .database import supabase
 from .permissions import CATALOG_ACTIONS, has_permission
@@ -51,6 +52,18 @@ def get_supabase_jwks_client(project_url: str) -> jwt.PyJWKClient:
 def verify_supabase_jwt(
     credentials: HTTPAuthorizationCredentials = Security(security),  # noqa: B008
 ) -> dict:
+    # Cortocircuito para desarrollo: simula un administrador sin validar firma
+    if settings.environment == "development":
+        return {
+            "sub": "11111111-1111-1111-1111-111111111111",
+            "email": "admin@aquabloom.cl",
+            "user_metadata": {"role": "administrador"}
+        }
+
+    token = credentials.credentials
+    issuer = f"{settings.supabase_url.rstrip('/')}/auth/v1"
+    
+    # ... resto del bloque try/except original ...
     token = credentials.credentials
     issuer = f"{settings.supabase_url.rstrip('/')}/auth/v1"
 
@@ -172,3 +185,5 @@ def require_catalog_disable_permission(
             detail="No tienes permisos para desactivar lagos.",
         )
     return payload
+
+
