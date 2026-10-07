@@ -13,8 +13,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Asignación limpia y directa basada en la sesión activa
-  const getRoleForUser = (_email?: string | null): string => {
+// Asignación limpia y directa basada en la sesión activa
+  const getRoleForUser = (): string => {
     return 'administrador'; // Forzamos el rol de administrador para acceso total
   };
 
@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       if (isMounted) {
         const authUser = session?.user ?? null;
         if (authUser) {
-          const userRole = getRoleForUser(authUser.email);
+          const userRole = getRoleForUser();
           setUser({ ...authUser, role: userRole } as User);
         } else {
           setUser(null);
@@ -46,7 +46,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
         if (error) throw error;
         if (isMounted && session?.user) {
-          const userRole = getRoleForUser(session.user.email);
+          const userRole = getRoleForUser();
           setUser({ ...session.user, role: userRole } as User);
           setToken(session.access_token);
         }
@@ -74,7 +74,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     if (error) throw error;
 
     if (data.user) {
-      const userRole = getRoleForUser(data.user.email);
+      const userRole = getRoleForUser();
       setUser({ ...data.user, role: userRole } as User);
     }
     setToken(data.session?.access_token ?? null);
