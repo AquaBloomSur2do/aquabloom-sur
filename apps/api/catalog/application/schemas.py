@@ -55,6 +55,7 @@ class StationResponse(StationBase):
 # CONTRATOS S2-102: Observaciones Espectrales
 # ==========================================
 
+
 class QualityEnum(str, Enum):
     OPTIMA = "OPTIMA"
     ACEPTABLE = "ACEPTABLE"
@@ -62,13 +63,25 @@ class QualityEnum(str, Enum):
 
 
 class SpectralObservationBase(BaseModel):
-    scene_id: UUID = Field(..., description="Identificador único de la escena de origen (Ref: S2-101)")
-    sample_id: UUID = Field(..., description="Referencia al identificador de la muestra in-situ")
-    bands: dict[str, float] = Field(..., description="Valores por banda espectral (ej. {'B04': 0.12, 'B08': 0.45})")
-    spectral_index: str = Field(..., description="Nombre del índice espectral calculado (ej. 'NDVI', 'NDWI')")
+    scene_id: UUID = Field(
+        ..., description="Identificador único de la escena de origen (Ref: S2-101)"
+    )
+    sample_id: UUID = Field(
+        ..., description="Referencia al identificador de la muestra in-situ"
+    )
+    bands: dict[str, float] = Field(
+        ..., description="Valores por banda espectral (ej. {'B04': 0.12, 'B08': 0.45})"
+    )
+    spectral_index: str = Field(
+        ..., description="Nombre del índice espectral calculado (ej. 'NDVI', 'NDWI')"
+    )
     index_value: float = Field(..., description="Valor numérico resultante del índice")
-    unit: str = Field(..., description="Unidad de medida (ej. 'reflectancia', 'adimensional')")
-    quality: QualityEnum = Field(..., description="Bandera de calidad de la observación espectral")
+    unit: str = Field(
+        ..., description="Unidad de medida (ej. 'reflectancia', 'adimensional')"
+    )
+    quality: QualityEnum = Field(
+        ..., description="Bandera de calidad de la observación espectral"
+    )
 
 
 class SpectralObservationCreate(SpectralObservationBase):
@@ -85,8 +98,8 @@ class SpectralObservationCreate(SpectralObservationBase):
                         "spectral_index": "NDVI",
                         "index_value": 0.625,
                         "unit": "adimensional",
-                        "quality": "OPTIMA"
-                    }
+                        "quality": "OPTIMA",
+                    },
                 },
                 {
                     "summary": "Caso Rechazado (Saturación/Nubes)",
@@ -98,15 +111,17 @@ class SpectralObservationCreate(SpectralObservationBase):
                         "spectral_index": "NDVI",
                         "index_value": 0.0,
                         "unit": "adimensional",
-                        "quality": "RECHAZADA"
-                    }
-                }
+                        "quality": "RECHAZADA",
+                    },
+                },
             ]
         }
 
 
 class SpectralObservationResponse(SpectralObservationBase):
-    id: UUID = Field(..., description="Identificador único de la observación en la base de datos")
+    id: UUID = Field(
+        ..., description="Identificador único de la observación en la base de datos"
+    )
 
     class Config:
         from_attributes = True
@@ -116,7 +131,7 @@ class SpectralObservationResponse(SpectralObservationBase):
 # CONTRATOS S2-103: Versiones de Dataset
 # ==========================================
 
-# --- Estados Explícitos ---
+
 class CandidateState(str, Enum):
     PENDING = "PENDING"
     APPROVED = "APPROVED"
@@ -129,11 +144,14 @@ class VersionState(str, Enum):
     ARCHIVED = "ARCHIVED"
 
 
-# --- 1. Candidatos ---
 class DatasetCandidateBase(BaseModel):
     lake_id: UUID = Field(..., description="Identificador del lago origen")
-    data_uri: str = Field(..., description="Ruta de almacenamiento del dataset candidato (ej. s3://...)")
-    status: CandidateState = Field(default=CandidateState.PENDING, description="Estado actual del candidato")
+    data_uri: str = Field(
+        ..., description="Ruta de almacenamiento del dataset candidato (ej. s3://...)"
+    )
+    status: CandidateState = Field(
+        default=CandidateState.PENDING, description="Estado actual del candidato"
+    )
 
 
 class DatasetCandidateResponse(DatasetCandidateBase):
@@ -142,17 +160,21 @@ class DatasetCandidateResponse(DatasetCandidateBase):
     model_config = {"from_attributes": True}
 
 
-# --- 2. Decisión ---
 class DatasetDecisionCreate(BaseModel):
     candidate_id: UUID = Field(..., description="ID del candidato a evaluar")
-    decision: CandidateState = Field(..., description="Resolución estricta (APPROVED o REJECTED)")
-    comments: str | None = Field(None, description="Justificación técnica de la evaluación")
+    decision: CandidateState = Field(
+        ..., description="Resolución estricta (APPROVED o REJECTED)"
+    )
+    comments: str | None = Field(
+        None, description="Justificación técnica de la evaluación"
+    )
 
 
-# --- 3. Versión ---
 class DatasetVersionBase(BaseModel):
     tag: str = Field(..., description="Etiqueta semántica de versión (ej. v1.0.0)")
-    status: VersionState = Field(default=VersionState.DRAFT, description="Estado del ciclo de vida")
+    status: VersionState = Field(
+        default=VersionState.DRAFT, description="Estado del ciclo de vida"
+    )
     changelog: str = Field(..., description="Registro detallado de modificaciones")
 
 
@@ -162,16 +184,17 @@ class DatasetVersionResponse(DatasetVersionBase):
     model_config = {"from_attributes": True}
 
 
-# --- 4. Manifiesto ---
 class DatasetManifestBase(BaseModel):
     version_id: UUID = Field(..., description="ID de la versión consolidada")
-    file_paths: list[str] = Field(..., description="Listado exacto de los archivos incluidos")
-    checksum: str = Field(..., description="Hash de validación de integridad (ej. SHA-256)")
+    file_paths: list[str] = Field(
+        ..., description="Listado exacto de los archivos incluidos"
+    )
+    checksum: str = Field(
+        ..., description="Hash de validación de integridad (ej. SHA-256)"
+    )
 
 
 class DatasetManifestResponse(DatasetManifestBase):
     id: UUID
     generated_at: datetime
     model_config = {"from_attributes": True}
-
-    
