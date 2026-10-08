@@ -1,0 +1,198 @@
+openapi: 3.0.3
+info:
+  title: AquaBloom Sur - Contrato de Escenas
+  version: 1.0.0
+  license:
+    name: Propietaria (Todos los derechos reservados)
+    url: https://choosealicense.com/no-permission/
+servers:
+  - url: /api/v1
+    description: API Gateway
+security:
+  - bearerAuth: []
+paths:
+  /scenes:
+    get:
+      summary: "Listar escenas satelitales"
+      operationId: listScenes
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: "Listado exitoso"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SceneList'
+        '400':
+          description: "Solicitud inválida"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: "Registrar una nueva escena"
+      operationId: registerScene
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SceneRegistration'
+      responses:
+        '201':
+          description: "Escena registrada"
+        '400':
+          description: "Solicitud inválida"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Token JWT proporcionado por Supabase Auth."
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: "Número de página a solicitar para el listado."
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    LimitParam:
+      name: limit
+      in: query
+      description: "Cantidad máxima de elementos por página."
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  schemas:
+    ErrorResponse:
+      type: object
+      description: "Esquema uniforme de error de la plataforma."
+      required:
+        - type
+        - code
+        - message
+        - correlation_id
+      properties:
+        type:
+          type: string
+          example: "validation_error"
+        code:
+          type: integer
+          example: 400
+        message:
+          type: string
+          example: "Parámetros inválidos."
+        details:
+          type: object
+          additionalProperties: true
+        correlation_id:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-e5f6-7890-1234-56789abcdef0"
+
+    SceneDetail:
+      type: object
+      description: "Detalle completo de una escena satelital registrada o procesada."
+      required:
+        - id
+        - lake_id
+        - external_id
+        - provider
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "Identificador interno de la escena en AquaBloom Sur."
+        lake_id:
+          type: string
+          format: uuid
+          description: "Identificador del lago asociado."
+        external_id:
+          type: string
+          description: "Identificador externo del producto en el catálogo del servicio satelital."
+        provider:
+          type: string
+          description: "Procedencia u origen de la escena satelital (ej. Copernicus Data Space)."
+        cloud_cover:
+          type: number
+          format: float
+          description: "Porcentaje de nubosidad."
+        status:
+          type: string
+          enum: [pending, processed, failed, rejected]
+      example:
+        id: "a1b2c3d4-e5f6-7890-1234-56789abcdef0"
+        lake_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+        external_id: "S2B_MSIL2A_20260818T143000_N0509_R053_T18HYC_20260818T164500"
+        provider: "Copernicus Data Space"
+        cloud_cover: 12.5
+        status: "processed"
+
+    SceneRegistration:
+      type: object
+      description: "Contrato para solicitar el registro de una nueva escena satelital."
+      required:
+        - lake_id
+        - external_id
+        - provider
+      properties:
+        lake_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        provider:
+          type: string
+      example:
+        lake_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+        external_id: "S2B_MSIL2A_20260818T143000_N0509_R053_T18HYC_20260818T164500"
+        provider: "Copernicus Data Space"
+
+    SceneList:
+      type: object
+      description: "Respuesta paginada del catálogo de escenas satelitales."
+      required:
+        - items
+        - total
+        - page
+        - page_size
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SceneDetail'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+      example:
+        items:
+          - id: "a1b2c3d4-e5f6-7890-1234-56789abcdef0"
+            lake_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+            external_id: "S2B_MSIL2A_20260818T143000_N0509_R053_T18HYC_20260818T164500"
+            provider: "Copernicus Data Space"
+            cloud_cover: 12.5
+            status: "processed"
+        total: 145
+        page: 1
+        page_size: 20
+           
