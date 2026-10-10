@@ -1,0 +1,28 @@
+{
+  "acquisition_date": "2025-01-15",
+  "bands": {
+    "B04": 1,
+    "B05": 2,
+    "water_mask": 3
+  },
+  "crs": "EPSG:32718",
+  "height": 100,
+  "is_synthetic": true,
+  "provenance": "Synthetic Sentinel-2 L2A Pilot",
+  "raster_file": "pilot_sentinel2_l2a.tif",
+  "reflectance_scale": 10000,
+  "sha256": "fc59e33f0f627dd5232b73e86efd62bd54690b78a0539f7c76e38602ad062967",
+  "transform": [
+    700000.0,
+    10.0,
+    0.0,
+    5700000.0,
+    0.0,
+    -10.0
+  ],
+  "water_mask_values": {
+    "invalid": 0,
+    "water": 1
+  },
+  "width": 100
+}
