@@ -1,12 +1,11 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
-
-from fastapi.testclient import TestClient
 
 from app.auth import verify_supabase_jwt
 from app.main import app
 from app.services import get_organization_members_for_user
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -114,8 +113,8 @@ def test_get_organization_members_maps_profile_name_to_full_name():
                         "user_id": str(user_id),
                         "role": "researcher",
                         "status": "active",
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                        "created_at": datetime.now(UTC).isoformat(),
+                        "updated_at": datetime.now(UTC).isoformat(),
                     }
                 ]
             )
