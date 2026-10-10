@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -114,8 +114,8 @@ def test_get_organization_members_maps_profile_name_to_full_name():
                         "user_id": str(user_id),
                         "role": "researcher",
                         "status": "active",
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                        "created_at": datetime.now(UTC).isoformat(),
+                        "updated_at": datetime.now(UTC).isoformat(),
                     }
                 ]
             )

@@ -27,7 +27,7 @@ def get_supabase_client() -> Client | None:
         )
 
         return create_client(supabase_url=url, supabase_key=clave_plana)
-    except Exception as e:  # noqa: BLE001
+    except (ValueError, ConnectionError, TimeoutError, RuntimeError) as e:
         logger.error(f"Fallo crítico al inicializar cliente Supabase: {e}")
         return None
 
@@ -47,5 +47,5 @@ def check_supabase_connection() -> dict:
     try:
         supabase.table("profiles").select("id").limit(1).execute()
         return {"status": "ok", "connection": "successful"}
-    except Exception:  # noqa: BLE001
+    except (ConnectionError, TimeoutError, RuntimeError):
         return {"status": "error", "detail": "Fallo de red o permisos insuficientes."}
