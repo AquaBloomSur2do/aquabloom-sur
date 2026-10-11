@@ -84,6 +84,14 @@ def _clean_lake_row(raw_row: dict[str, Any]) -> dict[str, Any]:
             "type": "Polygon",
             "coordinates": [],
         }
+    if "stations" in raw_row:
+        stations_data = raw_row["stations"]
+        if isinstance(stations_data, list) and len(stations_data) > 0:
+            cleaned["stations_count"] = stations_data[0].get("count", 0)
+        elif isinstance(stations_data, dict):
+            cleaned["stations_count"] = stations_data.get("count", 0)
+        else:
+            cleaned["stations_count"] = 0
 
     return cleaned
 
@@ -206,6 +214,9 @@ def get_lakes_repository(
 ) -> PaginatedLakes:
     """Recupera lagos con filtros combinados y paginación."""
     query = client.table("lakes").select(", ".join(PUBLIC_LAKE_FIELDS), count="exact")
+
+    fields = ", ".join(PUBLIC_LAKE_FIELDS)
+    query = client.table("lakes").select(f"{fields}, stations(count)", count="exact")
 
     if text:
         query = query.ilike("name", f"%{text}%")
