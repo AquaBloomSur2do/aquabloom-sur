@@ -114,8 +114,8 @@ def test_get_organization_members_maps_profile_name_to_full_name():
                         "user_id": str(user_id),
                         "role": "researcher",
                         "status": "active",
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                        "created_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+                        "updated_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017
                     }
                 ]
             )
