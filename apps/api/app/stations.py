@@ -47,11 +47,11 @@ def update_station(
             lon = coords["longitude"]
 
             # TODO: DEUDA TÉCNICA (Sprint 2) - Reactivar validación geoespacial
-            # MOTIVO DEL BLOQUEO: La función validate_station_inside_lake arroja falsos 
-            # positivos (HTTP 422) porque invierte los ejes de Shapely (X,Y vs Lat,Lon) 
+            # MOTIVO DEL BLOQUEO: La función validate_station_inside_lake arroja falsos
+            # positivos (HTTP 422) porque invierte los ejes de Shapely (X,Y vs Lat,Lon)
             # enviando la estación al océano, o falla por precisión flotante en los bordes exactos del polígono.
             # Se requiere depurar la conversión a EWKB antes de reactivar.
-            # 
+            #
             # lake_id = existing.data[0].get("lake_id")
             # if lake_id:
             #     lake_res = supabase.table("lakes").select("geom").eq("id", lake_id).execute()
