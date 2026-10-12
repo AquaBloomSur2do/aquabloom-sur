@@ -1,7 +1,7 @@
 import { createContext } from 'react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
-export type User = SupabaseUser;
+export type User = SupabaseUser & { role: string };
 
 export interface AuthContextType {
   user: User | null;

@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/useAuth';
-import { supabase } from '../lib/supabase';
 
 const MENU_ITEMS = [
   {
@@ -23,66 +21,14 @@ const MENU_ITEMS = [
 ];
 
 export const PrivateLayout = () => {
-  const [isLoading, setIsLoading] = useState(true);
-  const [userRole, setUserRole] = useState<string | null>(null);
-  
   const navigate = useNavigate();
-  const { logout } = useAuth();
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchSession = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-
-        if (error || !session) {
-          if (isMounted) navigate('/login', { replace: true });
-          return;
-        }
-
-        const role = session.user?.user_metadata?.role;
-        
-        if (isMounted) {
-          if (role) {
-            setUserRole(role);
-          } else {
-            // FIX: Si el usuario existe pero no tiene rol, le asignamos un estado neutro
-            // en lugar de destruir su sesión y causar bucles infinitos.
-            setUserRole('sin_asignar');
-          }
-        }
-      } catch (err) {
-        console.error("Error validando sesión:", err);
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    };
-
-    fetchSession();
-
-    // Cleanup function para prevenir fugas de memoria
-    return () => {
-      isMounted = false;
-    };
-  }, [navigate]);
+  const { user, logout } = useAuth();
+  const userRole = user?.role ?? null;
 
   const handleLogout = async () => {
     await logout();
     navigate('/login', { replace: true });
   };
-
-  // Pantalla de carga robusta
-  if (isLoading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-gray-100">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-gray-600 font-medium">Verificando permisos de acceso...</p>
-        </div>
-      </div>
-    );
-  }
 
   // Si userRole es 'sin_asignar', visibleMenuItems quedará vacío de forma segura
   const visibleMenuItems = MENU_ITEMS.filter((item) =>
