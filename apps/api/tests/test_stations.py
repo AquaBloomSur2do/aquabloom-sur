@@ -83,6 +83,15 @@ def test_validate_station_inside_lake():
         validate_station_inside_lake(mock_lake_geojson, lat=15.0, lon=15.0)
 
 
+def test_validate_station_inside_lake_accepts_wkt_string():
+    lake_wkt = "POLYGON((0 0, 0 10, 10 10, 10 0, 0 0))"
+
+    validate_station_inside_lake(lake_wkt, lat=5.0, lon=5.0)
+
+    with pytest.raises(ValueError, match="fuera del polígono"):
+        validate_station_inside_lake(lake_wkt, lat=15.0, lon=15.0)
+
+
 def test_crear_estacion_codigo_duplicado(monkeypatch):
     lake_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
     fake_db = FakeSupabase(
