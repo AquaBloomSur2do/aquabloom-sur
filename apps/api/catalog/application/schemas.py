@@ -1,7 +1,7 @@
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class GeoJsonPoint(BaseModel):
@@ -47,24 +47,4 @@ class StationResponse(StationBase):
 
     class Config:
         from_attributes = True
-
-class ImportCreate(BaseModel):
-    station_id: UUID = Field(..., description="ID de la estación asociada")
-    srid: int = Field(..., description="Spatial Reference System Identifier")
-    chlorophyll_a: float = Field(..., description="Nivel de clorofila-a en mg/L")
-    sample_date: str = Field(..., description="Fecha de la muestra")
-
-    @field_validator('srid')
-    @classmethod
-    def validate_srid(cls, value):
-        if value != 4326:
-            raise ValueError("El SRID debe ser estrictamente 4326 (WGS 84)")
-        return value
-
-    @field_validator('chlorophyll_a')
-    @classmethod
-    def validate_units(cls, value):
-        if value < 0:
-            raise ValueError("El valor de clorofila-a no puede ser negativo")
-        return value
-    
+  
