@@ -22,8 +22,9 @@ const MENU_ITEMS = [
 
 export const PrivateLayout = () => {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
-  const userRole = user?.role ?? null;
+  const { user, isLoading, logout } = useAuth();
+  const role = user?.user_metadata?.role;
+  const userRole = typeof role === 'string' ? role : null;
 
   const handleLogout = async () => {
     await logout();
@@ -34,6 +35,20 @@ export const PrivateLayout = () => {
   const visibleMenuItems = MENU_ITEMS.filter((item) =>
     userRole && item.allowedRoles.includes(userRole)
   );
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-100" role="status" aria-live="polite">
+        <div className="flex items-center gap-3 text-gray-600">
+          <span
+            className="h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-700"
+            aria-hidden="true"
+          />
+          <span>Cargando sesión...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-gray-100">
