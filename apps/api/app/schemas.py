@@ -214,7 +214,7 @@ class OrganizationMemberResponse(BaseModel):
 class ProfileOption(BaseModel):
     id: UUID
     email: str | None = None
-    name: str
+    name: str | None = None
 
 
 # --- Esquemas de Station ---
