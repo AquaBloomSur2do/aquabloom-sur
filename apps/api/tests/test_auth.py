@@ -294,7 +294,7 @@ def test_verifica_token_es256_con_jwks(monkeypatch):
     issuer = f"{auth.settings.supabase_url.rstrip('/')}/auth/v1"
     token = auth.jwt.encode(
         {
-            "sub": "123e4567-e89b-12d3-a456-426614174000",
+            "sub": "11111111-1111-1111-1111-111111111111",
             "aud": "authenticated",
             "iss": issuer,
             "exp": int(time.time()) + 60,
@@ -313,7 +313,7 @@ def test_verifica_token_es256_con_jwks(monkeypatch):
 
     payload = auth.verify_supabase_jwt(credentials)
 
-    assert payload["sub"] == "123e4567-e89b-12d3-a456-426614174000"
+    assert payload["sub"] == "11111111-1111-1111-1111-111111111111"
 
 
 def test_verifica_token_hs256_legacy(monkeypatch):
@@ -322,7 +322,7 @@ def test_verifica_token_hs256_legacy(monkeypatch):
     issuer = f"{auth.settings.supabase_url.rstrip('/')}/auth/v1"
     token = auth.jwt.encode(
         {
-            "sub": "123e4567-e89b-12d3-a456-426614174000",
+            "sub": "11111111-1111-1111-1111-111111111111",
             "aud": "authenticated",
             "iss": issuer,
             "exp": int(time.time()) + 60,
@@ -334,4 +334,4 @@ def test_verifica_token_hs256_legacy(monkeypatch):
 
     payload = auth.verify_supabase_jwt(credentials)
 
-    assert payload["sub"] == "123e4567-e89b-12d3-a456-426614174000"
+    assert payload["sub"] == "11111111-1111-1111-1111-111111111111"
