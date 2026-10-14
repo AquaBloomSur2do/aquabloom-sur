@@ -109,3 +109,46 @@ def test_dashboard_summary_requires_authentication():
     app.dependency_overrides.clear()
     response = TestClient(app).get("/api/v1/dashboard/summary")
     assert response.status_code == 401
+
+def test_dashboard_profiles_returns_profiles_list_for_authenticated_user(monkeypatch):
+    class FakeProfilesTable:
+        def select(self, _columns):
+            return self
+
+        def order(self, _field):
+            return self
+
+        def execute(self):
+            return SimpleNamespace(
+                data=[
+                    {
+                        "id": "11111111-1111-1111-1111-111111111111",
+                        "email": "user@aquabloom.cl",
+                        "name": None,
+                    }
+                ]
+            )
+
+    class FakeProfilesClient:
+        def table(self, table_name):
+            assert table_name == "profiles"
+            return FakeProfilesTable()
+
+    payload = {"sub": "member-user", "user_metadata": {"role": "investigador"}}
+    app.dependency_overrides[verify_supabase_jwt] = lambda: payload
+    monkeypatch.setattr("app.dashboard.supabase", FakeProfilesClient())
+
+    try:
+        response = TestClient(app).get("/api/v1/dashboard/profiles")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "email": "user@aquabloom.cl",
+            "name": None,
+        }
+    ]
+    
