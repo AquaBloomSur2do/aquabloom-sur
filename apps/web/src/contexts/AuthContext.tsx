@@ -15,11 +15,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   useEffect(() => {
     let isMounted = true;
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (isMounted) {
-        setUser(session?.user ?? null);
+        const authUser = session?.user ?? null;
+        if (authUser) {
+          setUser(authUser);
+        } else {
+          setUser(null);
+        }
         setToken(session?.access_token ?? null);
         setIsLoading(false);
       }
@@ -33,9 +39,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         } = await supabase.auth.getSession();
 
         if (error) throw error;
-        if (isMounted) {
-          setUser(session?.user ?? null);
-          setToken(session?.access_token ?? null);
+        if (isMounted && session?.user) {
+          setUser(session.user);
+          setToken(session.access_token);
         }
       } catch (error) {
         console.error('No se pudo restaurar la sesión de autenticación.', error);
@@ -60,8 +66,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const { data, error } = await supabase.auth.signInWithPassword(credentials);
     if (error) throw error;
 
-    setUser(data.user);
-    setToken(data.session.access_token);
+    if (data.user) {
+      setUser(data.user);
+    }
+    setToken(data.session?.access_token ?? null);
   };
 
   const logout: AuthContextType['logout'] = async () => {
@@ -81,3 +89,4 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     </AuthContext.Provider>
   );
 };
+
