@@ -5,6 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     environment: str = "development"
     cors_origins: str = "http://localhost:5173"
+    satellite_service_url: str = "http://satellite:8000"
+    scientific_service_url: str = "http://scientific:8000"
 
     # Variables obligatorias (sin valor por defecto)
     supabase_url: str
