@@ -16,6 +16,7 @@ from app.lakes import router as lakes_router
 from app.organizations import router as organizations_router
 from app.stations import router as stations_router
 from catalog.application.endpoints import router as catalog_router
+from ingestion.application.endpoints import router as ingestion_router
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
@@ -63,6 +64,7 @@ app.add_exception_handler(Exception, global_exception_handler)
 app.include_router(auth_router)
 app.include_router(organizations_router)
 app.include_router(imports_router)
+app.include_router(ingestion_router)
 app.include_router(lakes_router)
 app.include_router(stations_router)
 app.include_router(catalog_router, tags=["Catalog"])
