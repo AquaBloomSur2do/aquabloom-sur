@@ -1,4 +1,27 @@
-from pydantic import BaseModel, field_validator
+from datetime import datetime
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, Field, field_validator
+
+
+class PreparedInputCreate(BaseModel):
+    original_import_id: UUID
+    source_key: str = Field(..., min_length=1, max_length=255)
+    metadata: dict[str, Any]
+
+    @field_validator("source_key", mode="before")
+    @classmethod
+    def normalize_source_key(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else value
+
+
+class PreparedInputResponse(BaseModel):
+    id: UUID
+    original_import_id: UUID
+    source_key: str
+    metadata: dict[str, Any]
+    created_at: datetime
 
 
 class ImportCreate(BaseModel):
