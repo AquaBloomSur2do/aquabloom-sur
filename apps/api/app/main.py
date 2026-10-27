@@ -9,6 +9,7 @@ from app.auth import router as auth_router
 from app.config import settings
 from app.dashboard import router as dashboard_router
 from app.database import check_supabase_connection
+from app.datasets import router as datasets_router
 from app.dependencies import require_permission
 from app.gateway import router as gateway_router
 from app.handlers import auth_exception_handler, global_exception_handler
@@ -68,6 +69,7 @@ app.include_router(organizations_router)
 app.include_router(imports_router)
 app.include_router(lakes_router)
 app.include_router(stations_router)
+app.include_router(datasets_router)
 app.include_router(scenes_router)
 app.include_router(catalog_router, tags=["Catalog"])
 app.include_router(dashboard_router)
