@@ -38,7 +38,7 @@ def test_filter_scene_pairs_rejects_negative_window():
 
 def test_filter_scene_pairs_rejects_mixed_timezone_awareness():
     aware = datetime(2026, 10, 1, tzinfo=UTC)
-    naive = datetime(2026, 10, 2)  # noqa: DTZ001 - intentionally tests a naive value
+    naive = datetime.fromisoformat("2026-10-02")
 
     with pytest.raises(ValueError, match="zona horaria"):
         filter_scene_pairs([(aware, naive)])
