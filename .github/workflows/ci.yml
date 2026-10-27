@@ -82,7 +82,7 @@ jobs:
           pip install httpx pytest ruff
 
       - name: Ejecutar pruebas
-        run: pytest
+        run: python -m pytest
 
       - name: Ejecutar linter
         run: ruff check .
