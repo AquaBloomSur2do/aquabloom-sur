@@ -271,3 +271,20 @@ activa y un rol reconocido. El registro de decisiones se restringe a
 
 La respuesta `201` contiene la decisión guardada. Un usuario sin permiso recibe
 `403` y la interfaz debe mantener visible el motivo del rechazo.
+## Listado acotado de escenas registradas
+
+### Listar escenas de un lago
+
+* **Ruta:** GET `/api/v1/lakes/{lake_id}/scenes`
+* **Descripción:** Lista escenas que ya están registradas para un lago, filtrando por un rango inclusivo de fechas de adquisición. No consulta Copernicus ni inicia una búsqueda remota.
+* **Parámetros requeridos:** `start_date` y `end_date` en formato `YYYY-MM-DD`.
+* **Parámetros opcionales:** `page` (por defecto `1`) y `page_size` (por defecto `20`, máximo `100`).
+* **Validación:** La fecha inicial debe ser anterior o igual a la fecha final. Un identificador de lago inexistente responde `404`.
+
+Ejemplo:
+
+```text
+GET /api/v1/lakes/11111111-1111-1111-1111-111111111111/scenes?start_date=2026-03-01&end_date=2026-03-31&page=1&page_size=20
+```
+
+La respuesta usa el formato paginado `items`, `page`, `page_size` y `total`. Cada escena incluye su identificador, lago, identificador de escena, fecha de adquisición y fecha de registro. Para crear la tabla de registros, aplica `database/migrations/013_create_scenes_table.sql`.
