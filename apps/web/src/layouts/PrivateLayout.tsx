@@ -17,7 +17,22 @@ const MENU_ITEMS = [
     label: 'Estaciones',
     allowedRoles: ['administrador', 'investigador'],
   },
-  { path: '/organizations', label: 'Administración', allowedRoles: ['administrador'] },
+  {
+    path: '/datasets/review',
+    label: 'Revisión de datasets',
+    allowedRoles: [
+      'admin',
+      'administrador',
+      'supervisor',
+      'investigador',
+      'auditor',
+    ],
+  },
+  {
+    path: '/organizations',
+    label: 'Administración',
+    allowedRoles: ['administrador'],
+  },
 ];
 
 export const PrivateLayout = () => {
@@ -32,13 +47,17 @@ export const PrivateLayout = () => {
   };
 
   // Si userRole es 'sin_asignar', visibleMenuItems quedará vacío de forma segura
-  const visibleMenuItems = MENU_ITEMS.filter((item) =>
-    userRole && item.allowedRoles.includes(userRole)
+  const visibleMenuItems = MENU_ITEMS.filter(
+    (item) => userRole && item.allowedRoles.includes(userRole)
   );
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100" role="status" aria-live="polite">
+      <div
+        className="flex min-h-screen items-center justify-center bg-gray-100"
+        role="status"
+        aria-live="polite"
+      >
         <div className="flex items-center gap-3 text-gray-600">
           <span
             className="h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-700"
@@ -76,9 +95,11 @@ export const PrivateLayout = () => {
               {item.label}
             </NavLink>
           ))}
-          
+
           {visibleMenuItems.length === 0 && (
-            <p className="text-sm text-red-500 px-4">Contacte a soporte para solicitar permisos.</p>
+            <p className="text-sm text-red-500 px-4">
+              Contacte a soporte para solicitar permisos.
+            </p>
           )}
         </nav>
 
@@ -98,4 +119,3 @@ export const PrivateLayout = () => {
     </div>
   );
 };
-

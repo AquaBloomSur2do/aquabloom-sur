@@ -45,3 +45,12 @@ migraciones 013 y 014. El script crea usuarios y datos de prueba dentro de una
 transacción y termina con `ROLLBACK`. Comprueba lectura desde otra organización,
 lectura y aprobación con rol sin permiso, lectura de un investigador de la
 organización propietaria y aprobación por un supervisor.
+
+## Revisión desde la aplicación
+
+La interfaz web de revisión consume `GET /api/v1/datasets/review` y
+`POST /api/v1/datasets/memberships/{membership_id}/decisions`. La API comprueba
+la membership activa del usuario y su rol antes de listar datos o registrar una
+decisión. Para que el cliente Supabase del backend consulte `dataset`, ese
+esquema debe estar habilitado en la configuración **Exposed schemas** de la API
+de Supabase, además de tener aplicadas las migraciones 013 y 014.

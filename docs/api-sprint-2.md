@@ -215,3 +215,59 @@ export const updateStation = async (session, stationId, updateData) => {
   });
   return await response.json();
 };
+
+## Revisión y decisión de inclusión de datasets
+
+Las rutas de revisión requieren una sesión Supabase válida. Solo se listan los
+datasets pertenecientes a organizaciones donde el usuario tiene una membership
+activa y un rol reconocido. El registro de decisiones se restringe a
+`admin`, `administrador` y `supervisor` de la organización propietaria.
+
+### Listar datasets y escenas para revisión
+
+* **Ruta:** `GET /api/v1/datasets/review`
+* **Respuesta:** datasets visibles, versiones y escenas. Cada escena incluye
+  su historial de decisiones ordenado desde la más reciente.
+
+```json
+[
+  {
+    "id": "dataset-uuid",
+    "organization_id": "organization-uuid",
+    "name": "Dataset piloto",
+    "versions": [
+      {
+        "id": "version-uuid",
+        "version_number": 1,
+        "status": "draft",
+        "memberships": [
+          {
+            "id": "membership-uuid",
+            "scene_provider": "sentinel",
+            "scene_external_id": "scene-001",
+            "decisions": []
+          }
+        ]
+      }
+    ]
+  }
+]
+```
+
+### Registrar decisión de inclusión
+
+* **Ruta:** `POST /api/v1/datasets/memberships/{membership_id}/decisions`
+* **Permisos:** membership activa en la organización del dataset con rol
+  `admin`, `administrador` o `supervisor`.
+* **Payload:** `decision` debe ser `accepted` o `rejected`; `reason` es
+  obligatorio, no puede quedar en blanco y admite hasta 2000 caracteres.
+
+```json
+{
+  "decision": "accepted",
+  "reason": "La escena tiene cobertura válida."
+}
+```
+
+La respuesta `201` contiene la decisión guardada. Un usuario sin permiso recibe
+`403` y la interfaz debe mantener visible el motivo del rechazo.
