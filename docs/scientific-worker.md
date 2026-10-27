@@ -49,7 +49,7 @@ Desde `apps/satellite`:
 
 ```powershell
 python -m pip install -r requirements.txt
-python -m pip install pytest ruff
+python -m pip install httpx2 pytest ruff
 python -m pytest -q
 ruff check .
 python -m compileall app tests
