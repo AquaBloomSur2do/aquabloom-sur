@@ -79,7 +79,7 @@ jobs:
       - name: Instalar dependencias y herramientas
         run: |
           pip install -r requirements.txt
-          pip install httpx pytest ruff
+          pip install httpx2 pytest ruff
 
       - name: Ejecutar pruebas
         run: python -m pytest
