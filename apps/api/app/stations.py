@@ -6,7 +6,7 @@ from app.auth import require_catalog_update_permission
 from app.database import supabase
 from app.responses import COMMON_ERRORS
 from app.schemas import StationUpdate
-from app.services import log_audit_event
+from app.services import log_audit_event, validate_station_inside_lake
 
 router = APIRouter(prefix="/api/v1/stations", tags=["Catalog"])
 
@@ -46,23 +46,22 @@ def update_station(
             lat = coords["latitude"]
             lon = coords["longitude"]
 
-            # TODO: DEUDA TÉCNICA (Sprint 2) - Reactivar validación geoespacial
-            # MOTIVO DEL BLOQUEO: La función validate_station_inside_lake arroja falsos 
-            # positivos (HTTP 422) porque invierte los ejes de Shapely (X,Y vs Lat,Lon) 
-            # enviando la estación al océano, o falla por precisión flotante en los bordes exactos del polígono.
-            # Se requiere depurar la conversión a EWKB antes de reactivar.
-            # 
-            # lake_id = existing.data[0].get("lake_id")
-            # if lake_id:
-            #     lake_res = supabase.table("lakes").select("geom").eq("id", lake_id).execute()
-            #     if lake_res.data and lake_res.data[0].get("geom"):
-            #         try:
-            #             validate_station_inside_lake(
-            #                 lake_geojson=lake_res.data[0]["geom"], lat=lat, lon=lon
-            #             )
-            #         except ValueError as e:
-            #             raise HTTPException(status_code=422, detail=str(e))
-            # PostGIS espera longitud primero, luego latitud: 'POINT(lon lat)'
+            lake_id = existing.data[0].get("lake_id")
+            if lake_id:
+                lake_res = (
+                    supabase.table("lakes")
+                    .select("geom")
+                    .eq("id", str(lake_id))
+                    .execute()
+                )
+                if lake_res.data and lake_res.data[0].get("geom"):
+                    try:
+                        validate_station_inside_lake(
+                            lake_geojson=lake_res.data[0]["geom"], lat=lat, lon=lon
+                        )
+                    except ValueError as exc:
+                        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
             update_data["point"] = f"POINT({lon} {lat})"
 
     # 3. Optimización: Interceptar transacciones vacías

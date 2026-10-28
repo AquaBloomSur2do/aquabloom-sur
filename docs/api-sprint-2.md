@@ -215,3 +215,76 @@ export const updateStation = async (session, stationId, updateData) => {
   });
   return await response.json();
 };
+
+## Revisión y decisión de inclusión de datasets
+
+Las rutas de revisión requieren una sesión Supabase válida. Solo se listan los
+datasets pertenecientes a organizaciones donde el usuario tiene una membership
+activa y un rol reconocido. El registro de decisiones se restringe a
+`admin`, `administrador` y `supervisor` de la organización propietaria.
+
+### Listar datasets y escenas para revisión
+
+* **Ruta:** `GET /api/v1/datasets/review`
+* **Respuesta:** datasets visibles, versiones y escenas. Cada escena incluye
+  su historial de decisiones ordenado desde la más reciente.
+
+```json
+[
+  {
+    "id": "dataset-uuid",
+    "organization_id": "organization-uuid",
+    "name": "Dataset piloto",
+    "versions": [
+      {
+        "id": "version-uuid",
+        "version_number": 1,
+        "status": "draft",
+        "memberships": [
+          {
+            "id": "membership-uuid",
+            "scene_provider": "sentinel",
+            "scene_external_id": "scene-001",
+            "decisions": []
+          }
+        ]
+      }
+    ]
+  }
+]
+```
+
+### Registrar decisión de inclusión
+
+* **Ruta:** `POST /api/v1/datasets/memberships/{membership_id}/decisions`
+* **Permisos:** membership activa en la organización del dataset con rol
+  `admin`, `administrador` o `supervisor`.
+* **Payload:** `decision` debe ser `accepted` o `rejected`; `reason` es
+  obligatorio, no puede quedar en blanco y admite hasta 2000 caracteres.
+
+```json
+{
+  "decision": "accepted",
+  "reason": "La escena tiene cobertura válida."
+}
+```
+
+La respuesta `201` contiene la decisión guardada. Un usuario sin permiso recibe
+`403` y la interfaz debe mantener visible el motivo del rechazo.
+## Listado acotado de escenas registradas
+
+### Listar escenas de un lago
+
+* **Ruta:** GET `/api/v1/lakes/{lake_id}/scenes`
+* **Descripción:** Lista escenas que ya están registradas para un lago, filtrando por un rango inclusivo de fechas de adquisición. No consulta Copernicus ni inicia una búsqueda remota.
+* **Parámetros requeridos:** `start_date` y `end_date` en formato `YYYY-MM-DD`.
+* **Parámetros opcionales:** `page` (por defecto `1`) y `page_size` (por defecto `20`, máximo `100`).
+* **Validación:** La fecha inicial debe ser anterior o igual a la fecha final. Un identificador de lago inexistente responde `404`.
+
+Ejemplo:
+
+```text
+GET /api/v1/lakes/11111111-1111-1111-1111-111111111111/scenes?start_date=2026-03-01&end_date=2026-03-31&page=1&page_size=20
+```
+
+La respuesta usa el formato paginado `items`, `page`, `page_size` y `total`. Cada escena incluye su identificador, lago, identificador de escena, fecha de adquisición y fecha de registro. Para crear la tabla de registros, aplica `database/migrations/013_create_scenes_table.sql`.
