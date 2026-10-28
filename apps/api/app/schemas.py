@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -189,6 +189,21 @@ class PaginatedLakes(BaseModel):
     }
 
 
+class SceneOut(BaseModel):
+    id: UUID
+    lake_id: UUID
+    scene_identifier: str
+    acquisition_date: date
+    created_at: datetime
+
+
+class PaginatedScenes(BaseModel):
+    items: list[SceneOut]
+    page: int
+    page_size: int
+    total: int
+
+
 class MembershipCreate(BaseModel):
     profile_id: UUID = Field(..., description="ID del perfil del usuario")
     role: Literal["admin", "member"] = Field(..., description="Rol en la organización")
@@ -214,7 +229,7 @@ class OrganizationMemberResponse(BaseModel):
 class ProfileOption(BaseModel):
     id: UUID
     email: str | None = None
-    name: str
+    name: str | None = None
 
 
 # --- Esquemas de Station ---

@@ -46,6 +46,9 @@ async def create_manifest(payload: DatasetManifestBase):
 
 # --- Implementación Real Integrada desde Main ---
 
+
+router = APIRouter(prefix="/api/v1/datasets", tags=["Datasets"])
+
 READ_ROLES = {
     "admin",
     "administrador",
@@ -100,7 +103,6 @@ def list_review_datasets(payload: dict = Depends(verify_supabase_jwt)):  # noqa:
         .eq("status", "active")
         .execute()
     )
-    
     organization_ids = list(
         {
             membership["organization_id"]
@@ -119,7 +121,6 @@ def list_review_datasets(payload: dict = Depends(verify_supabase_jwt)):  # noqa:
         .in_("organization_id", organization_ids)
         .execute()
     )
-    
     if not datasets:
         return []
 
@@ -131,7 +132,6 @@ def list_review_datasets(payload: dict = Depends(verify_supabase_jwt)):  # noqa:
         .in_("dataset_id", list(datasets_by_id))
         .execute()
     )
-    
     versions_by_id: dict[str, dict] = {}
     for version in versions:
         version["memberships"] = []
@@ -150,7 +150,6 @@ def list_review_datasets(payload: dict = Depends(verify_supabase_jwt)):  # noqa:
         .in_("version_id", list(versions_by_id))
         .execute()
     )
-    
     memberships_by_id: dict[str, dict] = {}
     for membership in memberships:
         membership["decisions"] = []
@@ -234,7 +233,6 @@ def create_membership_decision(
         .eq("status", "active")
         .execute()
     )
-    
     if not any(
         str(membership.get("role", "")).strip().lower() in APPROVAL_ROLES
         for membership in organization_memberships
@@ -262,6 +260,3 @@ def create_membership_decision(
             detail="No se devolvió la decisión guardada.",
         )
     return inserted[0]
-
-
-

@@ -11,12 +11,15 @@ from app.dashboard import router as dashboard_router
 from app.database import check_supabase_connection
 from app.datasets import router as datasets_router
 from app.dependencies import require_permission
+from app.gateway import router as gateway_router
 from app.handlers import auth_exception_handler, global_exception_handler
+from app.imports import router as imports_router
 from app.lakes import router as lakes_router
 
 # Nuevos routers para registrar esquemas en OpenAPI
 from app.observations import router as observations_router
 from app.organizations import router as organizations_router
+from app.scenes import router as scenes_router
 from app.stations import router as stations_router
 from catalog.application.endpoints import router as catalog_router
 
@@ -101,9 +104,13 @@ app.add_exception_handler(AuthException, auth_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
 
 app.include_router(auth_router)
+app.include_router(gateway_router)
 app.include_router(organizations_router)
+app.include_router(imports_router)
 app.include_router(lakes_router)
 app.include_router(stations_router)
+app.include_router(datasets_router)
+app.include_router(scenes_router)
 app.include_router(catalog_router, tags=["Catalog"])
 app.include_router(dashboard_router)
 
@@ -116,7 +123,13 @@ app.add_middleware(
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "X-Idempotency-Key",
+        "X-Correlation-ID",
+    ],
 )
 
 
