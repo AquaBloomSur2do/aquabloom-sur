@@ -52,18 +52,19 @@ def create_prepared_input(
             .execute()
         )
     except APIError as exc:
-        if exc.code == "23505":
+        error_code = exc.details.get("code") if hasattr(exc, "details") else getattr(exc, "code", None)
+        if error_code == "23505":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Ya existe un insumo registrado para esta clave de origen.",
             ) from exc
-        if exc.code == "23503":
+        if error_code == "23503":
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="No existe la importación del archivo original.",
             ) from exc
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="No se pudo registrar el insumo preparado.",
         ) from exc
 
