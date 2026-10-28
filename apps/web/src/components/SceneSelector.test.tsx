@@ -24,6 +24,10 @@ const scene = {
   scene_identifier: 'S2A_20260320',
   acquisition_date: '2026-03-20',
   created_at: '2026-03-20T10:00:00Z',
+  provider: 'Copernicus Data Space',
+  external_id: 'S2A_MSIL2A_20260320',
+  cloud_cover: 4.2,
+  status: 'processed',
 };
 
 describe('SceneSelector', () => {
@@ -64,6 +68,15 @@ describe('SceneSelector', () => {
     expect(
       screen.getByText('Escena seleccionada: S2A_20260320 (2026-03-20)')
     ).toBeInTheDocument();
+    expect(screen.getByText('Copernicus Data Space')).toBeInTheDocument();
+    expect(screen.getByText('S2A_MSIL2A_20260320')).toBeInTheDocument();
+    expect(screen.getByText('4.2%')).toBeInTheDocument();
+    expect(screen.getByText('processed')).toBeInTheDocument();
+    expect(
+      screen.getByRole('note', { name: 'Advertencia sobre uso científico' })
+    ).toHaveTextContent(
+      'Advertencia: Este insumo muestra procedencia pero no se presenta como un dato científico validado.'
+    );
   });
 
   it('rejects reversed dates without calling the API', async () => {
