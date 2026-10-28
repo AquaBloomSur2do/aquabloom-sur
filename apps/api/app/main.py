@@ -22,6 +22,7 @@ from app.organizations import router as organizations_router
 from app.scenes import router as scenes_router
 from app.stations import router as stations_router
 from catalog.application.endpoints import router as catalog_router
+from domain.execution.router import router as execution_router
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
@@ -109,10 +110,10 @@ app.include_router(organizations_router)
 app.include_router(imports_router)
 app.include_router(lakes_router)
 app.include_router(stations_router)
-app.include_router(datasets_router)
 app.include_router(scenes_router)
 app.include_router(catalog_router, tags=["Catalog"])
 app.include_router(dashboard_router)
+app.include_router(execution_router)
 
 # Inyectando las nuevas rutas con el formato estandarizado de errores S2-105
 app.include_router(observations_router, responses=COMMON_RESPONSES)
@@ -157,3 +158,4 @@ def health_check():
 )
 def test_permission_route() -> dict:
     return {"message": "Acceso permitido. Tienes el rol correcto."}
+
