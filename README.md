@@ -282,3 +282,16 @@ SUPABASE_URL=http://tu-url-de-supabase
 SUPABASE_ANON_KEY=tu_clave_anonima_aqui
 SUPABASE_KEY=tu_clave_secreta_aqui
 SUPABASE_JWT_SECRET=tu_jwt_secret_aqui
+```
+
+## Servicio ASGI Satellite
+
+El servicio Satellite se ejecuta de forma independiente en un contenedor ASGI basado en la plantilla Docker de la API. Su configuración se proporciona mediante variables `SATELLITE_*`; copia los valores de `apps/satellite/.env.example` o configura las variables en el `.env` raíz usado por Docker Compose.
+
+Para iniciar el servicio:
+
+```powershell
+docker compose up --build satellite
+```
+
+Compose publica el servicio en `http://localhost:8001` por defecto. El puerto del host se puede cambiar con `SATELLITE_PORT`; `SATELLITE_SERVICE_NAME` y `SATELLITE_ENVIRONMENT` también se pueden configurar externamente. El endpoint `GET /health` informa el estado del servicio y es utilizado por el healthcheck del contenedor.

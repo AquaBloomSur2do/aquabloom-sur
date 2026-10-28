@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import apiClient from '../services/apiClient';
+import { NumericFormat } from 'react-number-format';
 
 interface StationRecord {
   id: string;
@@ -36,9 +37,11 @@ export function StationForm() {
     const loadStation = async () => {
       try {
         const stations = await apiClient.get<StationRecord[]>(
-          `lakes/${lakeId}/stations`,
+          `lakes/${lakeId}/stations`
         );
-        const station = stations.find((candidate) => candidate.id === stationId);
+        const station = stations.find(
+          (candidate) => candidate.id === stationId
+        );
         if (!station) throw new Error('No se encontró la estación.');
 
         if (isMounted) {
@@ -68,14 +71,16 @@ export function StationForm() {
 
     setError(null);
     setIsSubmitting(true);
+
+    // DEUDA TÉCNICA RESUELTA: Ya no se necesita .replace(',', '.')
+    // NumericFormat.value ya nos entrega un string estandarizado con el punto decimal.
     const coordinates = {
-      latitude: Number(String(latitude).replace(',', '.')),
-      longitude: Number(String(longitude).replace(',', '.')),
+      latitude: Number(latitude),
+      longitude: Number(longitude),
     };
 
     try {
       if (isEditMode && stationId) {
-        // Enviar solo los campos definidos para PATCH en StationUpdate
         await apiClient.patch(`stations/${stationId}`, {
           name: name.trim() || null,
           description: description.trim() || null,
@@ -84,7 +89,6 @@ export function StationForm() {
         });
         toast.success('Estación actualizada.');
       } else {
-        // Enviar payload plano para POST (ajustado a las expectativas típicas)
         await apiClient.post(`lakes/${lakeId}/stations`, {
           code: code.trim(),
           name: name.trim(),
@@ -123,49 +127,100 @@ export function StationForm() {
         </Link>
       </header>
 
-      <form className="mt-6 bg-white p-6 rounded-lg border border-gray-200 space-y-5" onSubmit={handleSubmit}>
-        {error && <p className="state-panel state-panel--error" role="alert">{error}</p>}
+      <form
+        className="mt-6 bg-white p-6 rounded-lg border border-gray-200 space-y-5"
+        onSubmit={handleSubmit}
+      >
+        {error && (
+          <p className="state-panel state-panel--error" role="alert">
+            {error}
+          </p>
+        )}
 
         {!isEditMode && (
           <label className="block text-sm font-semibold text-gray-700">
             Código
-            <input className="mt-1 w-full p-2 border rounded" value={code} onChange={(event) => setCode(event.target.value)} required />
+            <input
+              className="mt-1 w-full p-2 border rounded"
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              required
+            />
           </label>
         )}
 
         <label className="block text-sm font-semibold text-gray-700">
           Nombre
-          <input className="mt-1 w-full p-2 border rounded" value={name} onChange={(event) => setName(event.target.value)} required />
+          <input
+            className="mt-1 w-full p-2 border rounded"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            required
+          />
         </label>
 
         <label className="block text-sm font-semibold text-gray-700">
           Descripción
-          <textarea className="mt-1 w-full p-2 border rounded" value={description} onChange={(event) => setDescription(event.target.value)} />
+          <textarea
+            className="mt-1 w-full p-2 border rounded"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
         </label>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="block text-sm font-semibold text-gray-700">
             Latitud
-            <input className="mt-1 w-full p-2 border rounded" type="text" value={latitude} onChange={(event) => setLatitude(event.target.value)} required />
+            <NumericFormat
+              className="mt-1 w-full p-2 border rounded"
+              inputMode="decimal"
+              value={latitude}
+              onValueChange={(values) => setLatitude(values.value)}
+              allowedDecimalSeparators={[',', '.']}
+              decimalSeparator={navigator.language.startsWith('es') ? ',' : '.'}
+              allowNegative={true}
+              required
+            />
           </label>
           <label className="block text-sm font-semibold text-gray-700">
             Longitud
-            <input className="mt-1 w-full p-2 border rounded" type="text" value={longitude} onChange={(event) => setLongitude(event.target.value)} required />
+            <NumericFormat
+              className="mt-1 w-full p-2 border rounded"
+              inputMode="decimal"
+              value={longitude}
+              onValueChange={(values) => setLongitude(values.value)}
+              allowedDecimalSeparators={[',', '.']}
+              decimalSeparator={navigator.language.startsWith('es') ? ',' : '.'}
+              allowNegative={true}
+              required
+            />
           </label>
         </div>
 
         {isEditMode && (
           <label className="block text-sm font-semibold text-gray-700">
             Estado
-            <select className="mt-1 w-full p-2 border rounded" value={status} onChange={(event) => setStatus(event.target.value)}>
+            <select
+              className="mt-1 w-full p-2 border rounded"
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+            >
               <option value="active">Activa</option>
               <option value="inactive">Inactiva</option>
             </select>
           </label>
         )}
 
-        <button className="btn btn-primary" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Guardando...' : isEditMode ? 'Guardar cambios' : 'Registrar estación'}
+        <button
+          className="btn btn-primary"
+          type="submit"
+          disabled={isSubmitting}
+        >
+          {isSubmitting
+            ? 'Guardando...'
+            : isEditMode
+              ? 'Guardar cambios'
+              : 'Registrar estación'}
         </button>
       </form>
     </div>
