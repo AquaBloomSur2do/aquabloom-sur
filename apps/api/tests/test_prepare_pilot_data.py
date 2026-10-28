@@ -1,10 +1,21 @@
 import hashlib
 import json
+from pathlib import Path
 
 import numpy as np
 import rasterio
 
 from satellite.scripts.prepare_pilot_data import generate_pilot_data
+
+
+def test_static_binary_hash_matches_metadata():
+    data_dir = Path(__file__).resolve().parents[1] / "satellite" / "data"
+    metadata = json.loads((data_dir / "metadata.json").read_text(encoding="utf-8"))
+
+    with (data_dir / "pilot_sentinel2_l2a.tif").open("rb") as binary_file:
+        binary_hash = hashlib.sha256(binary_file.read()).hexdigest()
+
+    assert binary_hash == metadata["sha256"]
 
 
 def test_generates_aligned_pilot_raster_and_metadata(tmp_path):
