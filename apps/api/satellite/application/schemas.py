@@ -1,3 +1,4 @@
+from datetime import date
 from enum import Enum
 from uuid import UUID
 
@@ -77,6 +78,19 @@ class NdciObservationSchema(BaseModel):
         description="Observación interpretativa sobre la concentración de clorofila-a basada en el valor NDCI.",
         examples=["Concentración de clorofila-a evaluada (NDCI medio = 0.25)"],
     )
+
+
+# ==============================================================================
+# CONTRATOS S2-111: Persistencia de Escenas
+# ==============================================================================
+
+
+class SceneBase(BaseModel):
+    lake_id: UUID = Field(..., description="ID lógico del lago origen")
+    scene_identifier: str = Field(..., description="Identificador único de la escena (ej. Sentinel-2 L2A...)")
+    acquisition_date: date = Field(..., description="Fecha de adquisición de la escena")
+    metadata: dict = Field(default_factory=dict, description="Metadatos en bruto de la escena")
+    file_references: list[str] = Field(default_factory=list, description="Ubicaciones de archivos o capas TIFF")
     
 
 
