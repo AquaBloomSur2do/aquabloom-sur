@@ -47,3 +47,5 @@ class StationResponse(StationBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+

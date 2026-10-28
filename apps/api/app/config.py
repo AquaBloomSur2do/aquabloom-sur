@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     satellite_service_url: str = "http://satellite:8000"
     scientific_service_url: str = "http://scientific:8000"
+    internal_service_token: SecretStr | None = None
 
     # Variables obligatorias (sin valor por defecto)
     supabase_url: str
@@ -21,3 +22,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
