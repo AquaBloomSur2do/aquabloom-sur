@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent, type SyntheticEvent } from 'react';
+import { useState, useRef, type ChangeEvent, type SyntheticEvent } from 'react';
 import { apiClient } from '../services/apiClient';
 
 type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
@@ -8,15 +8,20 @@ export function CsvUploadForm() {
   const [status, setStatus] = useState<UploadStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  
+  // Referencia para poder limpiar el input de tipo file en el DOM
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
       
-      // Validación estricta de formato .csv
       if (!selectedFile.name.endsWith('.csv')) {
         setErrorMessage('El archivo seleccionado debe tener extensión .csv');
         setFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
         return;
       }
 
@@ -41,16 +46,18 @@ export function CsvUploadForm() {
       const formData = new FormData();
       formData.append('file', file);
 
-      // Usando apiClient correctamente para respetar la autenticación JWT y rutas relativas
-      await apiClient.post('/api/v1/imports/csv', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      // Usando apiClient apuntando a la ruta EXACTA sin duplicar el prefijo /api/v1
+      // y SIN forzar el Content-Type para que el navegador genere el boundary multiparte correctamente
+      await apiClient.post('/imports', formData);
 
       setStatus('success');
       setSuccessMessage('¡Archivo CSV subido y procesado exitosamente!');
+      
+      // Limpiamos el estado de React y forzamos la limpieza del DOM
       setFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } catch (err: unknown) {
       setStatus('error');
       const message = err instanceof Error ? err.message : 'Ocurrió un error al subir el archivo.';
@@ -74,6 +81,7 @@ export function CsvUploadForm() {
             id="csv-file-input"
             type="file"
             accept=".csv"
+            ref={fileInputRef}
             onChange={handleFileChange}
             disabled={status === 'uploading'}
             className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
