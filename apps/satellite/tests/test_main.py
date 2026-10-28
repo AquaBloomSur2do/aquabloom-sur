@@ -4,11 +4,38 @@ import logging
 from fastapi.testclient import TestClient
 from redis.exceptions import RedisError
 
+from app.config import Settings
 from app.main import app
 from app.queueing import TASK_QUEUE, get_redis_client
 from app.worker import consume_once, execute_task
 
 client = TestClient(app)
+
+
+def test_health_endpoint_reports_service_status() -> None:
+    app.dependency_overrides[get_redis_client] = lambda: FakeRedis()
+    try:
+        response = TestClient(app).get("/health")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "service": "AquaBloom Satellite",
+        "environment": "development",
+        "status": "ok",
+        "queue": "connected",
+    }
+
+
+def test_settings_read_external_environment(monkeypatch) -> None:
+    monkeypatch.setenv("SATELLITE_SERVICE_NAME", "Satellite Test")
+    monkeypatch.setenv("SATELLITE_ENVIRONMENT", "test")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.service_name == "Satellite Test"
+    assert settings.environment == "test"
 
 
 class FakeRedis:
