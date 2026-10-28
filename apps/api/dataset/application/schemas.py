@@ -107,3 +107,7 @@ class CandidateValidationPayload(BaseModel):
         
         return v 
 
+class IncorporateCandidatesInput(BaseModel):
+    candidate_ids: list[UUID] = Field(
+        ..., description="Lista de IDs de candidatos a incorporar desde la ingesta"
+    )  

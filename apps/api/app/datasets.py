@@ -15,6 +15,7 @@ from dataset.application.schemas import (
     DatasetManifestResponse,
     DatasetVersionBase,
     DatasetVersionResponse,
+    IncorporateCandidatesInput,
 )
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -279,3 +280,100 @@ def validate_candidate_fields(
         "candidate_id": str(payload.candidate_id),
         "status": "VALIDATED"
 }
+@router.post("/versions/{version_id}/candidates", status_code=201)
+def incorporate_candidates_to_version(
+    version_id: UUID,
+    input_data: IncorporateCandidatesInput,
+    payload: dict = Depends(verify_supabase_jwt),  # noqa: B008
+):
+    """Incorpora candidatos existentes desde la ingesta a una versión de dataset de forma explícita, sin alterar los originales."""
+    client = _require_database()
+    user_id = _user_id(payload)
+    dataset_client = client.schema("dataset")
+
+    if not input_data.candidate_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La lista de IDs de candidatos no puede estar vacía.",
+        )
+
+    # 1. Verificar que la versión del dataset existe
+    version_rows = _rows(
+        dataset_client.table("versions")
+        .select("id, dataset_id")
+        .eq("id", str(version_id))
+        .limit(1)
+        .execute()
+    )
+    if not version_rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La versión del dataset no existe.",
+        )
+
+    dataset_id = version_rows[0]["dataset_id"]
+
+    # 2. Obtener la organización del dataset para validar permisos
+    dataset_rows = _rows(
+        dataset_client.table("datasets")
+        .select("id, organization_id")
+        .eq("id", dataset_id)
+        .limit(1)
+        .execute()
+    )
+    if not dataset_rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="El dataset asociado no existe.",
+        )
+
+    # 3. Validar que el usuario tenga permisos (aprobador/admin)
+    organization_memberships = _rows(
+        client.table("memberships")
+        .select("role")
+        .eq("user_id", user_id)
+        .eq("organization_id", dataset_rows[0]["organization_id"])
+        .eq("status", "active")
+        .execute()
+    )
+    if not any(
+        str(membership.get("role", "")).strip().lower() in APPROVAL_ROLES
+        for membership in organization_memberships
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para incorporar candidatos en este dataset.",
+        )
+
+    # 4. Inserción masiva explícita en memberships (sin alterar la ingesta)
+    records_to_insert = [
+        {
+            "version_id": str(version_id),
+            "scene_external_id": str(cid), 
+        }
+        for cid in input_data.candidate_ids
+    ]
+
+    try:
+        inserted = _rows(
+            dataset_client.table("memberships")
+            .insert(records_to_insert)
+            .execute()
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error al insertar las referencias de candidatos: {exc}",
+        ) from exc
+
+    if not inserted:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No se pudieron registrar las incorporaciones en el dataset.",
+        )
+
+    return {
+        "message": "Candidatos incorporados exitosamente.",
+        "count": len(inserted),
+        "inserted": inserted,
+    }
