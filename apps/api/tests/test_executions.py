@@ -52,4 +52,15 @@ def test_get_job_status_returns_404_for_invalid_id():
     
     assert response.status_code == 404
     assert response.json()["message"] == "No se encontró el trabajo."
+
+
+def test_create_execution_job_invalid_payload():
+    invalid_payload = {
+        "job_type": "training",
+        "config": {
+            "invalid_field": 123
+        }
+    }
+    response = client.post("/api/v1/executions/", json=invalid_payload)
+    assert response.status_code == 422
     
