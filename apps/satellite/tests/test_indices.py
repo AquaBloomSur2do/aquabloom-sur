@@ -18,7 +18,7 @@ def test_calculate_ndwi_preserves_nan_values():
 
     result = calculate_ndwi(green, nir)
 
-    np.testing.assert_allclose(result[0], 0.5)
+    np.testing.assert_allclose(result.data[0], 0.5)
     assert np.isnan(result[1])
 
 
