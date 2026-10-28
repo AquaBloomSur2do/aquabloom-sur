@@ -44,7 +44,7 @@ async def create_manifest(payload: DatasetManifestBase):
     raise HTTPException(status_code=501, detail="Endpoint en construcción (S2-105)")
 
 
-# --- Implementación Real de Main ---
+# --- Implementación Real Integrada desde Main ---
 
 READ_ROLES = {
     "admin",
@@ -262,4 +262,6 @@ def create_membership_decision(
             detail="No se devolvió la decisión guardada.",
         )
     return inserted[0]
+
+
 
