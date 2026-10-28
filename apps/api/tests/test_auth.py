@@ -336,3 +336,4 @@ def test_verifica_token_hs256_legacy(monkeypatch):
     assert payload["sub"] == "11111111-1111-1111-1111-111111111111"
 
 
+    assert payload["sub"] == "11111111-1111-1111-1111-111111111111"
