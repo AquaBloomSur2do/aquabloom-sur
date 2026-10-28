@@ -1,6 +1,11 @@
 from typing import Annotated, Literal
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, StringConstraints
+
+from app.auth import verify_supabase_jwt
+from app.database import supabase
 from dataset.application.schemas import (
     CandidateValidationPayload,
     DatasetCandidateBase,
@@ -11,6 +16,7 @@ from dataset.application.schemas import (
     DatasetVersionBase,
     DatasetVersionResponse,
 )
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, StringConstraints
 
