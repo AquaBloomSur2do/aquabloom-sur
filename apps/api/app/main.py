@@ -9,11 +9,14 @@ from app.auth import router as auth_router
 from app.config import settings
 from app.dashboard import router as dashboard_router
 from app.database import check_supabase_connection
+from app.datasets import router as datasets_router
 from app.dependencies import require_permission
+from app.gateway import router as gateway_router
 from app.handlers import auth_exception_handler, global_exception_handler
 from app.imports import router as imports_router
 from app.lakes import router as lakes_router
 from app.organizations import router as organizations_router
+from app.scenes import router as scenes_router
 from app.stations import router as stations_router
 from catalog.application.endpoints import router as catalog_router
 from ingestion.application.endpoints import router as ingestion_router
@@ -62,11 +65,14 @@ app.add_exception_handler(AuthException, auth_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
 
 app.include_router(auth_router)
+app.include_router(gateway_router)
 app.include_router(organizations_router)
 app.include_router(imports_router)
 app.include_router(ingestion_router)
 app.include_router(lakes_router)
 app.include_router(stations_router)
+app.include_router(datasets_router)
+app.include_router(scenes_router)
 app.include_router(catalog_router, tags=["Catalog"])
 app.include_router(dashboard_router)
 
@@ -81,6 +87,7 @@ app.add_middleware(
         "Content-Type",
         "Accept",
         "X-Idempotency-Key",
+        "X-Correlation-ID",
     ],
 )
 

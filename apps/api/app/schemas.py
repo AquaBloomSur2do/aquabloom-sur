@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -187,6 +187,21 @@ class PaginatedLakes(BaseModel):
             "example": {"items": [], "page": 1, "page_size": 10, "total": 45}
         }
     }
+
+
+class SceneOut(BaseModel):
+    id: UUID
+    lake_id: UUID
+    scene_identifier: str
+    acquisition_date: date
+    created_at: datetime
+
+
+class PaginatedScenes(BaseModel):
+    items: list[SceneOut]
+    page: int
+    page_size: int
+    total: int
 
 
 class MembershipCreate(BaseModel):
