@@ -80,3 +80,11 @@ export function SatelliteQueryPanel({ lakeId }: SatelliteQueryPanelProps) {
     </div>
   );
 }
+
+
+
+
+
+
+
+

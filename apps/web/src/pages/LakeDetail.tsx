@@ -6,7 +6,6 @@ import type { LakeDetailResponse } from '../types/lake';
 import type { Station } from '../types/station';
 import { NotFound } from './NotFound';
 import BaseMap from '../components/Map/BaseMap';
-import { SceneSelector } from '../components/SceneSelector';
 import { SatelliteQueryPanel } from '../components/SatelliteQueryPanel';
 
 export function LakeDetail() {
@@ -239,10 +238,15 @@ export function LakeDetail() {
       </div>
 
       <div className="mt-8 space-y-6">
-        <SceneSelector lakeId={lake.id} />
-        {/* Integración del componente de consulta satelital (S2-119) */}
         <SatelliteQueryPanel lakeId={lake.id} />
       </div>
     </div>
   );
 }
+
+
+
+
+
+
+
