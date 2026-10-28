@@ -22,6 +22,8 @@ from app.organizations import router as organizations_router
 from app.scenes import router as scenes_router
 from app.stations import router as stations_router
 from catalog.application.endpoints import router as catalog_router
+from domain.execution.router import router as execution_router
+from ingestion.application.endpoints import router as ingestion_router
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
@@ -107,6 +109,8 @@ app.include_router(auth_router)
 app.include_router(gateway_router)
 app.include_router(organizations_router)
 app.include_router(imports_router)
+app.include_router(ingestion_router)
+app.include_router(execution_router, prefix="/api/v1/executions")
 app.include_router(lakes_router)
 app.include_router(stations_router)
 app.include_router(datasets_router)
