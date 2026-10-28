@@ -1,4 +1,5 @@
 from catalog.application.endpoints import router as catalog_router
+from domain.execution.router import router as execution_router
 from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -73,7 +74,7 @@ app.include_router(datasets_router)
 app.include_router(scenes_router)
 app.include_router(catalog_router, tags=["Catalog"])
 app.include_router(dashboard_router)
-
+app.include_router(execution_router, prefix="/api/v1/executions", tags=["executions"])
 
 app.add_middleware(
     CORSMiddleware,

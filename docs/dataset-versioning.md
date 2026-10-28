@@ -4,6 +4,9 @@ Las migraciones `013_create_dataset_versioning_schema.sql` y
 `014_enforce_dataset_organization_isolation.sql` definen el versionado dentro
 del esquema PostgreSQL `dataset`, separado de `public`, y su aislamiento por
 organización.
+La migración `database/migrations/013_create_dataset_versioning_schema.sql`
+define las tablas de versionado dentro del esquema PostgreSQL `dataset`, separado
+de `public`.
 
 ## Modelo
 
@@ -31,6 +34,8 @@ La restricción `datasets_organization_required` se agrega como `NOT VALID` para
 mantener inaccesibles filas antiguas sin propietario y exigir `organization_id`
 en registros nuevos o actualizados. Asigna una organización a cualquier dataset
 existente antes de validar esa restricción.
+y escritura queda limitado a `service_role` mediante grants y RLS; no se crean
+políticas de acceso directo para `anon` ni `authenticated`.
 
 La migración crea el esquema y las tablas, pero no agrega `dataset` a los
 esquemas expuestos por la API REST de Supabase. Si un servicio necesita acceder
