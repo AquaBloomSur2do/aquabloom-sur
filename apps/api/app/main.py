@@ -1,3 +1,4 @@
+from catalog.application.endpoints import router as catalog_router
 from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,7 +19,6 @@ from app.lakes import router as lakes_router
 from app.organizations import router as organizations_router
 from app.scenes import router as scenes_router
 from app.stations import router as stations_router
-from catalog.application.endpoints import router as catalog_router
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},

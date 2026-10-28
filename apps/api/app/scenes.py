@@ -1,17 +1,18 @@
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
+import logging
+from datetime import date
+from typing import Annotated
+from uuid import UUID
 
+from fastapi import APIRouter, HTTPException, Query, status
+
+from app.database import supabase
 from app.responses import COMMON_ERRORS
+from app.schemas import PaginatedScenes, SceneDetail
 
-router = APIRouter(prefix="/api/v1/scenes", tags=["Scenes"])
+logger = logging.getLogger(__name__)
 
 
-class SceneDetail(BaseModel):
-    id: str
-    procedencia: str = Field(..., description="Fuente y origen de la escena satelital")
-    checksum: str = Field(..., description="Hash de verificación de integridad")
-    calidad: str = Field(..., description="Métrica de calidad o cobertura de la escena")
-
+router = APIRouter(tags=["Scenes"])
 
 MOCK_SCENES_DB = {
     "S2A_MSIL2A_TEST_001": {
@@ -22,7 +23,7 @@ MOCK_SCENES_DB = {
 }
 
 
-@router.get("/{scene_id}", response_model=SceneDetail, responses={**COMMON_ERRORS})
+@router.get("/api/v1/scenes/{scene_id}", response_model=SceneDetail, responses={**COMMON_ERRORS})
 def get_scene_detail(scene_id: str):
     """
     Expone los detalles técnicos y de procedencia de una escena satelital.
@@ -35,19 +36,6 @@ def get_scene_detail(scene_id: str):
         )
 
     return SceneDetail(id=scene_id, **scene)
-import logging
-from datetime import date
-from typing import Annotated
-from uuid import UUID
-
-from fastapi import APIRouter, Query
-
-from app.database import supabase
-from app.schemas import PaginatedScenes
-
-logger = logging.getLogger(__name__)
-
-router = APIRouter(tags=["Scenes"])
 
 
 @router.get("/api/v1/lakes/{lake_id}/scenes", response_model=PaginatedScenes)
