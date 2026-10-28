@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from catalog.application.schemas import (
+from satellite.application.schemas import (
     SpectralObservationCreate,
     SpectralObservationResponse,
 )
@@ -12,3 +12,4 @@ router = APIRouter(prefix="/api/v1/observations", tags=["Observations"])
 async def create_observation(payload: SpectralObservationCreate):
     """Registra una nueva observación espectral."""
     raise HTTPException(status_code=501, detail="Endpoint en construcción (S2-105)")
+
