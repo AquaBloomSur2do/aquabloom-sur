@@ -18,7 +18,7 @@ def test_calculate_ndwi_preserves_nan_values():
 
     result = calculate_ndwi(green, nir)
 
-    assert result[0] == 0.5
+    np.testing.assert_allclose(result[0], 0.5)
     assert np.isnan(result[1])
 
 
@@ -29,7 +29,7 @@ def test_calculate_ndwi_preserves_masks_and_masks_zero_denominators():
     result = calculate_ndwi(green, nir)
 
     np.testing.assert_array_equal(np.ma.getmaskarray(result), [False, True, True])
-    assert result[0] == 0.5
+    np.testing.assert_allclose(result[0], 0.5)
 
 
 def test_calculate_ndwi_returns_nan_for_zero_denominators():

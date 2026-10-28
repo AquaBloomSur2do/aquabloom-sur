@@ -10,15 +10,15 @@ def calculate_ndwi(
         green = np.ma.asarray(green_band, dtype=np.float64)
         nir = np.ma.asarray(nir_band, dtype=np.float64)
         denominator = green + nir
-        result = np.ma.divide(green - nir, denominator)
-        return np.ma.masked_where(denominator == 0, result)
+        safe_denominator = np.ma.masked_where(denominator == 0, denominator)
+        return np.ma.divide(green - nir, safe_denominator)
 
     green = np.asarray(green_band, dtype=np.float64)
     nir = np.asarray(nir_band, dtype=np.float64)
     numerator = green - nir
     denominator = green + nir
     result = np.full(
-        np.broadcast_shapes(numerator.shape, denominator.shape),
+        denominator.shape,
         np.nan,
         dtype=np.float64,
     )
