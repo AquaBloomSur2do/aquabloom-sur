@@ -13,11 +13,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-// Asignación limpia y directa basada en la sesión activa
-  const getRoleForUser = (): string => {
-    return 'administrador'; // Forzamos el rol de administrador para acceso total
-  };
-
   useEffect(() => {
     let isMounted = true;
 
@@ -27,8 +22,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       if (isMounted) {
         const authUser = session?.user ?? null;
         if (authUser) {
-          const userRole = getRoleForUser();
-          setUser({ ...authUser, role: userRole } as User);
+          setUser(authUser);
         } else {
           setUser(null);
         }
@@ -46,8 +40,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
         if (error) throw error;
         if (isMounted && session?.user) {
-          const userRole = getRoleForUser();
-          setUser({ ...session.user, role: userRole } as User);
+          setUser(session.user);
           setToken(session.access_token);
         }
       } catch (error) {
@@ -74,8 +67,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     if (error) throw error;
 
     if (data.user) {
-      const userRole = getRoleForUser();
-      setUser({ ...data.user, role: userRole } as User);
+      setUser(data.user);
     }
     setToken(data.session?.access_token ?? null);
   };
