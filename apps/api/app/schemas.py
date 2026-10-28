@@ -203,6 +203,11 @@ class PaginatedScenes(BaseModel):
     page_size: int
     total: int
 
+class SceneDetail(BaseModel):
+    id: str
+    procedencia: str = Field(..., description="Fuente y origen de la escena satelital")
+    checksum: str = Field(..., description="Hash de verificación de integridad")
+    calidad: str = Field(..., description="Métrica de calidad o cobertura de la escena")
 
 class MembershipCreate(BaseModel):
     profile_id: UUID = Field(..., description="ID del perfil del usuario")
