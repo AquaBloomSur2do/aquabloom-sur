@@ -20,6 +20,7 @@ from app.organizations import router as organizations_router
 from app.scenes import router as scenes_router
 from app.stations import router as stations_router
 
+
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
     {"name": "Auth", "description": "Autenticación de usuarios."},
