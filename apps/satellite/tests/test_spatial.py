@@ -1,4 +1,5 @@
 import pytest
+
 from app.spatial import SpatialThresholdError, validate_spatial_pair
 
 
@@ -24,4 +25,3 @@ def test_validate_spatial_pair_exceeds_threshold():
         validate_spatial_pair(lat1, lon1, lat2, lon2, threshold)
         
     assert "excede el umbral" in str(excinfo.value)
-    
