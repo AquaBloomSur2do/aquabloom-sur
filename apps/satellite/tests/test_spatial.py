@@ -1,5 +1,4 @@
 import pytest
-
 from app.spatial import SpatialThresholdError, validate_spatial_pair
 
 

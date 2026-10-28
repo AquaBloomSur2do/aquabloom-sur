@@ -1,9 +1,8 @@
 import pytest
-from fastapi.testclient import TestClient
-from pydantic import ValidationError
-
 from app.config import Settings
 from app.main import app
+from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 client = TestClient(app)
 

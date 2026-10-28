@@ -1,10 +1,9 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
-
 from app.auth import require_catalog_create_permission
 from app.database import supabase
 from app.services import validate_station_inside_lake
+from fastapi import APIRouter, Depends, HTTPException
 
 from .schemas import StationCreate
 

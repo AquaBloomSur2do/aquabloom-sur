@@ -2,10 +2,9 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
-
 from app.dependencies import require_internal_service
 from domain.execution.schemas import JobCreate, JobResponse, JobStatus
+from fastapi import APIRouter, Depends, HTTPException, status
 
 router = APIRouter()
 

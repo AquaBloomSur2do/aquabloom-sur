@@ -1,9 +1,8 @@
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
-
 from catalog.application.schemas import StationCreate
+from pydantic import ValidationError
 
 
 def test_estacion_coordenadas_validas():

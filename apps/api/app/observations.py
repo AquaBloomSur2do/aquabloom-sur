@@ -1,5 +1,4 @@
 from fastapi import APIRouter, HTTPException
-
 from satellite.application.schemas import (
     SpectralObservationCreate,
     SpectralObservationResponse,
