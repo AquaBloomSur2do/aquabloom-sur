@@ -13,9 +13,6 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_key: SecretStr
     supabase_jwt_secret: SecretStr | None = None
-    
-    # Token interno requerido por los tests de ejecución (S2-127)
-    internal_service_token: SecretStr | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -25,4 +22,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
