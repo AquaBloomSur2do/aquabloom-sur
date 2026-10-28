@@ -47,8 +47,9 @@ export const SamplesDataGrid: React.FC = () => {
           params.set('quarantine', 'true');
         }
 
+        // CORRECCIÓN 2: Barra diagonal inicial añadida para evitar 404
         const data = await apiClient.get<SampleListResponse>(
-          `samples?${params.toString()}`
+          `/samples?${params.toString()}`
         );
 
         if (isMounted) {
@@ -96,7 +97,6 @@ export const SamplesDataGrid: React.FC = () => {
           </p>
         </div>
 
-        {/* Pestañas de separación Válidos vs Cuarentena */}
         <div className="inline-flex rounded-md shadow-sm" role="group">
           <button
             type="button"
@@ -134,16 +134,15 @@ export const SamplesDataGrid: React.FC = () => {
         </div>
       </div>
 
-      {error && (
+      {/* CORRECCIÓN 4: Renderizado mutuamente excluyente (Error vs UI) */}
+      {error ? (
         <div
           className="p-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md"
           role="alert"
         >
           {error}
         </div>
-      )}
-
-      {isLoading ? (
+      ) : isLoading ? (
         <div className="py-8 text-center text-gray-500">
           Cargando muestras...
         </div>
@@ -183,7 +182,8 @@ export const SamplesDataGrid: React.FC = () => {
                     {sample.station_id}
                   </td>
                   <td className="px-4 py-3 text-gray-800">
-                    {new Date(sample.sample_datetime_utc).toLocaleString()}
+                    {/* CORRECCIÓN 3: Preservar fidelidad científica con UTC */}
+                    {new Date(sample.sample_datetime_utc).toUTCString()}
                   </td>
                   <td className="px-4 py-3 text-right font-medium text-gray-900">
                     {sample.chlorophyll_a_ug_l}
@@ -211,33 +211,36 @@ export const SamplesDataGrid: React.FC = () => {
         </div>
       )}
 
-      {/* Paginación simple */}
-      <div className="flex items-center justify-between pt-2 border-t border-gray-200 text-sm text-gray-600">
-        <span>
-          Total de registros: <strong>{total}</strong> (Página {page} de{' '}
-          {totalPages})
-        </span>
-        <div className="space-x-2">
-          <button
-            type="button"
-            disabled={page <= 1 || isLoading}
-            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-            className="px-3 py-1 border rounded disabled:opacity-50"
-          >
-            Anterior
-          </button>
-          <button
-            type="button"
-            disabled={page >= totalPages || isLoading}
-            onClick={() => setPage((prev) => prev + 1)}
-            className="px-3 py-1 border rounded disabled:opacity-50"
-          >
-            Siguiente
-          </button>
+      {/* Paginación simple (oculta si hay error para mejorar UX) */}
+      {!error && (
+        <div className="flex items-center justify-between pt-2 border-t border-gray-200 text-sm text-gray-600">
+          <span>
+            Total de registros: <strong>{total}</strong> (Página {page} de{' '}
+            {totalPages})
+          </span>
+          <div className="space-x-2">
+            <button
+              type="button"
+              disabled={page <= 1 || isLoading}
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              className="px-3 py-1 border rounded disabled:opacity-50"
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages || isLoading}
+              onClick={() => setPage((prev) => prev + 1)}
+              className="px-3 py-1 border rounded disabled:opacity-50"
+            >
+              Siguiente
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
 
 export default SamplesDataGrid;
+
