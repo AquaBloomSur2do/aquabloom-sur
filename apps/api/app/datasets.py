@@ -6,6 +6,7 @@ from pydantic import BaseModel, StringConstraints
 
 from app.auth import verify_supabase_jwt
 from app.database import supabase
+from app.schemas import DatasetVersionStateUpdate, VersionState
 from dataset.application.schemas import (
     DatasetCandidateBase,
     DatasetCandidateResponse,
@@ -19,36 +20,79 @@ from dataset.application.schemas import (
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["Datasets"])
 
+# --- Transiciones Permitidas del Ciclo de Vida (S2-134) ---
+
+ALLOWED_STATE_TRANSITIONS: dict[VersionState, list[VersionState]] = {
+    VersionState.DRAFT: [VersionState.IN_REVIEW, VersionState.ARCHIVED],
+    VersionState.IN_REVIEW: [
+        VersionState.APPROVED,
+        VersionState.DRAFT,
+        VersionState.ARCHIVED,
+    ],
+    VersionState.APPROVED: [
+        VersionState.PUBLISHED,
+        VersionState.DRAFT,
+        VersionState.ARCHIVED,
+    ],
+    VersionState.PUBLISHED: [VersionState.ARCHIVED],
+    VersionState.ARCHIVED: [],
+}
+
+
+def validate_state_transition(
+    current_state: VersionState, target_state: VersionState
+) -> None:
+    allowed = ALLOWED_STATE_TRANSITIONS.get(current_state, [])
+    if target_state not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Transición de estado no permitida desde '{current_state.value}' "
+                f"hacia '{target_state.value}'."
+            ),
+        )
+
+
 # --- Stubs de S2-105 para Especificación OpenAPI ---
+
 
 @router.post("/candidates", response_model=DatasetCandidateResponse, status_code=201)
 async def create_candidate(payload: DatasetCandidateBase):
     """Registra un nuevo dataset candidato."""
-    raise HTTPException(status_code=501, detail="Endpoint en construcción (S2-105)")
+    raise HTTPException(
+        status_code=501, detail="Endpoint en construcción (S2-105)"
+    )
 
 
 @router.post("/decisions", response_model=dict, status_code=201)
 async def create_decision(payload: DatasetDecisionCreate):
     """Registra la decisión sobre un candidato."""
-    raise HTTPException(status_code=501, detail="Endpoint en construcción (S2-105)")
+    raise HTTPException(
+        status_code=501, detail="Endpoint en construcción (S2-105)"
+    )
 
 
-@router.post("/versions", response_model=DatasetVersionResponse, status_code=201)
+@router.post(
+    "/versions", response_model=DatasetVersionResponse, status_code=201
+)
 async def create_version(payload: DatasetVersionBase):
     """Genera una nueva versión de dataset."""
-    raise HTTPException(status_code=501, detail="Endpoint en construcción (S2-105)")
+    raise HTTPException(
+        status_code=501, detail="Endpoint en construcción (S2-105)"
+    )
 
 
-@router.post("/manifests", response_model=DatasetManifestResponse, status_code=201)
+@router.post(
+    "/manifests", response_model=DatasetManifestResponse, status_code=201
+)
 async def create_manifest(payload: DatasetManifestBase):
     """Registra el manifiesto de una versión."""
-    raise HTTPException(status_code=501, detail="Endpoint en construcción (S2-105)")
+    raise HTTPException(
+        status_code=501, detail="Endpoint en construcción (S2-105)"
+    )
 
 
-# --- Implementación Real Integrada desde Main ---
-
-
-router = APIRouter(prefix="/api/v1/datasets", tags=["Datasets"])
+# --- Implementación Real Integrada ---
 
 READ_ROLES = {
     "admin",
@@ -63,7 +107,10 @@ APPROVAL_ROLES = {"admin", "administrador", "supervisor"}
 class DatasetDecisionInput(BaseModel):
     decision: Literal["accepted", "rejected"]
     reason: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)
+        str,
+        StringConstraints(
+            strip_whitespace=True, min_length=1, max_length=2000
+        ),
     ]
 
 
@@ -92,7 +139,9 @@ def _rows(response) -> list[dict]:
 
 
 @router.get("/review")
-def list_review_datasets(payload: dict = Depends(verify_supabase_jwt)):  # noqa: B008
+def list_review_datasets(
+    payload: dict = Depends(verify_supabase_jwt),  # noqa: B008
+):
     """Lista datasets y escenas visibles para la organización del usuario."""
     client = _require_database()
     user_id = _user_id(payload)
@@ -129,7 +178,7 @@ def list_review_datasets(payload: dict = Depends(verify_supabase_jwt)):  # noqa:
     versions = _rows(
         client.schema("dataset")
         .table("versions")
-        .select("id, dataset_id, version_number, status, created_at")
+        .select("id, dataset_id, version_number, state, status, created_at")
         .in_("dataset_id", list(datasets_by_id))
         .execute()
     )
@@ -147,7 +196,9 @@ def list_review_datasets(payload: dict = Depends(verify_supabase_jwt)):  # noqa:
     memberships = _rows(
         client.schema("dataset")
         .table("memberships")
-        .select("id, version_id, scene_provider, scene_external_id, added_at")
+        .select(
+            "id, version_id, scene_provider, scene_external_id, added_at"
+        )
         .in_("version_id", list(versions_by_id))
         .execute()
     )
@@ -163,7 +214,9 @@ def list_review_datasets(payload: dict = Depends(verify_supabase_jwt)):  # noqa:
         decisions = _rows(
             client.schema("dataset")
             .table("decisions")
-            .select("id, membership_id, decision, reason, decided_by, decided_at")
+            .select(
+                "id, membership_id, decision, reason, decided_by, decided_at"
+            )
             .in_("membership_id", list(memberships_by_id))
             .order("decided_at", desc=True)
             .execute()
@@ -240,7 +293,10 @@ def create_membership_decision(
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para registrar decisiones en este dataset.",
+            detail=(
+                "No tienes permisos para registrar decisiones en este"
+                " dataset."
+            ),
         )
 
     inserted = _rows(
@@ -262,13 +318,14 @@ def create_membership_decision(
         )
     return inserted[0]
 
+
 @router.post("/versions/{version_id}/candidates", status_code=201)
 def incorporate_candidates_to_version(
     version_id: UUID,
     input_data: IncorporateCandidatesInput,
     payload: dict = Depends(verify_supabase_jwt),  # noqa: B008
 ):
-    """Incorpora candidatos existentes desde la ingesta a una versión de dataset de forma explícita, sin alterar los originales."""
+    """Incorpora candidatos existentes desde la ingesta a una versión de dataset."""
     client = _require_database()
     user_id = _user_id(payload)
     dataset_client = client.schema("dataset")
@@ -279,7 +336,6 @@ def incorporate_candidates_to_version(
             detail="La lista de IDs de candidatos no puede estar vacía.",
         )
 
-    # 1. Verificar que la versión del dataset existe
     version_rows = _rows(
         dataset_client.table("versions")
         .select("id, dataset_id")
@@ -295,7 +351,6 @@ def incorporate_candidates_to_version(
 
     dataset_id = version_rows[0]["dataset_id"]
 
-    # 2. Obtener la organización del dataset para validar permisos
     dataset_rows = _rows(
         dataset_client.table("datasets")
         .select("id, organization_id")
@@ -309,7 +364,6 @@ def incorporate_candidates_to_version(
             detail="El dataset asociado no existe.",
         )
 
-    # 3. Validar que el usuario tenga permisos (aprobador/admin)
     organization_memberships = _rows(
         client.table("memberships")
         .select("role")
@@ -324,14 +378,16 @@ def incorporate_candidates_to_version(
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para incorporar candidatos en este dataset.",
+            detail=(
+                "No tienes permisos para incorporar candidatos en este"
+                " dataset."
+            ),
         )
 
-    # 4. Inserción masiva explícita en memberships (sin alterar la ingesta)
     records_to_insert = [
         {
             "version_id": str(version_id),
-            "scene_external_id": str(cid), 
+            "scene_external_id": str(cid),
         }
         for cid in input_data.candidate_ids
     ]
@@ -351,7 +407,9 @@ def incorporate_candidates_to_version(
     if not inserted:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="No se pudieron registrar las incorporaciones en el dataset.",
+            detail=(
+                "No se pudieron registrar las incorporaciones en el dataset."
+            ),
         )
 
     return {
@@ -359,3 +417,92 @@ def incorporate_candidates_to_version(
         "count": len(inserted),
         "inserted": inserted,
     }
+
+
+@router.patch("/versions/{version_id}/state", status_code=200)
+def update_version_state(
+    version_id: UUID,
+    state_input: DatasetVersionStateUpdate,
+    payload: dict = Depends(verify_supabase_jwt),  # noqa: B008
+):
+    """Actualiza el estado del ciclo de vida de una versión de dataset."""
+    client = _require_database()
+    user_id = _user_id(payload)
+    dataset_client = client.schema("dataset")
+
+    version_rows = _rows(
+        dataset_client.table("versions")
+        .select("id, dataset_id, state, status")
+        .eq("id", str(version_id))
+        .limit(1)
+        .execute()
+    )
+    if not version_rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La versión del dataset no existe.",
+        )
+
+    version_data = version_rows[0]
+    raw_state = (
+        version_data.get("state") or version_data.get("status") or "DRAFT"
+    )
+    try:
+        current_state = VersionState(str(raw_state).upper())
+    except ValueError:
+        current_state = VersionState.DRAFT
+
+    validate_state_transition(current_state, state_input.state)
+
+    dataset_rows = _rows(
+        dataset_client.table("datasets")
+        .select("id, organization_id")
+        .eq("id", version_data["dataset_id"])
+        .limit(1)
+        .execute()
+    )
+    if not dataset_rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="El dataset asociado no existe.",
+        )
+
+    organization_memberships = _rows(
+        client.table("memberships")
+        .select("role")
+        .eq("user_id", user_id)
+        .eq("organization_id", dataset_rows[0]["organization_id"])
+        .eq("status", "active")
+        .execute()
+    )
+    if not any(
+        str(membership.get("role", "")).strip().lower() in APPROVAL_ROLES
+        for membership in organization_memberships
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "No tienes permisos para modificar el estado de esta versión."
+            ),
+        )
+
+    updated_rows = _rows(
+        dataset_client.table("versions")
+        .update(
+            {
+                "state": state_input.state.value,
+                "status": state_input.state.value,
+            }
+        )
+        .eq("id", str(version_id))
+        .execute()
+    )
+    if not updated_rows:
+        return {
+            "id": str(version_id),
+            "state": state_input.state.value,
+            "status": state_input.state.value,
+        }
+
+    return updated_rows[0]
+

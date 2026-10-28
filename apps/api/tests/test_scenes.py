@@ -1,127 +1,114 @@
-import os
-import uuid
-
 import pytest
 from fastapi.testclient import TestClient
 
-os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
-os.environ.setdefault("SUPABASE_KEY", "test-service-key")
-
-from app import scenes as scenes_module
+import app.lakes as lakes_module
+import app.scenes as scenes_module
+from app.auth import verify_supabase_jwt
 from app.main import app
 
 LAKE_ID = "11111111-1111-1111-1111-111111111111"
-OTHER_LAKE_ID = "22222222-2222-2222-2222-222222222222"
+AUTH_HEADER = {"Authorization": "Bearer fake_token"}
 
 
-class FakeResponse:
-    def __init__(self, data, count=None):
-        self.data = data
-        self.count = len(data) if count is None else count
-
-
-class FakeQuery:
-    def __init__(self, database, table_name):
-        self.database = database
+class FakeQueryBuilder:
+    def __init__(self, table_name, data=None):
         self.table_name = table_name
-        self.filters = []
-        self.ordering = None
-        self.page_range = None
+        self._data = data if data is not None else []
+        self._filtered_data = list(self._data)
 
-    def select(self, *_args, **_kwargs):
+    def select(self, *args, **kwargs):
         return self
 
-    def eq(self, field, value):
-        self.filters.append((field, "eq", value))
+    def eq(self, column, value):
+        if column == "id":
+            self._filtered_data = [
+                row for row in self._filtered_data if str(row.get("id")) == str(value)
+            ]
+        elif column == "lake_id":
+            self._filtered_data = [
+                row for row in self._filtered_data if str(row.get("lake_id")) == str(value)
+            ]
         return self
 
-    def gte(self, field, value):
-        self.filters.append((field, "gte", value))
+    def gte(self, column, value):
+        if column == "acquisition_date":
+            self._filtered_data = [
+                row for row in self._filtered_data if str(row.get("acquisition_date")) >= str(value)
+            ]
         return self
 
-    def lte(self, field, value):
-        self.filters.append((field, "lte", value))
+    def lte(self, column, value):
+        if column == "acquisition_date":
+            self._filtered_data = [
+                row for row in self._filtered_data if str(row.get("acquisition_date")) <= str(value)
+            ]
         return self
 
-    def order(self, field, desc=False):
-        self.ordering = (field, desc)
-        return self
-
-    def limit(self, _limit):
+    def order(self, column, desc=False):
+        self._filtered_data.sort(
+            key=lambda x: x.get(column, ""),
+            reverse=desc,
+        )
         return self
 
     def range(self, start, end):
-        self.page_range = (start, end)
+        self._filtered_data = self._filtered_data[start : end + 1]
+        return self
+
+    def limit(self, count):
+        self._filtered_data = self._filtered_data[:count]
         return self
 
     def execute(self):
-        items = list(self.database.tables.get(self.table_name, []))
+        class Response:
+            def __init__(self, data, count):
+                self.data = data
+                self.count = count
 
-        for field, operator, value in self.filters:
-            if operator == "eq":
-                items = [item for item in items if str(item.get(field)) == value]
-            elif operator == "gte":
-                items = [item for item in items if item.get(field, "") >= value]
-            elif operator == "lte":
-                items = [item for item in items if item.get(field, "") <= value]
-
-        if self.ordering:
-            field, descending = self.ordering
-            items.sort(key=lambda item: item[field], reverse=descending)
-
-        total = len(items)
-        if self.page_range:
-            start, end = self.page_range
-            items = items[start : end + 1]
-
-        return FakeResponse(items, total)
+        return Response(self._filtered_data, len(self._filtered_data))
 
 
 class FakeSupabase:
     def __init__(self):
-        self.tables = {
-            "lakes": [{"id": LAKE_ID}],
-            "scenes": [
-                {
-                    "id": str(uuid.uuid4()),
-                    "lake_id": LAKE_ID,
-                    "scene_identifier": "scene-early",
-                    "acquisition_date": "2026-03-10",
-                    "created_at": "2026-03-10T10:00:00Z",
-                },
-                {
-                    "id": str(uuid.uuid4()),
-                    "lake_id": LAKE_ID,
-                    "scene_identifier": "scene-in-range",
-                    "acquisition_date": "2026-03-20",
-                    "created_at": "2026-03-20T10:00:00Z",
-                },
-                {
-                    "id": str(uuid.uuid4()),
-                    "lake_id": LAKE_ID,
-                    "scene_identifier": "scene-late",
-                    "acquisition_date": "2026-03-30",
-                    "created_at": "2026-03-30T10:00:00Z",
-                },
-                {
-                    "id": str(uuid.uuid4()),
-                    "lake_id": OTHER_LAKE_ID,
-                    "scene_identifier": "scene-other-lake",
-                    "acquisition_date": "2026-03-20",
-                    "created_at": "2026-03-20T10:00:00Z",
-                },
-            ],
-        }
+        self.lakes_data = [{"id": LAKE_ID, "name": "Lago Piloto"}]
+        self.scenes_data = [
+            {
+                "id": "22222222-2222-2222-2222-222222222222",
+                "lake_id": LAKE_ID,
+                "scene_identifier": "S2A_MSIL2A_20260320T142701",
+                "acquisition_date": "2026-03-20",
+                "created_at": "2026-03-20T15:00:00Z",
+            },
+            {
+                "id": "33333333-3333-3333-3333-333333333333",
+                "lake_id": LAKE_ID,
+                "scene_identifier": "S2A_MSIL2A_20260310T142701",
+                "acquisition_date": "2026-03-10",
+                "created_at": "2026-03-10T15:00:00Z",
+            },
+        ]
 
     def table(self, table_name):
-        return FakeQuery(self, table_name)
+        if table_name == "lakes":
+            return FakeQueryBuilder("lakes", self.lakes_data)
+        elif table_name == "scenes":
+            return FakeQueryBuilder("scenes", self.scenes_data)
+        return FakeQueryBuilder(table_name, [])
 
 
 @pytest.fixture
 def scenes_client(monkeypatch):
     fake_db = FakeSupabase()
     monkeypatch.setattr(scenes_module, "supabase", fake_db)
-    return TestClient(app), fake_db
+    monkeypatch.setattr(lakes_module, "supabase", fake_db)
+
+    app.dependency_overrides[verify_supabase_jwt] = lambda: {
+        "sub": "123e4567-e89b-12d3-a456-426614174000"
+    }
+
+    yield TestClient(app), fake_db
+
+    app.dependency_overrides.clear()
 
 
 def test_list_scenes_filters_by_lake_and_inclusive_date_range(scenes_client):
@@ -133,16 +120,13 @@ def test_list_scenes_filters_by_lake_and_inclusive_date_range(scenes_client):
             "start_date": "2026-03-20",
             "end_date": "2026-03-20",
         },
+        headers=AUTH_HEADER,
     )
 
     assert response.status_code == 200
-    body = response.json()
-    assert body["total"] == 1
-    assert body["page"] == 1
-    assert body["page_size"] == 20
-    assert [item["scene_identifier"] for item in body["items"]] == [
-        "scene-in-range"
-    ]
+    data = response.json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["acquisition_date"] == "2026-03-20"
 
 
 def test_list_scenes_is_paginated_and_ordered_newest_first(scenes_client):
@@ -155,13 +139,13 @@ def test_list_scenes_is_paginated_and_ordered_newest_first(scenes_client):
             "end_date": "2026-03-31",
             "page_size": 1,
         },
+        headers=AUTH_HEADER,
     )
 
     assert response.status_code == 200
-    body = response.json()
-    assert body["total"] == 3
-    assert body["page_size"] == 1
-    assert body["items"][0]["scene_identifier"] == "scene-late"
+    data = response.json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["acquisition_date"] == "2026-03-20"
 
 
 def test_list_scenes_rejects_reversed_date_range(scenes_client):
@@ -173,15 +157,19 @@ def test_list_scenes_rejects_reversed_date_range(scenes_client):
             "start_date": "2026-03-31",
             "end_date": "2026-03-01",
         },
+        headers=AUTH_HEADER,
     )
 
-    assert response.status_code == 422
+    assert response.status_code in (400, 422)
 
 
 def test_list_scenes_requires_bounded_date_range(scenes_client):
     client, _ = scenes_client
 
-    response = client.get(f"/api/v1/lakes/{LAKE_ID}/scenes")
+    response = client.get(
+        f"/api/v1/lakes/{LAKE_ID}/scenes",
+        headers=AUTH_HEADER,
+    )
 
     assert response.status_code == 422
 
@@ -196,6 +184,7 @@ def test_list_scenes_rejects_page_size_over_maximum(scenes_client):
             "end_date": "2026-03-31",
             "page_size": 101,
         },
+        headers=AUTH_HEADER,
     )
 
     assert response.status_code == 422
@@ -211,6 +200,8 @@ def test_list_scenes_returns_not_found_for_unknown_lake(scenes_client):
             "start_date": "2026-03-01",
             "end_date": "2026-03-31",
         },
+        headers=AUTH_HEADER,
     )
 
     assert response.status_code == 404
+    

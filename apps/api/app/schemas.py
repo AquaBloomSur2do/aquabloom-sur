@@ -1,12 +1,81 @@
 import json
 import re
 from datetime import date, datetime
+from enum import Enum
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from shapely.geometry import mapping
 from shapely.wkt import loads as parse_wkt
+
+# --- Ciclo de Vida y Estados de Versión de Dataset (S2-134) ---
+
+
+class VersionState(str, Enum):
+    DRAFT = "DRAFT"
+    IN_REVIEW = "IN_REVIEW"
+    APPROVED = "APPROVED"
+    PUBLISHED = "PUBLISHED"
+    ARCHIVED = "ARCHIVED"
+
+
+class DatasetVersionStateUpdate(BaseModel):
+    state: VersionState = Field(
+        ..., description="Nuevo estado del ciclo de vida de la versión"
+    )
+
+
+# --- Observaciones Espectrales ---
+
+
+class QualityEnum(str, Enum):
+    OPTIMA = "OPTIMA"
+    ACEPTABLE = "ACEPTABLE"
+    RECHAZADA = "RECHAZADA"
+
+
+class SpectralObservationBase(BaseModel):
+    scene_id: UUID = Field(..., description="Identificador único de la escena de origen")
+    sample_id: UUID = Field(..., description="Referencia a la muestra in-situ")
+    bands: dict[str, float] = Field(..., description="Valores por banda espectral")
+    spectral_index: str = Field(..., description="Nombre del índice espectral (ej. NDCI)")
+    index_value: float = Field(..., description="Valor resultante del índice")
+    unit: str = Field(..., description="Unidad de medida")
+    quality: QualityEnum = Field(..., description="Calidad de la observación")
+
+
+class SpectralObservationCreate(SpectralObservationBase):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "summary": "Caso Válido (NDCI Óptimo)",
+                    "value": {
+                        "scene_id": "123e4567-e89b-12d3-a456-426614174000",
+                        "sample_id": "987e6543-e21b-34d3-b456-426614174011",
+                        "bands": {"B04": 0.10, "B05": 0.30},
+                        "spectral_index": "NDCI",
+                        "index_value": 0.5,
+                        "unit": "adimensional",
+                        "quality": "OPTIMA",
+                    },
+                }
+            ]
+        }
+    )
+
+
+class SpectralObservationResponse(SpectralObservationBase):
+    id: UUID = Field(..., description="ID de la observación")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NdciObservationSchema(BaseModel):
+    lake_id: str | None = Field(default=None)
+    ndci_value: float | None = Field(default=None)
+    observation: str | None = Field(default=None)
 
 
 class ErrorResponse(BaseModel):
@@ -25,24 +94,20 @@ class DashboardSummaryResponse(BaseModel):
 
 
 class LakeBase(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255, description="Nombre del lago")
-    region: str = Field(
-        ..., min_length=1, max_length=255, description="Región donde se ubica"
-    )
-    description: str | None = Field(None, description="Descripción opcional")
+    name: str = Field(..., min_length=1, max_length=255)
+    region: str = Field(..., min_length=1, max_length=255)
+    description: str | None = Field(None)
 
     @field_validator("name", "region")
     @classmethod
     def validate_not_empty(cls, v: str) -> str:
         if not v.strip():
-            raise ValueError("El campo no puede estar vacío o contener solo espacios.")
+            raise ValueError("El campo no puede estar vacío.")
         return v
 
 
 class LakeCreate(LakeBase):
-    geom: dict[str, Any] = Field(
-        ..., description="Geometría del lago en formato GeoJSON Polygon"
-    )
+    geom: dict[str, Any] = Field(..., description="Geometría GeoJSON Polygon")
 
     @field_validator("geom")
     @classmethod
@@ -59,41 +124,12 @@ class LakeCreate(LakeBase):
                     try:
                         v = mapping(parse_wkt(v_str))
                     except (json.JSONDecodeError, TypeError, ValueError):
-                        raise ValueError(
-                            f"No se pudo parsear la geometría WKT/JSON: {v}"
-                        ) from None
+                        raise ValueError(f"No se pudo parsear la geometría: {v}") from None
             else:
                 raise TypeError("La geometría debe ser un objeto JSON estructurado.")
         if v.get("type") != "Polygon":
-            raise ValueError("La geometría debe ser estrictamente de tipo 'Polygon'.")
-        coords = v.get("coordinates")
-        if not coords or not isinstance(coords, list) or len(coords) == 0:
-            raise ValueError(
-                "El polígono debe contener un arreglo de coordenadas válido."
-            )
+            raise ValueError("La geometría debe ser un Polygon GeoJSON.")
         return v
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "name": "Lago Panguipulli",
-                "region": "Región de Los Ríos",
-                "description": "Lago de origen glaciar",
-                "geom": {
-                    "type": "Polygon",
-                    "coordinates": [
-                        [
-                            [-72.1, -39.6],
-                            [-72.2, -39.6],
-                            [-72.2, -39.7],
-                            [-72.1, -39.7],
-                            [-72.1, -39.6],
-                        ]
-                    ],
-                },
-            }
-        }
-    }
 
 
 class LakeUpdate(BaseModel):
@@ -102,42 +138,6 @@ class LakeUpdate(BaseModel):
     description: str | None = None
     geom: dict[str, Any] | None = None
     status: str | None = Field(None, min_length=1, max_length=50)
-
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls, v: str | None) -> str | None:
-        if v is not None and not v.strip():
-            raise ValueError("El nombre del lago no puede estar vacío.")
-        return v
-
-    @field_validator("geom")
-    @classmethod
-    def validate_geom(cls, v: dict[str, Any] | str | None) -> dict[str, Any] | None:
-        if v is not None:
-            if not isinstance(v, dict):
-                if isinstance(v, str):
-                    v_str = v.strip()
-                    if v_str.startswith("{"):
-                        try:
-                            v = json.loads(v_str)
-                        except (json.JSONDecodeError, TypeError, ValueError):
-                            pass
-                    if isinstance(v, str):
-                        try:
-                            v = mapping(parse_wkt(v_str))
-                        except (json.JSONDecodeError, TypeError, ValueError):
-                            raise ValueError(
-                                f"No se pudo parsear la geometría WKT/JSON: {v}"
-                            ) from None
-                else:
-                    raise TypeError(
-                        "La geometría debe ser un objeto JSON estructurado."
-                    )
-            if v.get("type") != "Polygon":
-                raise ValueError("La geometría debe ser un Polygon GeoJSON")
-            if not v.get("coordinates"):
-                raise ValueError("Las coordenadas no pueden estar vacías")
-        return v
 
 
 class LakeSummary(LakeBase):
@@ -152,41 +152,12 @@ class LakeDetail(LakeSummary):
     created_at: datetime
     updated_at: datetime
 
-    @field_validator("geom", mode="before")
-    @classmethod
-    def parse_geom(cls, v: Any) -> dict[str, Any] | None:
-        if v is None:
-            return None
-        if isinstance(v, dict):
-            return v
-        if isinstance(v, str):
-            v_str = v.strip()
-            if v_str.startswith("{"):
-                try:
-                    return json.loads(v_str)
-                except (json.JSONDecodeError, TypeError, ValueError):
-                    pass
-            try:
-                geom_obj = parse_wkt(v_str)
-                return mapping(geom_obj)
-            except (json.JSONDecodeError, TypeError, ValueError):
-                raise ValueError(
-                    f"No se pudo parsear la geometría WKT/JSON: {v}"
-                ) from None
-        return v
-
 
 class PaginatedLakes(BaseModel):
     items: list[LakeSummary]
     page: int
     page_size: int
     total: int
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {"items": [], "page": 1, "page_size": 10, "total": 45}
-        }
-    }
 
 
 class SceneOut(BaseModel):
@@ -203,15 +174,17 @@ class PaginatedScenes(BaseModel):
     page_size: int
     total: int
 
+
 class SceneDetail(BaseModel):
     id: str
-    procedencia: str = Field(..., description="Fuente y origen de la escena satelital")
-    checksum: str = Field(..., description="Hash de verificación de integridad")
-    calidad: str = Field(..., description="Métrica de calidad o cobertura de la escena")
+    procedencia: str
+    checksum: str
+    calidad: str
+
 
 class MembershipCreate(BaseModel):
-    profile_id: UUID = Field(..., description="ID del perfil del usuario")
-    role: Literal["admin", "member"] = Field(..., description="Rol en la organización")
+    profile_id: UUID
+    role: Literal["admin", "member"]
 
 
 class UserOrganizationResponse(BaseModel):
@@ -237,16 +210,9 @@ class ProfileOption(BaseModel):
     name: str | None = None
 
 
-# --- Esquemas de Station ---
-
-
 class CoordinatesUpdate(BaseModel):
-    latitude: float = Field(
-        ..., ge=-90.0, le=90.0, description="Latitud válida entre -90 y 90"
-    )
-    longitude: float = Field(
-        ..., ge=-180.0, le=180.0, description="Longitud válida entre -180 y 180"
-    )
+    latitude: float = Field(..., ge=-90.0, le=90.0)
+    longitude: float = Field(..., ge=-180.0, le=180.0)
 
 
 class StationUpdate(BaseModel):
@@ -254,24 +220,6 @@ class StationUpdate(BaseModel):
     description: str | None = None
     coordinates: CoordinatesUpdate | None = None
     status: str | None = Field(None, min_length=1, max_length=50)
-
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls, v: str | None) -> str | None:
-        if v is not None and not v.strip():
-            raise ValueError("El nombre de la estación no puede ser una cadena vacía.")
-        return v
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "name": "Estación Centro (Reubicada)",
-                "description": "Mantenimiento preventivo completado",
-                "coordinates": {"latitude": -39.642, "longitude": -72.335},
-                "status": "active",
-            }
-        }
-    }
 
 
 class GeoJSONPoint(BaseModel):
@@ -291,25 +239,16 @@ class StationOut(BaseModel):
     updated_at: datetime
 
 
-# --- Esquemas de Organization y Otros ---
-
-
 class OrganizationCreate(BaseModel):
-    name: str = Field(
-        ..., min_length=1, max_length=255, description="Nombre de la organización"
-    )
-    identifier: str = Field(
-        ..., min_length=1, max_length=100, description="Identificador único (slug)"
-    )
-    description: str | None = Field(None, description="Descripción opcional")
+    name: str = Field(..., min_length=1, max_length=255)
+    identifier: str = Field(..., min_length=1, max_length=100)
+    description: str | None = Field(None)
 
     @field_validator("identifier")
     @classmethod
     def validate_identifier(cls, v: str) -> str:
         if not re.match(r"^[a-z0-9\-]+$", v):
-            raise ValueError(
-                "El identificador solo puede contener letras minúsculas, números y guiones."
-            )
+            raise ValueError("El identificador solo admite minúsculas, números y guiones.")
         return v
 
 
@@ -333,3 +272,4 @@ class GeoJSONFeature(BaseModel):
 class GeoJSONFeatureCollection(BaseModel):
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: list[GeoJSONFeature]
+    
