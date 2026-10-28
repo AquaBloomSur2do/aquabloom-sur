@@ -113,10 +113,10 @@ app.include_router(ingestion_router)
 app.include_router(execution_router, prefix="/api/v1/executions")
 app.include_router(lakes_router)
 app.include_router(stations_router)
-app.include_router(datasets_router)
 app.include_router(scenes_router)
 app.include_router(catalog_router, tags=["Catalog"])
 app.include_router(dashboard_router)
+app.include_router(execution_router)
 
 # Inyectando las nuevas rutas con el formato estandarizado de errores S2-105
 app.include_router(observations_router, responses=COMMON_RESPONSES)
@@ -161,3 +161,4 @@ def health_check():
 )
 def test_permission_route() -> dict:
     return {"message": "Acceso permitido. Tienes el rol correcto."}
+
