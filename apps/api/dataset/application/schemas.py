@@ -58,4 +58,7 @@ class DatasetManifestResponse(DatasetManifestBase):
     generated_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
-    
+class IncorporateCandidatesInput(BaseModel):
+    candidate_ids: list[UUID] = Field(
+        ..., description="Lista de IDs de candidatos a incorporar desde la ingesta"
+    )  
