@@ -33,7 +33,7 @@ def create_prepared_input(
         .limit(1)
         .execute()
     )
-    if not original.data:
+    if not original or not getattr(original, "data", None):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No existe la importación del archivo original.",
@@ -52,7 +52,7 @@ def create_prepared_input(
             .execute()
         )
     except APIError as exc:
-        error_code = exc.details.get("code") if hasattr(exc, "details") else getattr(exc, "code", None)
+        error_code = getattr(exc, "code", None)
         if error_code == "23505":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -68,9 +68,10 @@ def create_prepared_input(
             detail="No se pudo registrar el insumo preparado.",
         ) from exc
 
-    if not response.data:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="No se pudo registrar el insumo preparado.",
-        )
-    return response.data[0]
+    response_data = getattr(response, "data", None) if response else None
+    if response_data and len(response_data) > 0:
+        return response_data[0]
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="No se pudo registrar el insumo preparado.",
+    )

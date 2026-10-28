@@ -12,7 +12,7 @@ class PreparedInputCreate(BaseModel):
 
     @field_validator("source_key", mode="before")
     @classmethod
-    def normalize_source_key(cls, value: str) -> str:
+    def normalize_source_key(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
 
 

@@ -56,7 +56,7 @@ def test_register_prepared_input_succeeds(ingestion_client):
         "/api/v1/ingestion/prepared",
         json={
             "original_import_id": str(original_import_id),
-            "source_key": "S2A_scene_001",
+            "source_key": " S2A_scene_001 ",
             "metadata": metadata,
         },
     )
@@ -74,12 +74,33 @@ def test_register_prepared_input_succeeds(ingestion_client):
     )
 
 
+@pytest.mark.parametrize(
+    "insert_response", [None, SimpleNamespace(data=None), SimpleNamespace(data=[])]
+)
+def test_register_prepared_input_without_returned_data_returns_server_error(
+    ingestion_client, insert_response
+):
+    client, prepared_inputs_table, original_import_id = ingestion_client
+    prepared_inputs_table.insert.return_value.execute.return_value = insert_response
+
+    response = client.post(
+        "/api/v1/ingestion/prepared",
+        json={
+            "original_import_id": str(original_import_id),
+            "source_key": "S2A_scene_001",
+            "metadata": {"satellite": "Sentinel-2"},
+        },
+    )
+
+    assert response.status_code == 500
+
+
 def test_register_duplicate_source_key_returns_conflict(ingestion_client):
     client, prepared_inputs_table, original_import_id = ingestion_client
     prepared_inputs_table.insert.return_value.execute.side_effect = APIError(
         {
             "code": "23505",
-            "details": {"code": "23505"},
+            "details": "Key (source_key) already exists.",
             "message": "duplicate key",
         }
     )
@@ -101,7 +122,7 @@ def test_register_missing_original_import_returns_not_found(ingestion_client):
     prepared_inputs_table.insert.return_value.execute.side_effect = APIError(
         {
             "code": "23503",
-            "details": {"code": "23503"},
+            "details": "Key (original_import_id) is not present.",
             "message": "foreign key violation",
         }
     )
@@ -116,3 +137,25 @@ def test_register_missing_original_import_returns_not_found(ingestion_client):
     )
 
     assert response.status_code == 404
+
+
+def test_register_prepared_input_database_error_returns_server_error(ingestion_client):
+    client, prepared_inputs_table, original_import_id = ingestion_client
+    prepared_inputs_table.insert.return_value.execute.side_effect = APIError(
+        {
+            "code": "XX000",
+            "details": "Unexpected database failure.",
+            "message": "database error",
+        }
+    )
+
+    response = client.post(
+        "/api/v1/ingestion/prepared",
+        json={
+            "original_import_id": str(original_import_id),
+            "source_key": "S2A_scene_001",
+            "metadata": {"satellite": "Sentinel-2"},
+        },
+    )
+
+    assert response.status_code == 500
