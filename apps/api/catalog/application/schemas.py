@@ -47,3 +47,4 @@ class StationResponse(StationBase):
 
     class Config:
         from_attributes = True
+  

@@ -1,4 +1,49 @@
 ﻿services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - aquabloom-net
+
+  satellite:
+    build:
+      context: ./apps/satellite
+    restart: unless-stopped
+    environment:
+      SATELLITE_SERVICE_NAME: ${SATELLITE_SERVICE_NAME:-AquaBloom Satellite}
+      SATELLITE_ENVIRONMENT: ${SATELLITE_ENVIRONMENT:-development}
+      SATELLITE_REDIS_URL: redis://redis:6379/0
+    ports:
+      - "${SATELLITE_PORT:-8001}:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - aquabloom-net
+
+  scientific-worker:
+    build:
+      context: ./apps/satellite
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    healthcheck:
+      disable: true
+    environment:
+      SATELLITE_SERVICE_NAME: ${SATELLITE_SERVICE_NAME:-AquaBloom Scientific Worker}
+      SATELLITE_ENVIRONMENT: ${SATELLITE_ENVIRONMENT:-development}
+      SATELLITE_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - aquabloom-net
+
   api:
     build:
       context: ./apps/api
@@ -7,6 +52,9 @@
       - ./apps/api/.env
     ports:
       - "5000:8000"
+    depends_on:
+      satellite:
+        condition: service_healthy
     networks:
       - aquabloom-net
 

@@ -11,13 +11,13 @@ import { StationsList } from './pages/StationsList';
 import { OrganizationsList } from './pages/OrganizationsList';
 import { StationForm } from './pages/StationForm';
 import { LakeDetail } from './pages/LakeDetail';
+import { DatasetReview } from './pages/DatasetReview';
 import { NotFound } from './pages/NotFound';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import LakeCreate from './pages/LakeCreate';
 
 import Error401 from './pages/Error401';
 import Error403 from './pages/Error403';
-
 
 function App() {
   return (
@@ -38,10 +38,17 @@ function App() {
               <Route path="/lakes" element={<LakesList />} />
               <Route path="/stations" element={<StationsList />} />
               <Route path="/organizations" element={<OrganizationsList />} />
+              <Route path="/datasets/review" element={<DatasetReview />} />
               <Route path="/admin" element={<OrganizationsList />} />
-              <Route path="/lakes/:lakeId/stations/new" element={<StationForm />} />
-              <Route path="/lakes/:lakeId/stations/:stationId/edit" element={<StationForm />} />
-              
+              <Route
+                path="/lakes/:lakeId/stations/new"
+                element={<StationForm />}
+              />
+              <Route
+                path="/lakes/:lakeId/stations/:stationId/edit"
+                element={<StationForm />}
+              />
+
               {/* INYECCIÓN ESTRATÉGICA: /new debe ir antes de /:id */}
               <Route path="/lakes/new" element={<LakeCreate />} />
               <Route path="/lakes/:id/edit" element={<LakeCreate />} />
@@ -57,4 +64,3 @@ function App() {
 }
 
 export default App;
-
