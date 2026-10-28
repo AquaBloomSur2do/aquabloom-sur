@@ -19,6 +19,7 @@ from app.organizations import router as organizations_router
 from app.scenes import router as scenes_router
 from app.stations import router as stations_router
 from catalog.application.endpoints import router as catalog_router
+from domain.execution.router import router as execution_router
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
@@ -73,7 +74,7 @@ app.include_router(datasets_router)
 app.include_router(scenes_router)
 app.include_router(catalog_router, tags=["Catalog"])
 app.include_router(dashboard_router)
-
+app.include_router(execution_router, prefix="/api/v1/executions", tags=["executions"])
 
 app.add_middleware(
     CORSMiddleware,

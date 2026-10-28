@@ -101,6 +101,15 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
         </p>
       </div>
 
+      <aside
+        className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+        role="note"
+        aria-label="Advertencia sobre uso científico"
+      >
+        Advertencia: Este insumo muestra procedencia pero no se presenta como un
+        dato científico validado.
+      </aside>
+
       <form
         className="mb-4 flex flex-col md:flex-row md:items-end gap-3"
         onSubmit={handleSearch}
@@ -218,10 +227,46 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
           </div>
 
           {selectedScene && (
-            <p className="mt-4 text-sm text-blue-800" role="status">
-              Escena seleccionada: {selectedScene.scene_identifier} (
-              {selectedScene.acquisition_date})
-            </p>
+            <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
+              <p className="text-sm font-semibold text-blue-900" role="status">
+                Escena seleccionada: {selectedScene.scene_identifier} (
+                {selectedScene.acquisition_date})
+              </p>
+              <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="font-medium text-gray-700">Procedencia</dt>
+                  <dd className="text-gray-600">
+                    {selectedScene.provider || 'No disponible'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-gray-700">
+                    Identificador externo
+                  </dt>
+                  <dd className="break-all font-mono text-gray-600">
+                    {selectedScene.external_id || 'No disponible'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-gray-700">
+                    Cobertura de nubes
+                  </dt>
+                  <dd className="text-gray-600">
+                    {selectedScene.cloud_cover != null
+                      ? `${selectedScene.cloud_cover}%`
+                      : 'No disponible'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-gray-700">
+                    Estado de la escena
+                  </dt>
+                  <dd className="text-gray-600">
+                    {selectedScene.status || 'No disponible'}
+                  </dd>
+                </div>
+              </dl>
+            </div>
           )}
 
           <Pagination

@@ -4,6 +4,10 @@ export interface Scene {
   scene_identifier: string;
   acquisition_date: string;
   created_at: string;
+  provider?: string | null;
+  external_id?: string | null;
+  cloud_cover?: number | null;
+  status?: 'pending' | 'processed' | 'failed' | 'rejected' | null;
 }
 
 export interface PaginatedScenes {
