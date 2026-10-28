@@ -1,7 +1,23 @@
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from postgrest.exceptions import APIError
+
+try:
+    from postgrest.exceptions import APIError
+except (ImportError, ModuleNotFoundError):
+    try:
+        from supabase.lib.client_options import APIError
+    except (ImportError, ModuleNotFoundError):
+
+        class APIError(Exception):
+            code: str = "500"
+            details: str = "Error genérico de BD"
+
+            def __init__(self, error: object = None):
+                super().__init__(error)
+                if isinstance(error, dict):
+                    self.code = str(error.get("code", self.code))
+                    self.details = str(error.get("details", self.details))
 
 from app.auth import verify_supabase_jwt
 from app.database import supabase
@@ -9,6 +25,24 @@ from app.database import supabase
 from .schemas import PreparedInputCreate, PreparedInputResponse
 
 router = APIRouter(prefix="/api/v1/ingestion", tags=["Ingestion"])
+
+
+def _raise_database_error(exc: Exception) -> NoReturn:
+    error_code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if str(error_code) == "23505":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya existe un insumo registrado para esta clave de origen.",
+        ) from exc
+    if str(error_code) == "23503":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No existe la importación del archivo original.",
+        ) from exc
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="No se pudo registrar el insumo preparado.",
+    ) from exc
 
 
 @router.post(
@@ -26,13 +60,19 @@ def create_prepared_input(
             detail="El servicio de base de datos no está disponible.",
         )
 
-    original = (
-        supabase.table("imports")
-        .select("id")
-        .eq("id", str(prepared_input.original_import_id))
-        .limit(1)
-        .execute()
-    )
+    try:
+        original = (
+            supabase.table("imports")
+            .select("id")
+            .eq("id", str(prepared_input.original_import_id))
+            .limit(1)
+            .execute()
+        )
+    except APIError as exc:
+        _raise_database_error(exc)
+    except Exception as exc:  # noqa: BLE001
+        _raise_database_error(exc)
+
     if not original or not getattr(original, "data", None):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -52,21 +92,9 @@ def create_prepared_input(
             .execute()
         )
     except APIError as exc:
-        error_code = getattr(exc, "code", None)
-        if error_code == "23505":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Ya existe un insumo registrado para esta clave de origen.",
-            ) from exc
-        if error_code == "23503":
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No existe la importación del archivo original.",
-            ) from exc
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="No se pudo registrar el insumo preparado.",
-        ) from exc
+        _raise_database_error(exc)
+    except Exception as exc:  # noqa: BLE001
+        _raise_database_error(exc)
 
     response_data = getattr(response, "data", None) if response else None
     if response_data and len(response_data) > 0:

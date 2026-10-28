@@ -5,7 +5,23 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
-from postgrest.exceptions import APIError
+
+try:
+    from postgrest.exceptions import APIError
+except (ImportError, ModuleNotFoundError):
+    try:
+        from supabase.lib.client_options import APIError
+    except (ImportError, ModuleNotFoundError):
+
+        class APIError(Exception):
+            code: str = "500"
+            details: str = "Error genérico de BD"
+
+            def __init__(self, error: object = None):
+                super().__init__(error)
+                if isinstance(error, dict):
+                    self.code = str(error.get("code", self.code))
+                    self.details = str(error.get("details", self.details))
 
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
@@ -159,3 +175,32 @@ def test_register_prepared_input_database_error_returns_server_error(ingestion_c
     )
 
     assert response.status_code == 500
+
+
+@pytest.mark.parametrize(
+    ("error_attribute", "error_code", "expected_status"),
+    [
+        ("code", "23505", 409),
+        ("code", "23503", 404),
+        ("status_code", "23505", 409),
+        ("status_code", "23503", 404),
+    ],
+)
+def test_register_generic_database_error_maps_error_code(
+    ingestion_client, error_attribute, error_code, expected_status
+):
+    client, prepared_inputs_table, original_import_id = ingestion_client
+    database_error = Exception("database error")
+    setattr(database_error, error_attribute, error_code)
+    prepared_inputs_table.insert.return_value.execute.side_effect = database_error
+
+    response = client.post(
+        "/api/v1/ingestion/prepared",
+        json={
+            "original_import_id": str(original_import_id),
+            "source_key": "S2A_scene_001",
+            "metadata": {"satellite": "Sentinel-2"},
+        },
+    )
+
+    assert response.status_code == expected_status
