@@ -1,7 +1,7 @@
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class GeoJsonPoint(BaseModel):
@@ -45,6 +45,7 @@ class StationResponse(StationBase):
     id: UUID = Field(..., description="ID único de la estación")
     lake_id: UUID
 
-    class Config:
-        from_attributes = True
-  
+    model_config = ConfigDict(from_attributes=True)
+
+
+

@@ -2,8 +2,9 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.dependencies import require_internal_service
 from domain.execution.schemas import JobCreate, JobResponse, JobStatus
 
 router = APIRouter()
@@ -12,7 +13,12 @@ router = APIRouter()
 JOBS_DB: dict[str, dict[str, Any]] = {}
 
 
-@router.post("/", response_model=JobResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/",
+    response_model=JobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_internal_service)],
+)
 def create_execution_job(payload: JobCreate):
     job_id = str(uuid.uuid4())
     job_data = {
@@ -24,7 +30,7 @@ def create_execution_job(payload: JobCreate):
         "created_at": datetime.now(UTC),
     }
     JOBS_DB[job_id] = job_data
-    
+
     return {
         "job_id": job_id,
         "status": "pending",
@@ -33,7 +39,12 @@ def create_execution_job(payload: JobCreate):
     }
 
 
-@router.get("/{job_id}", response_model=JobStatus, status_code=status.HTTP_200_OK)
+@router.get(
+    "/{job_id}",
+    response_model=JobStatus,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_service)],
+)
 def get_job_status(job_id: str):
     if job_id not in JOBS_DB:
         raise HTTPException(
