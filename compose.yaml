@@ -1,78 +1,69 @@
-﻿services:
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - aquabloom-net
+﻿version: '3.8'
 
-  satellite:
-    build:
-      context: ./apps/satellite
-    restart: unless-stopped
-    environment:
-      SATELLITE_SERVICE_NAME: ${SATELLITE_SERVICE_NAME:-AquaBloom Satellite}
-      SATELLITE_ENVIRONMENT: ${SATELLITE_ENVIRONMENT:-development}
-      SATELLITE_REDIS_URL: redis://redis:6379/0
-    ports:
-      - "${SATELLITE_PORT:-8001}:8000"
-    depends_on:
-      redis:
-        condition: service_healthy
-    networks:
-      - aquabloom-net
-
-  scientific-worker:
-    build:
-      context: ./apps/satellite
-    restart: unless-stopped
-    command: ["python", "-m", "app.worker"]
-    healthcheck:
-      disable: true
-    environment:
-      SATELLITE_SERVICE_NAME: ${SATELLITE_SERVICE_NAME:-AquaBloom Scientific Worker}
-      SATELLITE_ENVIRONMENT: ${SATELLITE_ENVIRONMENT:-development}
-      SATELLITE_REDIS_URL: redis://redis:6379/0
-    depends_on:
-      redis:
-        condition: service_healthy
-    networks:
-      - aquabloom-net
-
-  api:
+services:
+  # 1. API Gateway (Punto de entrada único)
+  gateway:
     build:
       context: ./apps/api
+      dockerfile: Dockerfile
     restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     env_file:
       - ./apps/api/.env
     ports:
-      - "5000:8000"
+      - "5000:8000" # Expuesto al host en el 5000 para el frontend local
+    networks:
+      - aquabloom-net
     depends_on:
-      satellite:
-        condition: service_healthy
+      - core
+      - satellite
+      - scientific
+
+  # 2. Core Service (Catálogo, Identidad, Dataset, Ingesta)
+  core:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Se levanta en un puerto interno diferente al gateway
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001
+    env_file:
+      - ./apps/api/.env
+    # No se exponen puertos al host, solo es accesible internamente vía Gateway
     networks:
       - aquabloom-net
 
+  # 3. Satellite Service (Procesamiento Raster y Sentinel-2)
   satellite:
     build:
+      # Asume que el Dockerfile de satellite existirá aquí
       context: ./apps/satellite
+      dockerfile: Dockerfile
     restart: unless-stopped
-    environment:
-      SATELLITE_SERVICE_NAME: ${SATELLITE_SERVICE_NAME:-AquaBloom Satellite}
-      SATELLITE_ENVIRONMENT: ${SATELLITE_ENVIRONMENT:-development}
-    ports:
-      - "${SATELLITE_PORT:-8001}:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8002
+    env_file:
+      - ./apps/satellite/.env
     networks:
       - aquabloom-net
 
+  # 4. Scientific Service (ML, Entrenamiento, Inferencia)
+  scientific:
+    build:
+      # Asume que se creará la carpeta apps/scientific pronto
+      context: ./apps/scientific
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8003
+    env_file:
+      - ./apps/scientific/.env
+    networks:
+      - aquabloom-net
+
+  # 5. Frontend React (App Web)
   web:
     build:
       context: ./apps/web
+      dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
       - ./apps/web/.env
@@ -81,7 +72,10 @@
     networks:
       - aquabloom-net
     depends_on:
-      - api
+      - gateway
+
+  # NOTA: La infraestructura de Redis (Broker) y el Celery Worker
+  # se agregarán aquí durante la fase de integración asíncrona del Scientific Service.
 
 networks:
   aquabloom-net:

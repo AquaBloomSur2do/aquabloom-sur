@@ -270,6 +270,8 @@ El archivo `compose.yaml` define servicios de API, web y PostGIS. Su configuraci
 
 Para levantar el entorno de desarrollo local con Docker Compose y evitar errores de validación o dependencias faltantes (`shapely`, módulos del backend), sigue estos pasos:
 
+Para levantar los microservicios del Sprint 2, es posible que primero debas crear archivos .env vacíos o de ejemplo en apps/satellite y apps/scientific si Docker Compose arroja error de que no los encuentra.
+
 ### 1. Configuración del archivo `.env`
 Asegúrate de que tu archivo `.env` en la raíz contenga todas las variables requeridas (tanto de PostgreSQL como de Supabase):
 
