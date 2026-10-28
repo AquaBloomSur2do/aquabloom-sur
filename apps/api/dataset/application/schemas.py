@@ -26,7 +26,6 @@ class DatasetCandidateBase(BaseModel):
 class DatasetCandidateResponse(DatasetCandidateBase):
     id: UUID
     submitted_at: datetime
-    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -45,7 +44,6 @@ class DatasetVersionBase(BaseModel):
 class DatasetVersionResponse(DatasetVersionBase):
     id: UUID
     published_at: datetime | None = None
-    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -58,7 +56,6 @@ class DatasetManifestBase(BaseModel):
 class DatasetManifestResponse(DatasetManifestBase):
     id: UUID
     generated_at: datetime
-    
     model_config = ConfigDict(from_attributes=True)
 
-
+    

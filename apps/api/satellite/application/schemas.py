@@ -36,19 +36,6 @@ class SpectralObservationCreate(SpectralObservationBase):
                         "unit": "adimensional",
                         "quality": "OPTIMA"
                     }
-                },
-                {
-                    "summary": "Caso Rechazado (Saturación/Nubes)",
-                    "description": "Observación descartada por valores anómalos o cobertura nubosa.",
-                    "value": {
-                        "scene_id": "123e4567-e89b-12d3-a456-426614174000",
-                        "sample_id": "987e6543-e21b-34d3-b456-426614174011",
-                        "bands": {"B04": 1.0, "B08": 1.0},
-                        "spectral_index": "NDVI",
-                        "index_value": 0.0,
-                        "unit": "adimensional",
-                        "quality": "RECHAZADA"
-                    }
                 }
             ]
         }
@@ -57,6 +44,5 @@ class SpectralObservationCreate(SpectralObservationBase):
 
 class SpectralObservationResponse(SpectralObservationBase):
     id: UUID = Field(..., description="Identificador único de la observación en la base de datos")
-
     model_config = ConfigDict(from_attributes=True)
 

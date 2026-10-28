@@ -15,11 +15,13 @@ from app.gateway import router as gateway_router
 from app.handlers import auth_exception_handler, global_exception_handler
 from app.imports import router as imports_router
 from app.lakes import router as lakes_router
+
+# Nuevos routers para registrar esquemas en OpenAPI
+from app.observations import router as observations_router
 from app.organizations import router as organizations_router
 from app.scenes import router as scenes_router
 from app.stations import router as stations_router
 from catalog.application.endpoints import router as catalog_router
-from domain.execution.router import router as execution_router
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
@@ -27,6 +29,8 @@ tags_metadata = [
     {"name": "Organizations", "description": "Gestión de organizaciones de usuarios."},
     {"name": "Catalog", "description": "Catálogo de lagos y estaciones."},
     {"name": "Dashboard", "description": "Resumen de métricas del dashboard."},
+    {"name": "Observations", "description": "Observaciones espectrales."},
+    {"name": "Datasets", "description": "Versionado y manifiestos de datasets."},
 ]
 
 app = FastAPI(
@@ -36,6 +40,41 @@ app = FastAPI(
     servers=[{"url": "http://localhost:8000"}],
     openapi_tags=tags_metadata,
 )
+
+# Diccionario de errores comunes para inyectar en la documentación pública
+COMMON_RESPONSES = {
+    404: {
+        "description": "Not Found",
+        "content": {
+            "application/json": {
+                "example": {"error": "Not Found", "message": "Recurso no encontrado"}
+            }
+        },
+    },
+    422: {
+        "description": "Validation Error",
+        "content": {
+            "application/json": {
+                "example": {
+                    "error": "Validation Error",
+                    "message": "Parámetros de entrada inválidos",
+                    "details": [],
+                }
+            }
+        },
+    },
+    500: {
+        "description": "Internal Server Error",
+        "content": {
+            "application/json": {
+                "example": {
+                    "error": "Internal Error",
+                    "message": "Error inesperado en el servidor",
+                }
+            }
+        },
+    },
+}
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -74,7 +113,10 @@ app.include_router(datasets_router)
 app.include_router(scenes_router)
 app.include_router(catalog_router, tags=["Catalog"])
 app.include_router(dashboard_router)
-app.include_router(execution_router, prefix="/api/v1/executions", tags=["executions"])
+
+# Inyectando las nuevas rutas con el formato estandarizado de errores S2-105
+app.include_router(observations_router, responses=COMMON_RESPONSES)
+app.include_router(datasets_router, responses=COMMON_RESPONSES)
 
 app.add_middleware(
     CORSMiddleware,
@@ -107,7 +149,7 @@ def health_check():
     }
 
 
-# --- Ruta de prueba para ticket S2-038 ---
+# --- Ruta de prueba ---
 @app.get(
     "/api/test-permission",
     dependencies=[Depends(require_permission("admin"))],
