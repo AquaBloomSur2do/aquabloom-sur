@@ -333,5 +333,6 @@ def test_verifica_token_hs256_legacy(monkeypatch):
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
     payload = auth.verify_supabase_jwt(credentials)
-
     assert payload["sub"] == "11111111-1111-1111-1111-111111111111"
+
+
