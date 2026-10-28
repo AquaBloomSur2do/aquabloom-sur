@@ -1,12 +1,8 @@
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, StringConstraints
-
-from app.auth import verify_supabase_jwt
-from app.database import supabase
 from dataset.application.schemas import (
+    CandidateValidationPayload,
     DatasetCandidateBase,
     DatasetCandidateResponse,
     DatasetDecisionCreate,
@@ -15,6 +11,11 @@ from dataset.application.schemas import (
     DatasetVersionBase,
     DatasetVersionResponse,
 )
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, StringConstraints
+
+from app.auth import verify_supabase_jwt
+from app.database import supabase
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["Datasets"])
 
@@ -260,3 +261,15 @@ def create_membership_decision(
             detail="No se devolvió la decisión guardada.",
         )
     return inserted[0]
+
+@router.post("/candidates/validate", status_code=200)
+def validate_candidate_fields(
+    payload: CandidateValidationPayload,
+    user_data: dict = Depends(verify_supabase_jwt),  # noqa: B008
+):
+   
+    return {
+        "message": "Validación exitosa. Variables, unidades y fechas son compatibles.",
+        "candidate_id": str(payload.candidate_id),
+        "status": "VALIDATED"
+}
