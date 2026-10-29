@@ -185,6 +185,9 @@ def list_review_datasets(
     versions_by_id: dict[str, dict] = {}
     for version in versions:
         version["memberships"] = []
+        raw_state = version.get("state") or version.get("status") or "DRAFT"
+        version["state"] = str(raw_state).upper()
+        version["status"] = str(raw_state).upper()
         versions_by_id[version["id"]] = version
         dataset = datasets_by_id.get(version["dataset_id"])
         if dataset is not None:
@@ -444,13 +447,21 @@ def update_version_state(
         )
 
     version_data = version_rows[0]
-    raw_state = (
-        version_data.get("state") or version_data.get("status") or "DRAFT"
-    )
+    raw_state = version_data.get("state") or version_data.get("status")
+
+    if not raw_state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La versión no tiene un estado asignado.",
+        )
+
     try:
         current_state = VersionState(str(raw_state).upper())
-    except ValueError:
-        current_state = VersionState.DRAFT
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Estado actual no reconocido en base de datos: '{raw_state}'.",
+        ) from exc
 
     validate_state_transition(current_state, state_input.state)
 
@@ -486,12 +497,13 @@ def update_version_state(
             ),
         )
 
+    new_state_str = state_input.state.value
     updated_rows = _rows(
         dataset_client.table("versions")
         .update(
             {
-                "state": state_input.state.value,
-                "status": state_input.state.value,
+                "state": new_state_str,
+                "status": new_state_str,
             }
         )
         .eq("id", str(version_id))
@@ -500,8 +512,8 @@ def update_version_state(
     if not updated_rows:
         return {
             "id": str(version_id),
-            "state": state_input.state.value,
-            "status": state_input.state.value,
+            "state": new_state_str,
+            "status": new_state_str,
         }
 
     return updated_rows[0]

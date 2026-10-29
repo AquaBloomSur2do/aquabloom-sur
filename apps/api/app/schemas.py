@@ -210,6 +210,9 @@ class ProfileOption(BaseModel):
     name: str | None = None
 
 
+# --- Esquemas de Station ---
+
+
 class CoordinatesUpdate(BaseModel):
     latitude: float = Field(..., ge=-90.0, le=90.0)
     longitude: float = Field(..., ge=-180.0, le=180.0)
@@ -237,6 +240,9 @@ class StationOut(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+
+
+# --- Esquemas de Organization y Otros ---
 
 
 class OrganizationCreate(BaseModel):
@@ -273,3 +279,4 @@ class GeoJSONFeatureCollection(BaseModel):
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: list[GeoJSONFeature]
     
+     
