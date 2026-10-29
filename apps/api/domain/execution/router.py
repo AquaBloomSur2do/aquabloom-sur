@@ -13,7 +13,6 @@ router = APIRouter(prefix="/api/v1/executions", tags=["Executions"])
 # Diccionario temporal en memoria para pruebas locales
 JOBS_DB: dict[str, dict[str, Any]] = {}
 
-
 @router.post(
     "/",
     response_model=JobResponse,
@@ -38,7 +37,6 @@ def create_execution_job(payload: JobCreate):
         "status_url": f"/api/v1/executions/{job_id}",
         "message": "Job accepted and processing in background",
     }
-
 
 @router.get(
     "/{job_id}",

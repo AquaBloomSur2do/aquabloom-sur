@@ -26,6 +26,7 @@ from app.scenes import router as scenes_router
 from app.stations import router as stations_router
 from catalog.application.endpoints import router as catalog_router
 from domain.execution.router import router as execution_router
+from ingestion.application.endpoints import router as ingestion_router
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
@@ -49,60 +50,31 @@ app = FastAPI(
 COMMON_RESPONSES = {
     404: {
         "description": "Not Found",
-        "content": {
-            "application/json": {
-                "example": {"error": "Not Found", "message": "Recurso no encontrado"}
-            }
-        },
+        "content": {"application/json": {"example": {"error": "Not Found", "message": "Recurso no encontrado"}}}
     },
     422: {
         "description": "Validation Error",
-        "content": {
-            "application/json": {
-                "example": {
-                    "error": "Validation Error",
-                    "message": "Parámetros de entrada inválidos",
-                    "details": [],
-                }
-            }
-        },
+        "content": {"application/json": {"example": {"error": "Validation Error", "message": "Parámetros inválidos", "details": []}}}
     },
     500: {
         "description": "Internal Server Error",
-        "content": {
-            "application/json": {
-                "example": {
-                    "error": "Internal Error",
-                    "message": "Error inesperado en el servidor",
-                }
-            }
-        },
+        "content": {"application/json": {"example": {"error": "Internal Error", "message": "Error inesperado"}}}
     },
 }
-
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request, exc):
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "error": "Not Found" if exc.status_code == 404 else "HTTP Error",
-            "message": str(exc.detail),
-        },
+        content={"error": "Not Found" if exc.status_code == 404 else "HTTP Error", "message": str(exc.detail)},
     )
-
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
     return JSONResponse(
         status_code=422,
-        content={
-            "error": "Validation Error",
-            "message": "Parámetros de entrada inválidos",
-            "details": exc.errors(),
-        },
+        content={"error": "Validation Error", "message": "Parámetros de entrada inválidos", "details": exc.errors()},
     )
-
 
 app.add_exception_handler(AuthException, auth_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
@@ -111,14 +83,13 @@ app.include_router(auth_router)
 app.include_router(gateway_router)
 app.include_router(organizations_router)
 app.include_router(imports_router)
+app.include_router(ingestion_router)
+app.include_router(execution_router)
 app.include_router(lakes_router)
 app.include_router(stations_router)
 app.include_router(scenes_router)
 app.include_router(catalog_router, tags=["Catalog"])
 app.include_router(dashboard_router)
-app.include_router(execution_router)
-
-# Inyectando las nuevas rutas
 app.include_router(observations_router, responses=COMMON_RESPONSES)
 app.include_router(datasets_router, responses=COMMON_RESPONSES)
 app.include_router(manifests_router, responses=COMMON_RESPONSES)
@@ -128,30 +99,19 @@ app.add_middleware(
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=[
-        "Authorization",
-        "Content-Type",
-        "Accept",
-        "X-Idempotency-Key",
-        "X-Correlation-ID",
-    ],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Idempotency-Key", "X-Correlation-ID"],
 )
-
 
 @app.get("/")
 def read_root():
     return {"message": f"API inicializada en ambiente: {settings.environment}"}
 
-
 @app.get("/api/v1/health", tags=["System"])
 def health_check():
     db_status = check_supabase_connection()
-    return {
-        "service": "AquaBloom Sur API",
-        "version": "v1",
-        "status": "ok" if db_status["status"] == "ok" else "degraded",
-        "database": db_status,
-    }
+    return {"service": "AquaBloom Sur", "version": "v1", "status": "ok" if db_status["status"] == "ok" else "degraded", "database": db_status}
+
+
 
 
 @app.get(
@@ -161,5 +121,3 @@ def health_check():
 )
 def test_permission_route() -> dict:
     return {"message": "Acceso permitido. Tienes el rol correcto."}
-
-
