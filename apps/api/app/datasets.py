@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Annotated, Literal, NoReturn
 from uuid import UUID
 
@@ -284,7 +284,7 @@ def publish_dataset_version(
         )
 
     if version["status"] != "published":
-        publication_time = datetime.now(timezone.utc)
+        publication_time = datetime.now(UTC)
         try:
             updated_rows = _rows(
                 dataset_client.table("versions")
