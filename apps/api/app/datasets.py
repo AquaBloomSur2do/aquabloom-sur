@@ -2,7 +2,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.auth import verify_supabase_jwt
 from app.database import supabase
@@ -15,9 +15,39 @@ from dataset.application.schemas import (
     DatasetVersionBase,
     DatasetVersionResponse,
     IncorporateCandidatesInput,
+    VersionState,  # <-- Importación corregida de VersionState
 )
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["Datasets"])
+
+# --- Definición Local del DTO faltante en main ---
+class DatasetVersionStateUpdate(BaseModel):
+    state: VersionState = Field(
+        ..., description="Nuevo estado del ciclo de vida de la versión"
+    )
+
+# --- Transiciones Permitidas del Ciclo de Vida (S2-134) ---
+
+ALLOWED_STATE_TRANSITIONS: dict[VersionState, list[VersionState]] = {
+    VersionState.DRAFT: [VersionState.PUBLISHED, VersionState.ARCHIVED], # IN_REVIEW y APPROVED no existen en la nueva definicion de VersionState
+    VersionState.PUBLISHED: [VersionState.ARCHIVED],
+    VersionState.ARCHIVED: [],
+}
+
+
+def validate_state_transition(
+    current_state: VersionState, target_state: VersionState
+) -> None:
+    allowed = ALLOWED_STATE_TRANSITIONS.get(current_state, [])
+    if target_state not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Transición de estado no permitida desde '{current_state.value}' "
+                f"hacia '{target_state.value}'."
+            ),
+        )
+
 
 # --- Stubs de S2-105 para Especificación OpenAPI ---
 
@@ -46,9 +76,6 @@ async def create_manifest(payload: DatasetManifestBase):
 
 
 # --- Implementación Real Integrada desde Main ---
-
-
-router = APIRouter(prefix="/api/v1/datasets", tags=["Datasets"])
 
 READ_ROLES = {
     "admin",
@@ -279,10 +306,10 @@ def incorporate_candidates_to_version(
             detail="La lista de IDs de candidatos no puede estar vacía.",
         )
 
-    # 1. Verificar que la versión del dataset existe
+    # 1. Verificar que la versión del dataset existe y validar inmutabilidad (S2-136)
     version_rows = _rows(
         dataset_client.table("versions")
-        .select("id, dataset_id")
+        .select("id, dataset_id, state, status")
         .eq("id", str(version_id))
         .limit(1)
         .execute()
@@ -293,7 +320,16 @@ def incorporate_candidates_to_version(
             detail="La versión del dataset no existe.",
         )
 
-    dataset_id = version_rows[0]["dataset_id"]
+    version_data = version_rows[0]
+    raw_state = str(version_data.get("state") or version_data.get("status") or "DRAFT").upper()
+    
+    if raw_state in ["PUBLISHED", "ARCHIVED"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"No se pueden añadir candidatos a una versión inmutable ({raw_state}). Debe generar una nueva versión.",
+        )
+
+    dataset_id = version_data["dataset_id"]
 
     # 2. Obtener la organización del dataset para validar permisos
     dataset_rows = _rows(
@@ -359,3 +395,102 @@ def incorporate_candidates_to_version(
         "count": len(inserted),
         "inserted": inserted,
     }
+
+
+@router.patch("/versions/{version_id}/state", status_code=200)
+def update_version_state(
+    version_id: UUID,
+    state_input: DatasetVersionStateUpdate,
+    payload: dict = Depends(verify_supabase_jwt),  # noqa: B008
+):
+    """Actualiza el estado del ciclo de vida de una versión de dataset."""
+    client = _require_database()
+    user_id = _user_id(payload)
+    dataset_client = client.schema("dataset")
+
+    version_rows = _rows(
+        dataset_client.table("versions")
+        .select("id, dataset_id, state, status")
+        .eq("id", str(version_id))
+        .limit(1)
+        .execute()
+    )
+    if not version_rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La versión del dataset no existe.",
+        )
+
+    version_data = version_rows[0]
+    raw_state = version_data.get("state") or version_data.get("status")
+
+    if not raw_state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La versión no tiene un estado asignado.",
+        )
+
+    try:
+        current_state = VersionState(str(raw_state).upper())
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Estado actual no reconocido en base de datos: '{raw_state}'.",
+        ) from exc
+
+    validate_state_transition(current_state, state_input.state)
+
+    dataset_rows = _rows(
+        dataset_client.table("datasets")
+        .select("id, organization_id")
+        .eq("id", version_data["dataset_id"])
+        .limit(1)
+        .execute()
+    )
+    if not dataset_rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="El dataset asociado no existe.",
+        )
+
+    organization_memberships = _rows(
+        client.table("memberships")
+        .select("role")
+        .eq("user_id", user_id)
+        .eq("organization_id", dataset_rows[0]["organization_id"])
+        .eq("status", "active")
+        .execute()
+    )
+    if not any(
+        str(membership.get("role", "")).strip().lower() in APPROVAL_ROLES
+        for membership in organization_memberships
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "No tienes permisos para modificar el estado de esta versión."
+            ),
+        )
+
+    new_state_str = state_input.state.value
+    updated_rows = _rows(
+        dataset_client.table("versions")
+        .update(
+            {
+                "state": new_state_str,
+                "status": new_state_str,
+            }
+        )
+        .eq("id", str(version_id))
+        .execute()
+    )
+    if not updated_rows:
+        return {
+            "id": str(version_id),
+            "state": new_state_str,
+            "status": new_state_str,
+        }
+
+    return updated_rows[0]
+
+
