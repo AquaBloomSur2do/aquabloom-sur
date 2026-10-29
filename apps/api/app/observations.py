@@ -1,13 +1,13 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+from app.auth import verify_supabase_jwt
+from app.database import supabase
 from satellite.application.schemas import (
     SpectralObservationCreate,
     SpectralObservationResponse,
 )
-
-from app.auth import verify_supabase_jwt
-from app.database import supabase
 
 router = APIRouter(prefix="/api/v1/observations", tags=["Observations"])
 

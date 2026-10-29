@@ -1,10 +1,7 @@
-from catalog.application.endpoints import router as catalog_router
-from domain.execution.router import router as execution_router
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from ingestion.application.endpoints import router as ingestion_router
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.auth import AuthException
@@ -23,6 +20,9 @@ from app.observations import router as observations_router
 from app.organizations import router as organizations_router
 from app.scenes import router as scenes_router
 from app.stations import router as stations_router
+from catalog.application.endpoints import router as catalog_router
+from domain.execution.router import router as execution_router
+from ingestion.application.endpoints import router as ingestion_router
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
