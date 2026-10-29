@@ -1,122 +1,88 @@
 ﻿services:
-  # 1. API Gateway (Punto de entrada único)
-  gateway:
-    build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+  redis:
+    image: redis:7-alpine
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
-    env_file:
-      - path: ./apps/api/.env.example
-        required: false
-      - path: ./apps/api/.env
-        required: false
-    ports:
-      - "5000:8000"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     networks:
       - aquabloom-net
-    depends_on:
-      core:
-        condition: service_healthy
-      satellite:
-        condition: service_started
-      scientific:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
-  # 2. Core Service (Catálogo, Identidad, Dataset, Ingesta)
-  core:
-    build:
-      context: ./apps/api
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8001
-    env_file:
-      - path: ./apps/api/.env.example
-        required: false
-      - path: ./apps/api/.env
-        required: false
-    networks:
-      - aquabloom-net
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # 3. Satellite Service (Procesamiento Raster y Sentinel-2)
   satellite:
     build:
       context: ./apps/satellite
-      dockerfile: Dockerfile
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8002
-    env_file:
-      - path: ./apps/satellite/.env.example
-        required: true
-      - path: ./apps/satellite/.env
-        required: false
+    environment:
+      SATELLITE_SERVICE_NAME: ${SATELLITE_SERVICE_NAME:-AquaBloom Satellite}
+      SATELLITE_ENVIRONMENT: ${SATELLITE_ENVIRONMENT:-development}
+      SATELLITE_REDIS_URL: redis://redis:6379/0
+    ports:
+      - "${SATELLITE_PORT:-8001}:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - aquabloom-net
 
-  # 4. Scientific Service (ML, Entrenamiento, Inferencia)
-  # =========================================================================
-        # TODO: DEUDA TÉCNICA (Sprint 2 - Tarea S2--008)
-        #
-        # MOTIVO DEL BYPASS (Validación Geoespacial Desactivada):
-        # La función 'validate_station_inside_lake' arrojaba falsos positivos 
-        # (HTTP 422 Unprocessable Entity) porque las librerías espaciales (Shapely) 
-        # operan por defecto bajo planos cartesianos X,Y (equivalente a Longitud, Latitud), 
-        # invirtiendo el estándar humano (Lat, Lon). Esto provocaba que estaciones 
-        # válidas quedaran ubicadas temporalmente fuera de los límites geométricos 
-        # del polígono del lago durante la creación/edición.
-        #
-        # ACCIÓN REQUERIDA:
-        # Depurar la librería Shapely para asegurar que el orden de los ejes se 
-        # alinee correctamente antes de la intersección. Una vez corregido, 
-        # se debe reactivar la validación de negocio bloqueando la persistencia de
-        # estaciones que estén fuera del lago.
-        # =========================================================================
-        if not update_data:
-            # ...
-  scientific:
+  scientific-worker:
     build:
-      context: ./apps/scientific
-      dockerfile: Dockerfile
+      context: ./apps/satellite
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8003
-    env_file:
-      - path: ./apps/scientific/.env.example
-        required: true
-      - path: ./apps/scientific/.env
-        required: false
+    command: ["python", "-m", "app.worker"]
+    healthcheck:
+      disable: true
+    environment:
+      SATELLITE_SERVICE_NAME: ${SATELLITE_SERVICE_NAME:-AquaBloom Scientific Worker}
+      SATELLITE_ENVIRONMENT: ${SATELLITE_ENVIRONMENT:-development}
+      SATELLITE_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - aquabloom-net
 
-  # 5. Frontend React (App Web)
+  api:
+    build:
+      context: ./apps/api
+    restart: unless-stopped
+    env_file:
+      - ./apps/api/.env
+    ports:
+      - "5000:8000"
+    depends_on:
+      satellite:
+        condition: service_healthy
+    networks:
+      - aquabloom-net
+
+  satellite:
+    build:
+      context: ./apps/satellite
+    restart: unless-stopped
+    environment:
+      SATELLITE_SERVICE_NAME: ${SATELLITE_SERVICE_NAME:-AquaBloom Satellite}
+      SATELLITE_ENVIRONMENT: ${SATELLITE_ENVIRONMENT:-development}
+    ports:
+      - "${SATELLITE_PORT:-8001}:8000"
+    networks:
+      - aquabloom-net
+
   web:
     build:
       context: ./apps/web
-      dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
-      - path: ./apps/web/.env.example
-        required: false
-      - path: ./apps/web/.env
-        required: false
+      - ./apps/web/.env
     ports:
       - "3000:5173"
     networks:
       - aquabloom-net
     depends_on:
-      gateway:
-        condition: service_healthy
+      - api
 
 networks:
   aquabloom-net:
     driver: bridge
-
