@@ -227,6 +227,9 @@ def test_supervisor_registers_decision_and_reason(monkeypatch, decision, reason)
     assert response.json()["reason"] == reason
     assert response.json()["decided_by"] == database.user_id
     assert response.json()["decided_at"] == "2026-10-27T00:00:00+00:00"
+    stored_decision = database.dataset_rows["decisions"][0]
+    assert stored_decision["decision"] == decision
+    assert stored_decision["reason"] == reason
 
 
 @pytest.mark.parametrize(

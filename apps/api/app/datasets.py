@@ -261,16 +261,16 @@ def create_membership_decision(
             detail="El dataset no existe.",
         )
 
-    organization_memberships = _rows(
+    organization_id = dataset_rows[0]["organization_id"]
+    membership_data = _rows(
         client.table("memberships")
         .select("role")
         .eq("user_id", user_id)
-        .eq("organization_id", dataset_rows[0]["organization_id"])
+        .eq("organization_id", organization_id)
         .eq("status", "active")
     )
-    if not any(
-        str(membership.get("role", "")).strip().lower() in APPROVAL_ROLES
-        for membership in organization_memberships
+    if not membership_data or (
+        str(membership_data[0].get("role", "")).strip().lower() not in APPROVAL_ROLES
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
