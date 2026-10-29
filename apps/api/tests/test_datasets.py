@@ -1,10 +1,12 @@
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.auth import verify_supabase_jwt
 from app.main import app
+from dataset.application.schemas import VersionState
 
 client = TestClient(app)
 
@@ -58,13 +60,26 @@ class FakeQuery:
 
         rows = self.database.dataset_rows.get(self.table_name, [])
         if self.inserted is not None:
-            row = {
-                **self.inserted,
-                "id": "decision-new",
-                "decided_at": "2026-10-27T00:00:00+00:00",
-            }
-            self.database.dataset_rows.setdefault(self.table_name, []).append(row)
-            return SimpleNamespace(data=[row])
+            # --- MOCK EXTENDIDO PARA SOPORTAR INSERCIONES DE LISTAS (S2-136) ---
+            if isinstance(self.inserted, list):
+                new_rows = []
+                for item in self.inserted:
+                    new_row = {
+                        **item,
+                        "id": str(uuid4()),
+                        "added_at": "2026-10-27T00:00:00+00:00"
+                    }
+                    self.database.dataset_rows.setdefault(self.table_name, []).append(new_row)
+                    new_rows.append(new_row)
+                return SimpleNamespace(data=new_rows)
+            else:
+                row = {
+                    **self.inserted,
+                    "id": "decision-new",
+                    "decided_at": "2026-10-27T00:00:00+00:00",
+                }
+                self.database.dataset_rows.setdefault(self.table_name, []).append(row)
+                return SimpleNamespace(data=[row])
 
         for field, value in self.filters.items():
             rows = [row for row in rows if row.get(field) == value]
@@ -75,11 +90,12 @@ class FakeQuery:
 
 class FakeSupabase:
     def __init__(self, user_id, organization_role):
-        self.dataset_id = "dataset-1"
-        self.organization_id = "organization-1"
-        self.version_id = "version-1"
+        self.dataset_id = str(uuid4())
+        self.organization_id = str(uuid4())
+        self.version_id = str(uuid4())
         self.membership_id = str(uuid4())
         self.user_id = str(user_id)
+        
         self.organization_memberships = [
             {
                 "user_id": self.user_id,
@@ -103,7 +119,8 @@ class FakeSupabase:
                     "id": self.version_id,
                     "dataset_id": self.dataset_id,
                     "version_number": 1,
-                    "status": "draft",
+                    "status": "DRAFT",
+                    "state": "DRAFT",
                     "created_at": "2026-10-27T00:00:00+00:00",
                 }
             ],
@@ -216,3 +233,73 @@ def test_supervisor_registers_decision_and_reason(monkeypatch):
     assert response.json()["decision"] == "rejected"
     assert response.json()["reason"] == "Nubes densas"
     assert response.json()["decided_by"] == database.user_id
+
+
+# --- Pruebas de Transición de Estados ---
+
+def test_valid_version_state_transitions():
+    from app.datasets import validate_state_transition
+    validate_state_transition(VersionState.DRAFT, VersionState.PUBLISHED)
+    validate_state_transition(VersionState.DRAFT, VersionState.ARCHIVED)
+    validate_state_transition(VersionState.PUBLISHED, VersionState.ARCHIVED)
+
+
+def test_invalid_version_state_transitions_raise_400():
+    from fastapi import HTTPException
+
+    from app.datasets import validate_state_transition
+    
+    with pytest.raises(HTTPException) as exc_info:
+        validate_state_transition(VersionState.PUBLISHED, VersionState.DRAFT)
+    assert exc_info.value.status_code == 400
+
+    with pytest.raises(HTTPException) as exc_info:
+        validate_state_transition(VersionState.ARCHIVED, VersionState.DRAFT)
+    assert exc_info.value.status_code == 400
+
+
+# --- Pruebas de Inmutabilidad S2-136 (Blindadas contra KeyError) ---
+
+@pytest.mark.parametrize("state_to_test", ["PUBLISHED", "ARCHIVED"])
+def test_incorporate_candidates_rejects_immutable_versions(monkeypatch, state_to_test):
+    """Verifica que no se puedan modificar versiones consolidadas (S2-136)"""
+    database = setup_request(monkeypatch, "admin")
+    
+    database.dataset_rows["versions"][0]["state"] = state_to_test
+    database.dataset_rows["versions"][0]["status"] = state_to_test
+    
+    try:
+        response = client.post(
+            f"/api/v1/datasets/versions/{database.version_id}/candidates",
+            json={"candidate_ids": [str(uuid4()), str(uuid4())]} 
+        )
+    finally:
+        app.dependency_overrides.clear()
+    
+    assert response.status_code == 403
+    # Soporte robusto tanto para estructura 'detail' como 'message'
+    err_body = response.json()
+    err_msg = err_body.get("detail", err_body.get("message", ""))
+    assert "inmutable" in str(err_msg).lower()
+
+
+def test_incorporate_candidates_allows_mutable_versions(monkeypatch):
+    """Verifica que sí se pueda modificar una versión en estado DRAFT (S2-136)"""
+    database = setup_request(monkeypatch, "admin")
+    
+    database.dataset_rows["versions"][0]["state"] = "DRAFT"
+    database.dataset_rows["versions"][0]["status"] = "DRAFT"
+    
+    try:
+        response = client.post(
+            f"/api/v1/datasets/versions/{database.version_id}/candidates",
+            json={"candidate_ids": [str(uuid4())]} 
+        )
+    finally:
+        app.dependency_overrides.clear()
+    
+    assert response.status_code == 201
+    assert response.json()["count"] == 1
+
+
+
