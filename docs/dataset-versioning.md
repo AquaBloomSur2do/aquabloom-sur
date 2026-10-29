@@ -59,3 +59,8 @@ la membership activa del usuario y su rol antes de listar datos o registrar una
 decisión. Para que el cliente Supabase del backend consulte `dataset`, ese
 esquema debe estar habilitado en la configuración **Exposed schemas** de la API
 de Supabase, además de tener aplicadas las migraciones 013 y 014.
+
+La publicación consume `POST /api/v1/datasets/versions/{version_id}/publish`,
+sin payload. Requiere una membership activa con rol `admin`, `administrador` o
+`supervisor`; devuelve el identificador de la versión, su estado `published` y
+`published_at`. La migración 017 agrega esta última columna.

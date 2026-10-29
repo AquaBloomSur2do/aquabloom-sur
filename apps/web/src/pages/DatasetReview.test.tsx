@@ -4,9 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../services/apiClient';
 import { DatasetReview } from './DatasetReview';
 
-const { mockGet, mockPost } = vi.hoisted(() => ({
+const { mockGet, mockPost, mockPublishVersion } = vi.hoisted(() => ({
   mockGet: vi.fn(),
   mockPost: vi.fn(),
+  mockPublishVersion: vi.fn(),
 }));
 
 vi.mock('../lib/supabase', () => ({
@@ -23,7 +24,11 @@ vi.mock('../services/apiClient', async (importOriginal) => {
     await importOriginal<typeof import('../services/apiClient')>();
   return {
     ...original,
-    apiClient: { get: mockGet, post: mockPost },
+    apiClient: {
+      get: mockGet,
+      post: mockPost,
+      publishDatasetVersion: mockPublishVersion,
+    },
   };
 });
 
@@ -115,6 +120,48 @@ describe('DatasetReview', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'No tienes permisos para registrar decisiones en este dataset.'
+    );
+  });
+
+  it('publica la versión seleccionada y muestra el identificador de respuesta', async () => {
+    mockPublishVersion.mockImplementation(async (versionId: string) => ({
+      id: versionId,
+      dataset_id: 'dataset-1',
+      version_number: 1,
+      status: 'published',
+      created_at: '2026-10-27T00:00:00Z',
+      published_at: '2026-10-29T00:00:00Z',
+    }));
+
+    render(<DatasetReview />);
+
+    await screen.findByText('scene-pilot');
+    fireEvent.click(screen.getByRole('button', { name: 'Publicar versión' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Versión publicada. ID: version-1'
+    );
+    expect(mockPublishVersion).toHaveBeenCalledWith('version-1');
+    expect(
+      screen.getByRole('button', { name: 'Versión publicada' })
+    ).toBeDisabled();
+  });
+
+  it('muestra los errores de API al publicar una versión', async () => {
+    mockPublishVersion.mockRejectedValue(
+      new ApiError({
+        message: 'No se pudo publicar la versión.',
+        status: 500,
+      })
+    );
+
+    render(<DatasetReview />);
+
+    await screen.findByText('scene-pilot');
+    fireEvent.click(screen.getByRole('button', { name: 'Publicar versión' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No se pudo publicar la versión.'
     );
   });
 });
