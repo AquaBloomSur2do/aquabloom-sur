@@ -1,6 +1,6 @@
 from catalog.application.endpoints import router as catalog_router
 from domain.execution.router import router as execution_router
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse

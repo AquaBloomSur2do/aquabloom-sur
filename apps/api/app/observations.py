@@ -1,8 +1,3 @@
-from fastapi import APIRouter, HTTPException
-from satellite.application.schemas import (
-    SpectralObservationCreate,
-    SpectralObservationResponse,
-)
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
