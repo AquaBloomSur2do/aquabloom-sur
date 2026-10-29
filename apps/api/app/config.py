@@ -7,14 +7,12 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     satellite_service_url: str = "http://satellite:8000"
     scientific_service_url: str = "http://scientific:8000"
+    internal_service_token: SecretStr | None = None
 
     # Variables obligatorias (sin valor por defecto)
     supabase_url: str
     supabase_key: SecretStr
     supabase_jwt_secret: SecretStr | None = None
-    
-    # Token interno requerido por los tests de ejecución (S2-127)
-    internal_service_token: SecretStr | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -23,5 +21,3 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",")]
 
 settings = Settings()
-
-
