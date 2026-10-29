@@ -1,6 +1,7 @@
 import logging
 
 import numpy as np
+
 from app.processing import apply_quality_mask
 
 

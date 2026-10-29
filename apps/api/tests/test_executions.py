@@ -1,8 +1,9 @@
 
-from app.config import settings
-from app.main import app
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
+
+from app.config import settings
+from app.main import app
 
 # 1. Envolvemos el token en SecretStr para que coincida con el modelo de configuración
 settings.internal_service_token = SecretStr("test-secret-token")

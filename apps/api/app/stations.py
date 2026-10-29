@@ -1,12 +1,12 @@
 from uuid import UUID
 
-from catalog.application.schemas import StationUpdate
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth import require_catalog_update_permission
 from app.database import supabase
 from app.responses import COMMON_ERRORS
 from app.services import log_audit_event
+from catalog.application.schemas import StationUpdate
 
 router = APIRouter(prefix="/api/v1/stations", tags=["Catalog"])
 

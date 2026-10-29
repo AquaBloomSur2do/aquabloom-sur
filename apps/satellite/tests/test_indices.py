@@ -1,4 +1,5 @@
 import numpy as np
+
 from app.indices import calculate_ndwi
 
 

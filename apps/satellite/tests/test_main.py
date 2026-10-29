@@ -1,12 +1,13 @@
 import json
 import logging
 
+from fastapi.testclient import TestClient
+from redis.exceptions import RedisError
+
 from app.config import Settings
 from app.main import app
 from app.queueing import TASK_QUEUE, get_redis_client
 from app.worker import consume_once, execute_task
-from fastapi.testclient import TestClient
-from redis.exceptions import RedisError
 
 client = TestClient(app)
 

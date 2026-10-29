@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+
 from domain.satellite.temporal import SCENE_PAIR_WINDOW, filter_scene_pairs
 
 

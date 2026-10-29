@@ -2,9 +2,10 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from fastapi import APIRouter, Depends, HTTPException, status
+
 from app.dependencies import require_internal_service
 from domain.execution.schemas import JobCreate, JobResponse, JobStatus
-from fastapi import APIRouter, Depends, HTTPException, status
 
 # SOLUCIÓN AL 404: Se agregó el prefijo de la ruta base
 router = APIRouter(prefix="/api/v1/executions", tags=["Executions"])
