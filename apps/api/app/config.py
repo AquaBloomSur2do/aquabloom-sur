@@ -14,9 +14,6 @@ class Settings(BaseSettings):
     supabase_key: SecretStr
     supabase_jwt_secret: SecretStr | None = None
     
-    # Token interno requerido por los tests de ejecución
-    internal_service_token: SecretStr | None = None
-
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
@@ -24,5 +21,4 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",")]
 
 settings = Settings()
-
 
