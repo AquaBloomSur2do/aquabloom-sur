@@ -38,7 +38,7 @@ describe('SatelliteQueryPanel', () => {
     const user = userEvent.setup();
     mockedApiClientGet
       .mockRejectedValueOnce(new Error('Network error'))
-      .mockResolvedValueOnce([{ id: 'escena-1', lake_id: mockLakeId, capture_date: '2026-10-28', cloud_coverage: 5 }]);
+      .mockResolvedValueOnce([{ id: 'escena-1', lake_id: mockLakeId, acquisition_date: '2026-10-28', cloud_coverage: 5 }]);
 
     render(<SatelliteQueryPanel lakeId={mockLakeId} />);
 

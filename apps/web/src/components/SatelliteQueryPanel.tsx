@@ -73,7 +73,7 @@ export function SatelliteQueryPanel({ lakeId }: SatelliteQueryPanelProps) {
       <ul>
         {scenes.map((scene) => (
           <li key={scene.id}>
-            Escena {scene.id} - Fecha: {scene.capture_date}
+            Escena {scene.id} - Fecha: {scene.acquisition_date}
           </li>
         ))}
       </ul>
