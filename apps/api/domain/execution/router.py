@@ -6,11 +6,11 @@ from app.dependencies import require_internal_service
 from domain.execution.schemas import JobCreate, JobResponse, JobStatus
 from fastapi import APIRouter, Depends, HTTPException, status
 
-router = APIRouter()
+# SOLUCIÓN AL 404: Se agregó el prefijo de la ruta base
+router = APIRouter(prefix="/api/v1/executions", tags=["Executions"])
 
 # Diccionario temporal en memoria para pruebas locales
 JOBS_DB: dict[str, dict[str, Any]] = {}
-
 
 @router.post(
     "/",
@@ -37,7 +37,6 @@ def create_execution_job(payload: JobCreate):
         "message": "Job accepted and processing in background",
     }
 
-
 @router.get(
     "/{job_id}",
     response_model=JobStatus,
@@ -51,3 +50,5 @@ def get_job_status(job_id: str):
             detail="No se encontró el trabajo.",
         )
     return JOBS_DB[job_id]
+
+
