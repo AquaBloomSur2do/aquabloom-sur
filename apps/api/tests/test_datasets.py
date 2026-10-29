@@ -1,11 +1,14 @@
 from types import SimpleNamespace
 from uuid import uuid4
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.auth import verify_supabase_jwt
-from app.main import app
+from app.datasets import router as datasets_router
 
+app = FastAPI()
+app.include_router(datasets_router)
 client = TestClient(app)
 
 
@@ -17,6 +20,7 @@ class FakeQuery:
         self.filters = {}
         self.in_filters = {}
         self.inserted = None
+        self.updates = None
 
     def select(self, *_args, **_kwargs):
         return self
@@ -39,6 +43,10 @@ class FakeQuery:
         self.inserted = row
         return self
 
+    def update(self, row):
+        self.updates = row
+        return self
+
     def execute(self):
         if self.schema_name != "dataset":
             rows = self.database.organization_memberships
@@ -57,6 +65,14 @@ class FakeQuery:
             return SimpleNamespace(data=rows)
 
         rows = self.database.dataset_rows.get(self.table_name, [])
+        if self.updates is not None:
+            updated_rows = []
+            for row in rows:
+                if all(row.get(field) == value for field, value in self.filters.items()):
+                    row.update(self.updates)
+                    updated_rows.append(row)
+            return SimpleNamespace(data=updated_rows)
+
         if self.inserted is not None:
             row = {
                 **self.inserted,
@@ -75,9 +91,9 @@ class FakeQuery:
 
 class FakeSupabase:
     def __init__(self, user_id, organization_role):
-        self.dataset_id = "dataset-1"
+        self.dataset_id = str(uuid4())
         self.organization_id = "organization-1"
-        self.version_id = "version-1"
+        self.version_id = str(uuid4())
         self.membership_id = str(uuid4())
         self.user_id = str(user_id)
         self.organization_memberships = [
@@ -105,6 +121,7 @@ class FakeSupabase:
                     "version_number": 1,
                     "status": "draft",
                     "created_at": "2026-10-27T00:00:00+00:00",
+                    "published_at": None,
                 }
             ],
             "memberships": [
@@ -216,3 +233,40 @@ def test_supervisor_registers_decision_and_reason(monkeypatch):
     assert response.json()["decision"] == "rejected"
     assert response.json()["reason"] == "Nubes densas"
     assert response.json()["decided_by"] == database.user_id
+
+
+def test_supervisor_publishes_version_and_receives_its_identifier(monkeypatch):
+    database = setup_request(monkeypatch, "supervisor")
+    try:
+        response = client.post(
+            f"/api/v1/datasets/versions/{database.version_id}/publish"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["id"] == database.version_id
+    assert response.json()["status"] == "published"
+    assert response.json()["published_at"] is not None
+    assert database.dataset_rows["versions"][0]["status"] == "published"
+
+
+def test_investigator_cannot_publish_version(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    try:
+        response = client.post(
+            f"/api/v1/datasets/versions/{database.version_id}/publish"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert database.dataset_rows["versions"][0]["status"] == "draft"
+
+
+def test_publishing_version_requires_authentication():
+    response = client.post(
+        f"/api/v1/datasets/versions/{uuid4()}/publish"
+    )
+
+    assert response.status_code == 401

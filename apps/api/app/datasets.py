@@ -1,7 +1,9 @@
-from typing import Annotated, Literal
+from datetime import UTC, datetime
+from typing import Annotated, Literal, NoReturn
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from postgrest.exceptions import APIError
 from pydantic import BaseModel, StringConstraints
 
 from app.auth import verify_supabase_jwt
@@ -91,6 +93,34 @@ def _rows(response) -> list[dict]:
     return response.data or []
 
 
+def _raise_publication_database_error(exc: Exception) -> NoReturn:
+    error_code = getattr(exc, "code", None)
+    if str(error_code) == "PGRST116":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La versión del dataset no existe.",
+        ) from exc
+    if str(error_code) == "42501":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para publicar esta versión.",
+        ) from exc
+    if str(error_code) in {"23503", "23505"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No se pudo publicar la versión por un conflicto de datos.",
+        ) from exc
+    if str(error_code) == "22P02":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El identificador de versión no es válido.",
+        ) from exc
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="No se pudo publicar la versión.",
+    ) from exc
+
+
 @router.get("/review")
 def list_review_datasets(payload: dict = Depends(verify_supabase_jwt)):  # noqa: B008
     """Lista datasets y escenas visibles para la organización del usuario."""
@@ -174,6 +204,110 @@ def list_review_datasets(payload: dict = Depends(verify_supabase_jwt)):  # noqa:
                 membership["decisions"].append(decision)
 
     return list(datasets_by_id.values())
+
+
+@router.post(
+    "/versions/{version_id}/publish",
+    response_model=DatasetVersionResponse,
+)
+def publish_dataset_version(
+    version_id: UUID,
+    payload: dict = Depends(verify_supabase_jwt),  # noqa: B008
+):
+    """Publica una versión si el usuario es aprobador activo de su organización."""
+    client = _require_database()
+    user_id = _user_id(payload)
+    dataset_client = client.schema("dataset")
+
+    try:
+        version_rows = _rows(
+            dataset_client.table("versions")
+            .select(
+                "id, dataset_id, version_number, status, created_at, published_at"
+            )
+            .eq("id", str(version_id))
+            .limit(1)
+            .execute()
+        )
+    except APIError as exc:
+        _raise_publication_database_error(exc)
+
+    if not version_rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La versión del dataset no existe.",
+        )
+
+    version = version_rows[0]
+    if version["status"] == "archived":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No se puede publicar una versión archivada.",
+        )
+
+    try:
+        dataset_rows = _rows(
+            dataset_client.table("datasets")
+            .select("id, organization_id")
+            .eq("id", version["dataset_id"])
+            .limit(1)
+            .execute()
+        )
+    except APIError as exc:
+        _raise_publication_database_error(exc)
+
+    if not dataset_rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="El dataset asociado no existe.",
+        )
+
+    try:
+        organization_memberships = _rows(
+            client.table("memberships")
+            .select("role")
+            .eq("user_id", user_id)
+            .eq("organization_id", dataset_rows[0]["organization_id"])
+            .eq("status", "active")
+            .execute()
+        )
+    except APIError as exc:
+        _raise_publication_database_error(exc)
+
+    if not any(
+        str(membership.get("role", "")).strip().lower() in APPROVAL_ROLES
+        for membership in organization_memberships
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para publicar esta versión.",
+        )
+
+    if version["status"] != "published":
+        publication_time = datetime.now(UTC)
+        try:
+            updated_rows = _rows(
+                dataset_client.table("versions")
+                .update(
+                    {
+                        "status": "published",
+                        "published_at": publication_time.isoformat(),
+                    }
+                )
+                .eq("id", str(version_id))
+                .execute()
+            )
+        except APIError as exc:
+            _raise_publication_database_error(exc)
+
+        if not updated_rows:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="La versión no se actualizó al publicarla.",
+            )
+        version = updated_rows[0]
+
+    return version
 
 
 @router.post("/memberships/{membership_id}/decisions", status_code=201)

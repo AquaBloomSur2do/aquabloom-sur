@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 
-from app import scenes as scenes_module
+from app import lakes as lakes_module
 from app.main import app
 
 LAKE_ID = "11111111-1111-1111-1111-111111111111"
@@ -120,7 +120,7 @@ class FakeSupabase:
 @pytest.fixture
 def scenes_client(monkeypatch):
     fake_db = FakeSupabase()
-    monkeypatch.setattr(scenes_module, "supabase", fake_db)
+    monkeypatch.setattr(lakes_module, "supabase", fake_db)
     return TestClient(app), fake_db
 
 

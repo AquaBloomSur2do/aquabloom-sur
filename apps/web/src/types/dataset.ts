@@ -24,7 +24,17 @@ export interface DatasetVersion {
   version_number: number;
   status: string;
   created_at: string;
+  published_at?: string | null;
   memberships: DatasetSceneMembership[];
+}
+
+export interface DatasetVersionPublication {
+  id: string;
+  dataset_id: string;
+  version_number: number;
+  status: 'draft' | 'published' | 'archived';
+  created_at: string;
+  published_at: string | null;
 }
 
 export interface ReviewDataset {
