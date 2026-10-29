@@ -1,6 +1,4 @@
-﻿version: '3.8'
-
-services:
+﻿services:
   # 1. API Gateway (Punto de entrada único)
   gateway:
     build:
@@ -9,15 +7,26 @@ services:
     restart: unless-stopped
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     env_file:
-      - ./apps/api/.env
+      - path: ./apps/api/.env.example
+        required: false
+      - path: ./apps/api/.env
+        required: false
     ports:
-      - "5000:8000" # Expuesto al host en el 5000 para el frontend local
+      - "5000:8000"
     networks:
       - aquabloom-net
     depends_on:
-      - core
-      - satellite
-      - scientific
+      core:
+        condition: service_healthy
+      satellite:
+        condition: service_started
+      scientific:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # 2. Core Service (Catálogo, Identidad, Dataset, Ingesta)
   core:
@@ -25,37 +34,66 @@ services:
       context: ./apps/api
       dockerfile: Dockerfile
     restart: unless-stopped
-    # Se levanta en un puerto interno diferente al gateway
     command: uvicorn app.main:app --host 0.0.0.0 --port 8001
     env_file:
-      - ./apps/api/.env
-    # No se exponen puertos al host, solo es accesible internamente vía Gateway
+      - path: ./apps/api/.env.example
+        required: false
+      - path: ./apps/api/.env
+        required: false
     networks:
       - aquabloom-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # 3. Satellite Service (Procesamiento Raster y Sentinel-2)
   satellite:
     build:
-      # Asume que el Dockerfile de satellite existirá aquí
       context: ./apps/satellite
       dockerfile: Dockerfile
     restart: unless-stopped
     command: uvicorn app.main:app --host 0.0.0.0 --port 8002
     env_file:
-      - ./apps/satellite/.env
+      - path: ./apps/satellite/.env.example
+        required: true
+      - path: ./apps/satellite/.env
+        required: false
     networks:
       - aquabloom-net
 
   # 4. Scientific Service (ML, Entrenamiento, Inferencia)
+  # =========================================================================
+        # TODO: DEUDA TÉCNICA (Sprint 2 - Tarea S2--008)
+        #
+        # MOTIVO DEL BYPASS (Validación Geoespacial Desactivada):
+        # La función 'validate_station_inside_lake' arrojaba falsos positivos 
+        # (HTTP 422 Unprocessable Entity) porque las librerías espaciales (Shapely) 
+        # operan por defecto bajo planos cartesianos X,Y (equivalente a Longitud, Latitud), 
+        # invirtiendo el estándar humano (Lat, Lon). Esto provocaba que estaciones 
+        # válidas quedaran ubicadas temporalmente fuera de los límites geométricos 
+        # del polígono del lago durante la creación/edición.
+        #
+        # ACCIÓN REQUERIDA:
+        # Depurar la librería Shapely para asegurar que el orden de los ejes se 
+        # alinee correctamente antes de la intersección. Una vez corregido, 
+        # se debe reactivar la validación de negocio bloqueando la persistencia de
+        # estaciones que estén fuera del lago.
+        # =========================================================================
+        if not update_data:
+            # ...
   scientific:
     build:
-      # Asume que se creará la carpeta apps/scientific pronto
       context: ./apps/scientific
       dockerfile: Dockerfile
     restart: unless-stopped
     command: uvicorn app.main:app --host 0.0.0.0 --port 8003
     env_file:
-      - ./apps/scientific/.env
+      - path: ./apps/scientific/.env.example
+        required: true
+      - path: ./apps/scientific/.env
+        required: false
     networks:
       - aquabloom-net
 
@@ -66,17 +104,19 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
-      - ./apps/web/.env
+      - path: ./apps/web/.env.example
+        required: false
+      - path: ./apps/web/.env
+        required: false
     ports:
       - "3000:5173"
     networks:
       - aquabloom-net
     depends_on:
-      - gateway
-
-  # NOTA: La infraestructura de Redis (Broker) y el Celery Worker
-  # se agregarán aquí durante la fase de integración asíncrona del Scientific Service.
+      gateway:
+        condition: service_healthy
 
 networks:
   aquabloom-net:
     driver: bridge
+
