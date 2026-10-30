@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from uuid import UUID
 
@@ -105,10 +105,10 @@ class CandidateValidationPayload(BaseModel):
     def validate_date_not_in_future(cls, v: datetime) -> datetime:
         # Asignamos zona horaria UTC si viene sin una para poder comparar correctamente
         if v.tzinfo is None:
-            v = v.replace(tzinfo=timezone.utc)
+            v = v.replace(tzinfo=UTC)
 
         # Rechazamos fechas que vengan del futuro
-        if v > datetime.now(timezone.utc):
+        if v > datetime.now(UTC):
             raise ValueError(
                 f"La fecha de adquisición ({v}) es incompatible: no puede estar en el futuro."
             )

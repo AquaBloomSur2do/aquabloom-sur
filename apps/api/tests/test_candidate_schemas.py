@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -30,7 +30,7 @@ def test_candidate_validation_accepts_naive_acquisition_date_as_utc():
         variables=[{"variable": "pH", "unit": "adimensional"}],
     )
 
-    assert payload.acquisition_date.tzinfo == timezone.utc
+    assert payload.acquisition_date.tzinfo == UTC
 
 
 def test_incorporate_candidates_requires_at_least_one_id():
