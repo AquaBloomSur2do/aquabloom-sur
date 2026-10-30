@@ -59,3 +59,15 @@ la membership activa del usuario y su rol antes de listar datos o registrar una
 decisión. Para que el cliente Supabase del backend consulte `dataset`, ese
 esquema debe estar habilitado en la configuración **Exposed schemas** de la API
 de Supabase, además de tener aplicadas las migraciones 013 y 014.
+
+## Archivos de Entrenamiento (Training Files) - S2-137
+Para garantizar la integridad y seguridad (Zero Trust), los archivos de entrenamiento se generan automáticamente cuando una versión transiciona al estado `PUBLISHED`.
+
+*   **Formato:** CSV UTF-8.
+*   **Columnas Estándar:** `temperatura`, `clorofila_a`, `turbidez`, `ph` (obtenidas dinámicamente del manifiesto).
+*   **Límite de Tamaño:** 1 MiB máximo por archivo.
+*   **Seguridad e Integridad:** 
+    *   Se almacena en Supabase Storage (Bucket privado `training_files`).
+    *   La BD exige un checksum estrictamente formateado (SHA-256 de 64 caracteres).
+    *   Para evitar la fuga de URLs firmadas, la descarga del archivo se sirve mediante un proxy en la API (`/versions/{version_id}/training-file/download`) que exige validar el JWT por cada petición HTTP.
+    
