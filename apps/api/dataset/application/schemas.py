@@ -121,3 +121,13 @@ class IncorporateCandidatesInput(BaseModel):
         min_length=1,
         description="Lista de IDs de candidatos a incorporar desde la ingesta",
     )
+
+class TrainingManifestResponse(BaseModel):
+    version_id: UUID
+    manifest_id: UUID
+    variables: list[str]
+    checksum: str
+    download_url: str
+
+    model_config = ConfigDict(from_attributes=True)
+    
