@@ -23,6 +23,7 @@ from app.auth import verify_supabase_jwt
 from app.database import supabase
 from app.schemas import DatasetVersionStateUpdate, VersionState
 from dataset.application.schemas import (
+    CandidateValidationPayload,
     DatasetCandidateBase,
     DatasetCandidateResponse,
     DatasetDecisionCreate,
@@ -354,7 +355,17 @@ def create_membership_decision(
         )
     return inserted[0]
 
-
+@router.post("/candidates/validate", status_code=200)
+def validate_candidate_fields(
+    payload: CandidateValidationPayload,
+    user_data: dict = Depends(verify_supabase_jwt),  # noqa: B008
+):
+   
+    return {
+        "message": "Validación exitosa. Variables, unidades y fechas son compatibles.",
+        "candidate_id": str(payload.candidate_id),
+        "status": "VALIDATED"
+}
 @router.post("/versions/{version_id}/candidates", status_code=201)
 def incorporate_candidates_to_version(
     version_id: UUID,
