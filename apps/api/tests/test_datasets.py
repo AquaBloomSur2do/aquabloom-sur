@@ -13,6 +13,7 @@ from app.schemas import DatasetVersionStateUpdate, VersionState
 
 client = TestClient(app)
 
+
 # ==========================================
 # Pruebas S2-134: Ciclo de vida y estados
 # ==========================================
@@ -22,15 +23,18 @@ def test_schema_accepts_all_five_states():
         model = DatasetVersionStateUpdate(state=VersionState(state))
         assert model.state.value == state
 
+
 def test_schema_rejects_invalid_state():
     with pytest.raises(ValidationError):
         DatasetVersionStateUpdate(state="INVALID_STATE")
+
 
 def test_valid_version_state_transitions():
     validate_state_transition(VersionState.DRAFT, VersionState.IN_REVIEW)
     validate_state_transition(VersionState.IN_REVIEW, VersionState.APPROVED)
     validate_state_transition(VersionState.APPROVED, VersionState.PUBLISHED)
     validate_state_transition(VersionState.DRAFT, VersionState.ARCHIVED)
+
 
 def test_invalid_version_state_transitions_raise_400():
     with pytest.raises(HTTPException) as exc_info:
@@ -60,6 +64,7 @@ class FakeQuery:
         self.inserted = None
         self.updated = None
         self._limit = None
+        self._range = None
         self.is_count = False
 
     def select(self, *_args, **kwargs):
@@ -76,6 +81,7 @@ class FakeQuery:
         return self
 
     def range(self, start, end):
+        self._range = (start, end)
         return self
 
     def limit(self, count):
@@ -110,6 +116,9 @@ class FakeQuery:
                 ]
             if self.filters.get("status"):
                 rows = [row for row in rows if str(row["status"]) == self.filters["status"]]
+            if self._range is not None:
+                start, end = self._range
+                rows = rows[start:end + 1]
             return SimpleNamespace(data=rows)
 
         rows = self.database.dataset_rows.get(self.table_name, [])
@@ -142,8 +151,14 @@ class FakeQuery:
         if self._limit is not None:
             rows = rows[:self._limit]
 
+        # Soporte completo de .range() para todas las tablas del esquema dataset
+        if self._range is not None and self.table_name in ["datasets", "versions", "memberships", "decisions"]:
+            start, end = self._range
+            rows = rows[start:end + 1]
+
         count = len(rows) if self.is_count else None
         return SimpleNamespace(data=rows, count=count)
+
 
 class FakeSchema:
     def __init__(self, database, schema_name):
@@ -153,10 +168,12 @@ class FakeSchema:
     def table(self, table_name):
         return FakeQuery(self.database, self.schema_name, table_name)
 
+
 class FakeSupabase:
     def __init__(self, user_id, organization_role):
         self.dataset_id = "11111111-1111-1111-1111-111111111111"
-        self.organization_id = "22222222-2222-2222-2222-222222222222"
+        self.dataset_id_2 = "22222222-2222-2222-2222-222222222222"
+        self.organization_id = "99999999-9999-9999-9999-999999999999"
         self.version_id = "33333333-3333-3333-3333-333333333333"
         self.membership_id = str(uuid4())
         self.user_id = str(user_id)
@@ -174,9 +191,16 @@ class FakeSupabase:
                 {
                     "id": self.dataset_id,
                     "organization_id": self.organization_id,
-                    "name": "Dataset piloto",
+                    "name": "Dataset piloto 1",
                     "description": None,
                     "created_at": "2026-10-27T00:00:00+00:00",
+                },
+                {
+                    "id": self.dataset_id_2,
+                    "organization_id": self.organization_id,
+                    "name": "Dataset piloto 2",
+                    "description": None,
+                    "created_at": "2026-10-28T00:00:00+00:00",
                 }
             ],
             "versions": [
@@ -207,6 +231,7 @@ class FakeSupabase:
     def schema(self, name):
         return FakeSchema(self, name)
 
+
 def setup_request(monkeypatch, role):
     user_id = uuid4()
     database = FakeSupabase(user_id, role)
@@ -215,9 +240,320 @@ def setup_request(monkeypatch, role):
     return database
 
 
-# --- S2-105: List datasets ---
+# --- Pruebas S2-105 / S2-134: Endpoints y Paginación ---
 
-def test_list_review_datasets_returns_memberships_for_active_organization(monkeypatch):
+def test_list_review_datasets_returns_paginated_structure(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    try:
+        response = client.get("/api/v1/datasets/review?page=1&page_size=1")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, dict)
+    assert "items" in data
+    assert data["page"] == 1
+    assert data["page_size"] == 1
+    assert len(data["items"]) == 1
+    assert data["items"][0]["id"] == database.dataset_id
+    assert data["has_more"] is True
+
+
+def test_list_review_datasets_pagination_successive_pages(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    try:
+        resp_p1 = client.get("/api/v1/datasets/review?page=1&page_size=1")
+        resp_p2 = client.get("/api/v1/datasets/review?page=2&page_size=1")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp_p1.status_code == 200
+    assert resp_p2.status_code == 200
+
+    item_p1 = resp_p1.json()["items"][0]["id"]
+    item_p2 = resp_p2.json()["items"][0]["id"]
+
+    assert item_p1 != item_p2
+    assert item_p1 == database.dataset_id
+    assert item_p2 == database.dataset_id_2
+
+
+def test_list_review_datasets_paginates_versions(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    second_version_id = "44444444-4444-4444-4444-444444444444"
+    database.dataset_rows["versions"].append(
+        {
+            "id": second_version_id,
+            "dataset_id": database.dataset_id,
+            "version_number": 2,
+            "state": "DRAFT",
+            "status": "DRAFT",
+            "created_at": "2026-10-28T00:00:00+00:00",
+        }
+    )
+    try:
+        page_one = client.get(
+            "/api/v1/datasets/review?version_page=1&version_page_size=1"
+        )
+        page_two = client.get(
+            "/api/v1/datasets/review?version_page=2&version_page_size=1"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert page_one.json()["items"][0]["versions"][0]["id"] == database.version_id
+    assert page_one.json()["has_more_versions"] is True
+    assert page_two.json()["items"][0]["versions"][0]["id"] == second_version_id
+    assert page_two.json()["has_more_versions"] is False
+
+
+def test_list_review_datasets_paginates_memberships(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    second_membership_id = str(uuid4())
+    database.dataset_rows["memberships"].append(
+        {
+            "id": second_membership_id,
+            "version_id": database.version_id,
+            "scene_provider": "sentinel",
+            "scene_external_id": "scene-second",
+            "added_at": "2026-10-28T00:00:00+00:00",
+        }
+    )
+    try:
+        page_one = client.get(
+            "/api/v1/datasets/review?membership_page=1&membership_page_size=1"
+        )
+        page_two = client.get(
+            "/api/v1/datasets/review?membership_page=2&membership_page_size=1"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    first_page = page_one.json()["items"][0]["versions"][0]["memberships"]
+    second_page = page_two.json()["items"][0]["versions"][0]["memberships"]
+    assert first_page[0]["id"] == database.membership_id
+    assert page_one.json()["has_more_memberships"] is True
+    assert second_page[0]["id"] == second_membership_id
+    assert page_two.json()["has_more_memberships"] is False
+
+
+def test_list_review_datasets_paginates_decisions(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    database.dataset_rows["decisions"] = [
+        {
+            "id": "decision-1",
+            "membership_id": database.membership_id,
+            "decision": "accepted",
+            "reason": "Primera decisión",
+            "decided_by": database.user_id,
+            "decided_at": "2026-10-27T00:00:00+00:00",
+        },
+        {
+            "id": "decision-2",
+            "membership_id": database.membership_id,
+            "decision": "rejected",
+            "reason": "Segunda decisión",
+            "decided_by": database.user_id,
+            "decided_at": "2026-10-28T00:00:00+00:00",
+        },
+    ]
+    try:
+        page_one = client.get(
+            "/api/v1/datasets/review?decision_page=1&decision_page_size=1"
+        )
+        page_two = client.get(
+            "/api/v1/datasets/review?decision_page=2&decision_page_size=1"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    first_page = (
+        page_one.json()["items"][0]["versions"][0]["memberships"][0]["decisions"]
+    )
+    second_page = (
+        page_two.json()["items"][0]["versions"][0]["memberships"][0]["decisions"]
+    )
+    assert first_page[0]["id"] == "decision-1"
+    assert page_one.json()["has_more_decisions"] is True
+    assert second_page[0]["id"] == "decision-2"
+    assert page_two.json()["has_more_decisions"] is False
+
+
+def test_list_review_datasets_paginates_organization_memberships(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    second_organization_id = "88888888-8888-8888-8888-888888888888"
+    second_dataset_id = "77777777-7777-7777-7777-777777777777"
+    database.organization_memberships.append(
+        {
+            "user_id": database.user_id,
+            "organization_id": second_organization_id,
+            "role": "investigador",
+            "status": "active",
+        }
+    )
+    database.dataset_rows["datasets"].append(
+        {
+            "id": second_dataset_id,
+            "organization_id": second_organization_id,
+            "name": "Dataset de otra organización",
+            "description": None,
+            "created_at": "2026-10-29T00:00:00+00:00",
+        }
+    )
+    try:
+        page_one = client.get(
+            "/api/v1/datasets/review?org_membership_page=1&org_membership_page_size=1"
+        )
+        page_two = client.get(
+            "/api/v1/datasets/review?org_membership_page=2&org_membership_page_size=1"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert page_one.json()["has_more_org_memberships"] is True
+    assert page_two.json()["has_more_org_memberships"] is False
+    assert page_two.json()["items"][0]["id"] == second_dataset_id
+
+
+def test_list_review_datasets_paginates_versions(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    second_version_id = "44444444-4444-4444-4444-444444444444"
+    database.dataset_rows["versions"].append(
+        {
+            "id": second_version_id,
+            "dataset_id": database.dataset_id,
+            "version_number": 2,
+            "state": "DRAFT",
+            "status": "DRAFT",
+            "created_at": "2026-10-28T00:00:00+00:00",
+        }
+    )
+    try:
+        page_one = client.get(
+            "/api/v1/datasets/review?version_page=1&version_page_size=1"
+        )
+        page_two = client.get(
+            "/api/v1/datasets/review?version_page=2&version_page_size=1"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert page_one.json()["items"][0]["versions"][0]["id"] == database.version_id
+    assert page_one.json()["has_more_versions"] is True
+    assert page_two.json()["items"][0]["versions"][0]["id"] == second_version_id
+    assert page_two.json()["has_more_versions"] is False
+
+
+def test_list_review_datasets_paginates_scene_memberships(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    second_membership_id = str(uuid4())
+    database.dataset_rows["memberships"].append(
+        {
+            "id": second_membership_id,
+            "version_id": database.version_id,
+            "scene_provider": "sentinel",
+            "scene_external_id": "scene-second",
+            "added_at": "2026-10-28T00:00:00+00:00",
+        }
+    )
+    try:
+        page_one = client.get(
+            "/api/v1/datasets/review?membership_page=1&membership_page_size=1"
+        )
+        page_two = client.get(
+            "/api/v1/datasets/review?membership_page=2&membership_page_size=1"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    first_page_memberships = page_one.json()["items"][0]["versions"][0]["memberships"]
+    second_page_memberships = page_two.json()["items"][0]["versions"][0]["memberships"]
+    assert first_page_memberships[0]["id"] == database.membership_id
+    assert page_one.json()["has_more_memberships"] is True
+    assert second_page_memberships[0]["id"] == second_membership_id
+    assert page_two.json()["has_more_memberships"] is False
+
+
+def test_list_review_datasets_paginates_decisions(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    database.dataset_rows["decisions"] = [
+        {
+            "id": "decision-1",
+            "membership_id": database.membership_id,
+            "decision": "accepted",
+            "reason": "Primera decisión",
+            "decided_by": database.user_id,
+            "decided_at": "2026-10-27T00:00:00+00:00",
+        },
+        {
+            "id": "decision-2",
+            "membership_id": database.membership_id,
+            "decision": "rejected",
+            "reason": "Segunda decisión",
+            "decided_by": database.user_id,
+            "decided_at": "2026-10-28T00:00:00+00:00",
+        },
+    ]
+    try:
+        page_one = client.get(
+            "/api/v1/datasets/review?decision_page=1&decision_page_size=1"
+        )
+        page_two = client.get(
+            "/api/v1/datasets/review?decision_page=2&decision_page_size=1"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    first_decisions = (
+        page_one.json()["items"][0]["versions"][0]["memberships"][0]["decisions"]
+    )
+    second_decisions = (
+        page_two.json()["items"][0]["versions"][0]["memberships"][0]["decisions"]
+    )
+    assert first_decisions[0]["id"] == "decision-1"
+    assert page_one.json()["has_more_decisions"] is True
+    assert second_decisions[0]["id"] == "decision-2"
+    assert page_two.json()["has_more_decisions"] is False
+
+
+def test_list_review_datasets_paginates_organization_memberships(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    second_organization_id = "88888888-8888-8888-8888-888888888888"
+    second_dataset_id = "77777777-7777-7777-7777-777777777777"
+    database.organization_memberships.append(
+        {
+            "user_id": database.user_id,
+            "organization_id": second_organization_id,
+            "role": "investigador",
+            "status": "active",
+        }
+    )
+    database.dataset_rows["datasets"].append(
+        {
+            "id": second_dataset_id,
+            "organization_id": second_organization_id,
+            "name": "Dataset de otra organización",
+            "description": None,
+            "created_at": "2026-10-29T00:00:00+00:00",
+        }
+    )
+    try:
+        page_one = client.get(
+            "/api/v1/datasets/review?org_membership_page=1&org_membership_page_size=1"
+        )
+        page_two = client.get(
+            "/api/v1/datasets/review?org_membership_page=2&org_membership_page_size=1"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert page_one.json()["has_more_org_memberships"] is True
+    assert page_two.json()["has_more_org_memberships"] is False
+    assert page_two.json()["items"][0]["id"] == second_dataset_id
+
+
+def test_list_review_datasets_preserves_exact_state_without_mutation(monkeypatch):
     database = setup_request(monkeypatch, "investigador")
     try:
         response = client.get("/api/v1/datasets/review")
@@ -226,15 +562,24 @@ def test_list_review_datasets_returns_memberships_for_active_organization(monkey
 
     assert response.status_code == 200
     data = response.json()
-    assert isinstance(data, list)
-    assert len(data) == 1
-    dataset = data[0]
-    assert dataset["id"] == database.dataset_id
-    assert dataset["versions"][0]["memberships"][0]["scene_external_id"] == "scene-pilot"
-    assert dataset["versions"][0]["memberships"][0]["decisions"] == []
+    version_obj = data["items"][0]["versions"][0]
+    assert version_obj["state"] == "DRAFT"
+    assert version_obj["status"] == "DRAFT"
 
 
-# --- S2-105: Decisions ---
+def test_list_review_datasets_handles_version_without_memberships(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    # Vaciamos las membresías para probar el caso donde la versión no tiene elementos y decisions se inicializa seguro
+    database.dataset_rows["memberships"] = []
+    try:
+        response = client.get("/api/v1/datasets/review")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["items"][0]["versions"][0]["memberships"]) == 0
+
 
 def test_investigator_cannot_register_a_decision(monkeypatch):
     database = setup_request(monkeypatch, "investigador")
@@ -248,6 +593,7 @@ def test_investigator_cannot_register_a_decision(monkeypatch):
 
     assert response.status_code == 403
     assert database.dataset_rows["decisions"] == []
+
 
 def test_admin_from_another_organization_cannot_register_a_decision(monkeypatch):
     database = setup_request(monkeypatch, "admin")
@@ -263,6 +609,7 @@ def test_admin_from_another_organization_cannot_register_a_decision(monkeypatch)
     assert response.status_code == 403
     assert database.dataset_rows["decisions"] == []
 
+
 def test_decision_requires_a_non_blank_reason(monkeypatch):
     database = setup_request(monkeypatch, "supervisor")
     try:
@@ -275,6 +622,7 @@ def test_decision_requires_a_non_blank_reason(monkeypatch):
 
     assert response.status_code == 422
     assert database.dataset_rows["decisions"] == []
+
 
 @pytest.mark.parametrize(
     ("decision", "reason"),
@@ -298,6 +646,7 @@ def test_supervisor_registers_decision_and_reason(monkeypatch, decision, reason)
     stored_decision = database.dataset_rows["decisions"][0]
     assert stored_decision["decision"] == decision
     assert stored_decision["reason"] == reason
+
 
 @pytest.mark.parametrize(
     ("error_code", "expected_status", "postgrest_error"),
@@ -351,6 +700,7 @@ def test_update_version_state_persists_in_database(monkeypatch):
     assert database.dataset_rows["versions"][0]["state"] == "IN_REVIEW"
     assert database.dataset_rows["versions"][0]["status"] == "IN_REVIEW"
 
+
 def test_update_version_state_returns_404_for_missing_version(monkeypatch):
     setup_request(monkeypatch, "admin")
     try:
@@ -362,6 +712,7 @@ def test_update_version_state_returns_404_for_missing_version(monkeypatch):
         app.dependency_overrides.clear()
 
     assert response.status_code == 404
+
 
 def test_update_version_state_returns_403_when_unauthorized(monkeypatch):
     database = setup_request(monkeypatch, "member")
@@ -375,6 +726,7 @@ def test_update_version_state_returns_403_when_unauthorized(monkeypatch):
 
     assert response.status_code == 403
 
+
 def test_update_version_state_returns_400_for_unknown_current_state(monkeypatch):
     database = setup_request(monkeypatch, "admin")
     database.dataset_rows["versions"][0]["state"] = "CORRUPTED_STATE"
@@ -387,5 +739,4 @@ def test_update_version_state_returns_400_for_unknown_current_state(monkeypatch)
         app.dependency_overrides.clear()
 
     assert response.status_code == 400
-
     

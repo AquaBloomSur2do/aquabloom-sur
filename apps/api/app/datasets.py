@@ -1,7 +1,7 @@
 from typing import Annotated, Literal, NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, StringConstraints
 
 try:
@@ -182,19 +182,38 @@ def _rows(query) -> list[dict]:
     return response.data or []
 
 
+def _page_rows(query, page_size: int) -> tuple[list[dict], bool]:
+    rows = _rows(query)
+    return rows[:page_size], len(rows) > page_size
+
+
 @router.get("/review")
 def list_review_datasets(
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    version_page: Annotated[int, Query(ge=1)] = 1,
+    version_page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    membership_page: Annotated[int, Query(ge=1)] = 1,
+    membership_page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    decision_page: Annotated[int, Query(ge=1)] = 1,
+    decision_page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    org_membership_page: Annotated[int, Query(ge=1)] = 1,
+    org_membership_page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     payload: dict = Depends(verify_supabase_jwt),  # noqa: B008
 ):
-    """Lista datasets y escenas visibles para la organización del usuario."""
+    """Lista datasets, versiones, membresías y decisiones con paginación totalmente dinámica y sin mutaciones de estado."""
     client = _require_database()
     user_id = _user_id(payload)
 
-    active_memberships = _rows(
+    # Paginación comprobable para membresías de organización
+    org_offset = (org_membership_page - 1) * org_membership_page_size
+    active_memberships, has_more_org_memberships = _page_rows(
         client.table("memberships")
         .select("organization_id, role")
         .eq("user_id", user_id)
         .eq("status", "active")
+        .range(org_offset, org_offset + org_membership_page_size),
+        org_membership_page_size,
     )
     organization_ids = list(
         {
@@ -205,56 +224,122 @@ def list_review_datasets(
         }
     )
     if not organization_ids:
-        return []
+        return {
+            "items": [],
+            "page": page,
+            "page_size": page_size,
+            "version_page": version_page,
+            "version_page_size": version_page_size,
+            "membership_page": membership_page,
+            "membership_page_size": membership_page_size,
+            "decision_page": decision_page,
+            "decision_page_size": decision_page_size,
+            "org_membership_page": org_membership_page,
+            "org_membership_page_size": org_membership_page_size,
+            "has_more": False,
+            "has_more_versions": False,
+            "has_more_memberships": False,
+            "has_more_decisions": False,
+            "has_more_org_memberships": has_more_org_memberships,
+        }
 
-    datasets = _rows(
+    # Paginación de datasets
+    offset = (page - 1) * page_size
+    datasets, has_more_datasets = _page_rows(
         client.schema("dataset")
         .table("datasets")
         .select("id, organization_id, name, description, created_at")
         .in_("organization_id", organization_ids)
+        .range(offset, offset + page_size),
+        page_size,
     )
     if not datasets:
-        return []
+        return {
+            "items": [],
+            "page": page,
+            "page_size": page_size,
+            "version_page": version_page,
+            "version_page_size": version_page_size,
+            "membership_page": membership_page,
+            "membership_page_size": membership_page_size,
+            "decision_page": decision_page,
+            "decision_page_size": decision_page_size,
+            "org_membership_page": org_membership_page,
+            "org_membership_page_size": org_membership_page_size,
+            "has_more": False,
+            "has_more_versions": False,
+            "has_more_memberships": False,
+            "has_more_decisions": False,
+            "has_more_org_memberships": has_more_org_memberships,
+        }
 
     datasets_by_id = {row["id"]: {**row, "versions": []} for row in datasets}
-    versions = _rows(
+    
+    # Paginación de versiones
+    version_offset = (version_page - 1) * version_page_size
+    versions, has_more_versions = _page_rows(
         client.schema("dataset")
         .table("versions")
         .select("id, dataset_id, version_number, state, status, created_at")
         .in_("dataset_id", list(datasets_by_id))
+        .range(version_offset, version_offset + version_page_size),
+        version_page_size,
     )
     versions_by_id: dict[str, dict] = {}
     for version in versions:
-        version["memberships"] = []
-        raw_state = version.get("state") or version.get("status") or "DRAFT"
-        version["state"] = str(raw_state).upper()
-        version["status"] = str(raw_state).upper()
-        versions_by_id[version["id"]] = version
-        dataset = datasets_by_id.get(version["dataset_id"])
+        # Copia defensiva sin alterar state ni status (sin normalización silenciosa)
+        version_copy = {**version, "memberships": []}
+        versions_by_id[version_copy["id"]] = version_copy
+        dataset = datasets_by_id.get(version_copy["dataset_id"])
         if dataset is not None:
-            dataset["versions"].append(version)
+            dataset["versions"].append(version_copy)
 
     if not versions_by_id:
-        return list(datasets_by_id.values())
+        return {
+            "items": list(datasets_by_id.values()),
+            "page": page,
+            "page_size": page_size,
+            "version_page": version_page,
+            "version_page_size": version_page_size,
+            "membership_page": membership_page,
+            "membership_page_size": membership_page_size,
+            "decision_page": decision_page,
+            "decision_page_size": decision_page_size,
+            "org_membership_page": org_membership_page,
+            "org_membership_page_size": org_membership_page_size,
+            "has_more": has_more_datasets,
+            "has_more_versions": False,
+            "has_more_memberships": False,
+            "has_more_decisions": False,
+            "has_more_org_memberships": has_more_org_memberships,
+        }
 
-    memberships = _rows(
+    # Paginación de membresías (escenas)
+    membership_offset = (membership_page - 1) * membership_page_size
+    memberships, has_more_memberships = _page_rows(
         client.schema("dataset")
         .table("memberships")
         .select(
             "id, version_id, scene_provider, scene_external_id, added_at"
         )
         .in_("version_id", list(versions_by_id))
+        .range(membership_offset, membership_offset + membership_page_size),
+        membership_page_size,
     )
     memberships_by_id: dict[str, dict] = {}
     for membership in memberships:
-        membership["decisions"] = []
-        memberships_by_id[membership["id"]] = membership
-        version = versions_by_id.get(membership["version_id"])
+        membership_copy = {**membership, "decisions": []}
+        memberships_by_id[membership_copy["id"]] = membership_copy
+        version = versions_by_id.get(membership_copy["version_id"])
         if version is not None:
-            version["memberships"].append(membership)
+            version["memberships"].append(membership_copy)
 
+    # Inicialización segura de decisions antes del condicional (Punto 3)
+    decisions = []
+    has_more_decisions = False
     if memberships_by_id:
-        decisions = _rows(
+        decision_offset = (decision_page - 1) * decision_page_size
+        decisions, has_more_decisions = _page_rows(
             client.schema("dataset")
             .table("decisions")
             .select(
@@ -262,13 +347,33 @@ def list_review_datasets(
             )
             .in_("membership_id", list(memberships_by_id))
             .order("decided_at", desc=True)
+            .range(decision_offset, decision_offset + decision_page_size),
+            decision_page_size,
         )
         for decision in decisions:
-            membership = memberships_by_id.get(decision["membership_id"])
+            decision_copy = {**decision}
+            membership = memberships_by_id.get(decision_copy["membership_id"])
             if membership is not None:
-                membership["decisions"].append(decision)
+                membership["decisions"].append(decision_copy)
 
-    return list(datasets_by_id.values())
+    return {
+        "items": list(datasets_by_id.values()),
+        "page": page,
+        "page_size": page_size,
+        "version_page": version_page,
+        "version_page_size": version_page_size,
+        "membership_page": membership_page,
+        "membership_page_size": membership_page_size,
+        "decision_page": decision_page,
+        "decision_page_size": decision_page_size,
+        "org_membership_page": org_membership_page,
+        "org_membership_page_size": org_membership_page_size,
+        "has_more": has_more_datasets,
+        "has_more_versions": has_more_versions,
+        "has_more_memberships": has_more_memberships,
+        "has_more_decisions": has_more_decisions,
+        "has_more_org_memberships": has_more_org_memberships,
+    }
 
 
 @router.post("/memberships/{membership_id}/decisions", status_code=201)
@@ -282,6 +387,7 @@ def create_membership_decision(
     user_id = _user_id(payload)
     dataset_client = client.schema("dataset")
 
+    # TODO (Deuda Técnica): Refactorizar estas consultas secuenciales a una sola consulta relacional (Joins) vía FK en Supabase.
     membership_rows = _rows(
         dataset_client.table("memberships")
         .select("id, version_id")
@@ -355,17 +461,20 @@ def create_membership_decision(
         )
     return inserted[0]
 
+
 @router.post("/candidates/validate", status_code=200)
 def validate_candidate_fields(
     payload: CandidateValidationPayload,
     user_data: dict = Depends(verify_supabase_jwt),  # noqa: B008
 ):
-   
+    """Valida los campos de un candidato."""
     return {
         "message": "Validación exitosa. Variables, unidades y fechas son compatibles.",
         "candidate_id": str(payload.candidate_id),
         "status": "VALIDATED"
-}
+    }
+
+
 @router.post("/versions/{version_id}/candidates", status_code=201)
 def incorporate_candidates_to_version(
     version_id: UUID,
@@ -388,7 +497,6 @@ def incorporate_candidates_to_version(
         .select("id, dataset_id")
         .eq("id", str(version_id))
         .limit(1)
-        .execute()
     )
     if not version_rows:
         raise HTTPException(
@@ -403,7 +511,6 @@ def incorporate_candidates_to_version(
         .select("id, organization_id")
         .eq("id", dataset_id)
         .limit(1)
-        .execute()
     )
     if not dataset_rows:
         raise HTTPException(
@@ -417,7 +524,6 @@ def incorporate_candidates_to_version(
         .eq("user_id", user_id)
         .eq("organization_id", dataset_rows[0]["organization_id"])
         .eq("status", "active")
-        .execute()
     )
     if not any(
         str(membership.get("role", "")).strip().lower() in APPROVAL_ROLES
@@ -443,7 +549,6 @@ def incorporate_candidates_to_version(
         inserted = _rows(
             dataset_client.table("memberships")
             .insert(records_to_insert)
-            .execute()
         )
     except Exception as exc:
         raise HTTPException(
@@ -482,7 +587,6 @@ def update_version_state(
         .select("id, dataset_id, state, status")
         .eq("id", str(version_id))
         .limit(1)
-        .execute()
     )
     if not version_rows:
         raise HTTPException(
@@ -514,7 +618,6 @@ def update_version_state(
         .select("id, organization_id")
         .eq("id", version_data["dataset_id"])
         .limit(1)
-        .execute()
     )
     if not dataset_rows:
         raise HTTPException(
@@ -528,7 +631,6 @@ def update_version_state(
         .eq("user_id", user_id)
         .eq("organization_id", dataset_rows[0]["organization_id"])
         .eq("status", "active")
-        .execute()
     )
     if not any(
         str(membership.get("role", "")).strip().lower() in APPROVAL_ROLES
@@ -551,7 +653,6 @@ def update_version_state(
             }
         )
         .eq("id", str(version_id))
-        .execute()
     )
     if not updated_rows:
         return {
@@ -561,4 +662,3 @@ def update_version_state(
         }
 
     return updated_rows[0]
-
