@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from enum import Enum
 from uuid import UUID
 
@@ -62,36 +62,42 @@ class CandidateVariableMetadata(BaseModel):
     variable: str = Field(..., description="Nombre de la variable (ej. temperatura)")
     unit: str = Field(..., description="Unidad de medida")
 
-    @model_validator(mode='after')
-    def validate_variable_and_unit(self) -> 'CandidateVariableMetadata':
+    @model_validator(mode="after")
+    def validate_variable_and_unit(self) -> "CandidateVariableMetadata":
         # Diccionario estricto de variables permitidas y sus unidades compatibles para AquaBloom Sur
         valid_combinations = {
             "temperatura": ["celsius", "°c", "c"],
             "clorofila_a": ["mg/m3", "ug/l", "µg/l"],
             "turbidez": ["ntu"],
-            "ph": ["adimensional", ""]
+            "ph": ["adimensional"],
         }
-        
+
         var_clean = self.variable.lower().strip()
         unit_clean = self.unit.lower().strip()
 
         if var_clean not in valid_combinations:
-            raise ValueError(f"Variable incompatible o no soportada por el sistema: '{self.variable}'")
-        
+            raise ValueError(
+                f"Variable incompatible o no soportada por el sistema: '{self.variable}'"
+            )
+
         if unit_clean not in valid_combinations[var_clean]:
             raise ValueError(
                 f"Unidad '{self.unit}' es incompatible para la variable '{self.variable}'. "
                 f"Unidades permitidas: {valid_combinations[var_clean]}"
             )
-        
+
         return self
 
 
 class CandidateValidationPayload(BaseModel):
     candidate_id: UUID
-    acquisition_date: datetime = Field(..., description="Fecha y hora de adquisición de los datos")
+    acquisition_date: datetime = Field(
+        ..., description="Fecha y hora de adquisición de los datos"
+    )
     variables: list[CandidateVariableMetadata] = Field(
-        ..., min_length=1, description="Lista de variables reportadas por el candidato"
+        ...,
+        min_length=1,
+        description="Lista de variables reportadas por el candidato",
     )
 
     @field_validator("acquisition_date")
@@ -99,15 +105,19 @@ class CandidateValidationPayload(BaseModel):
     def validate_date_not_in_future(cls, v: datetime) -> datetime:
         # Asignamos zona horaria UTC si viene sin una para poder comparar correctamente
         if v.tzinfo is None:
-            v = v.replace(tzinfo=UTC)
-        
+            v = v.replace(tzinfo=timezone.utc)
+
         # Rechazamos fechas que vengan del futuro
-        if v > datetime.now(UTC):
-            raise ValueError(f"La fecha de adquisición ({v}) es incompatible: no puede estar en el futuro.")
-        
-        return v 
+        if v > datetime.now(timezone.utc):
+            raise ValueError(
+                f"La fecha de adquisición ({v}) es incompatible: no puede estar en el futuro."
+            )
+
+        return v
 
 class IncorporateCandidatesInput(BaseModel):
     candidate_ids: list[UUID] = Field(
-        ..., description="Lista de IDs de candidatos a incorporar desde la ingesta"
-    )  
+        ...,
+        min_length=1,
+        description="Lista de IDs de candidatos a incorporar desde la ingesta",
+    )
