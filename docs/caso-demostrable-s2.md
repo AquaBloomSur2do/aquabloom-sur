@@ -26,3 +26,16 @@ Para aislar el experimento y validar la arquitectura de los microservicios sin s
 * El resultado demostrará la capacidad del worker asíncrono para generar un artefacto de modelo trazable.
 * Las estimaciones se limitarán a puntos georreferenciados específicos en el lago, sin generar un mapa continuo rasterizado completo en la interfaz web por el momento.
 * Se documentarán explícitamente las advertencias de "condición experimental" al consultar la API.
+
+## Cálculo del Índice Espectral NDCI (S2-125)
+
+El **Normalized Difference Chlorophyll Index (NDCI)** evalúa la presencia y concentración de clorofila-a en cuerpos de agua utilizando el raster preparado multi-banda **`pilot_sentinel2_l2a.tif`** (bandas Sentinel-2 **B05** [Red Edge, ~705 nm] y **B04** [Red, ~665 nm]).
+
+### Fórmula Matemática
+$$NDCI = \frac{B05 - B04}{B05 + B04}$$
+
+### Procesamiento de Datos y Casos Límite
+- **Fuente de Datos:** Se procesa directamente desde el GeoTIFF multi-banda del piloto (`pilot_sentinel2_l2a.tif`), extrayendo internamente las bandas `B04`, `B05` y la `water_mask`.
+- **Máscara de Agua:** Los píxeles fuera del cuerpo de agua (`water_mask = False` / `0`) son descartados y evaluados como `NaN`.
+- **División por Cero:** Píxeles donde $B05 + B04 = 0$ son devueltos como `NaN` para mantener la estabilidad numérica.
+
