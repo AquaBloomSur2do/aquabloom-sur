@@ -1,8 +1,23 @@
-from typing import Annotated, Literal
+from typing import Annotated, Literal, NoReturn
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, StringConstraints
+
+try:
+    from postgrest.exceptions import APIError
+except (ImportError, ModuleNotFoundError):
+    try:
+        from supabase.lib.client_options import APIError
+    except (ImportError, ModuleNotFoundError):
+
+        class APIError(Exception):
+            code: str = "500"
+
+            def __init__(self, error: object = None):
+                super().__init__(error)
+                if isinstance(error, dict):
+                    self.code = str(error.get("code", self.code))
 
 from app.auth import verify_supabase_jwt
 from app.database import supabase
@@ -87,7 +102,35 @@ def _user_id(payload: dict) -> str:
         ) from exc
 
 
-def _rows(response) -> list[dict]:
+def _raise_database_error(exc: Exception) -> NoReturn:
+    error_code = getattr(exc, "code", None)
+    if str(error_code) == "23505":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La decisión entra en conflicto con un registro existente.",
+        ) from exc
+    if str(error_code) == "23503":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No existe la pertenencia de escena o el dataset relacionado.",
+        ) from exc
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="No se pudo completar la operación de revisión del dataset.",
+    ) from exc
+
+
+def _execute_database_query(query):
+    try:
+        return query.execute()
+    except APIError as exc:
+        _raise_database_error(exc)
+    except Exception as exc:  # noqa: BLE001
+        _raise_database_error(exc)
+
+
+def _rows(query) -> list[dict]:
+    response = _execute_database_query(query)
     return response.data or []
 
 
@@ -102,7 +145,6 @@ def list_review_datasets(payload: dict = Depends(verify_supabase_jwt)):  # noqa:
         .select("organization_id, role")
         .eq("user_id", user_id)
         .eq("status", "active")
-        .execute()
     )
     organization_ids = list(
         {
@@ -120,7 +162,6 @@ def list_review_datasets(payload: dict = Depends(verify_supabase_jwt)):  # noqa:
         .table("datasets")
         .select("id, organization_id, name, description, created_at")
         .in_("organization_id", organization_ids)
-        .execute()
     )
     if not datasets:
         return []
@@ -131,7 +172,6 @@ def list_review_datasets(payload: dict = Depends(verify_supabase_jwt)):  # noqa:
         .table("versions")
         .select("id, dataset_id, version_number, status, created_at")
         .in_("dataset_id", list(datasets_by_id))
-        .execute()
     )
     versions_by_id: dict[str, dict] = {}
     for version in versions:
@@ -149,7 +189,6 @@ def list_review_datasets(payload: dict = Depends(verify_supabase_jwt)):  # noqa:
         .table("memberships")
         .select("id, version_id, scene_provider, scene_external_id, added_at")
         .in_("version_id", list(versions_by_id))
-        .execute()
     )
     memberships_by_id: dict[str, dict] = {}
     for membership in memberships:
@@ -166,7 +205,6 @@ def list_review_datasets(payload: dict = Depends(verify_supabase_jwt)):  # noqa:
             .select("id, membership_id, decision, reason, decided_by, decided_at")
             .in_("membership_id", list(memberships_by_id))
             .order("decided_at", desc=True)
-            .execute()
         )
         for decision in decisions:
             membership = memberships_by_id.get(decision["membership_id"])
@@ -192,7 +230,6 @@ def create_membership_decision(
         .select("id, version_id")
         .eq("id", str(membership_id))
         .limit(1)
-        .execute()
     )
     if not membership_rows:
         raise HTTPException(
@@ -205,7 +242,6 @@ def create_membership_decision(
         .select("id, dataset_id")
         .eq("id", membership_rows[0]["version_id"])
         .limit(1)
-        .execute()
     )
     if not version_rows:
         raise HTTPException(
@@ -218,7 +254,6 @@ def create_membership_decision(
         .select("id, organization_id")
         .eq("id", version_rows[0]["dataset_id"])
         .limit(1)
-        .execute()
     )
     if not dataset_rows:
         raise HTTPException(
@@ -226,17 +261,16 @@ def create_membership_decision(
             detail="El dataset no existe.",
         )
 
-    organization_memberships = _rows(
+    organization_id = dataset_rows[0]["organization_id"]
+    membership_data = _rows(
         client.table("memberships")
         .select("role")
         .eq("user_id", user_id)
-        .eq("organization_id", dataset_rows[0]["organization_id"])
+        .eq("organization_id", organization_id)
         .eq("status", "active")
-        .execute()
     )
-    if not any(
-        str(membership.get("role", "")).strip().lower() in APPROVAL_ROLES
-        for membership in organization_memberships
+    if not membership_data or (
+        str(membership_data[0].get("role", "")).strip().lower() not in APPROVAL_ROLES
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -253,7 +287,6 @@ def create_membership_decision(
                 "decided_by": user_id,
             }
         )
-        .execute()
     )
     if not inserted:
         raise HTTPException(

@@ -1,9 +1,11 @@
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.auth import verify_supabase_jwt
+from app.datasets import APIError
 from app.main import app
 
 client = TestClient(app)
@@ -40,6 +42,9 @@ class FakeQuery:
         return self
 
     def execute(self):
+        if self.inserted is not None and self.database.database_error is not None:
+            raise self.database.database_error
+
         if self.schema_name != "dataset":
             rows = self.database.organization_memberships
             if self.filters.get("organization_id"):
@@ -80,6 +85,7 @@ class FakeSupabase:
         self.version_id = "version-1"
         self.membership_id = str(uuid4())
         self.user_id = str(user_id)
+        self.database_error = None
         self.organization_memberships = [
             {
                 "user_id": self.user_id,
@@ -202,17 +208,61 @@ def test_decision_requires_a_non_blank_reason(monkeypatch):
     assert database.dataset_rows["decisions"] == []
 
 
-def test_supervisor_registers_decision_and_reason(monkeypatch):
+@pytest.mark.parametrize(
+    ("decision", "reason"),
+    [("rejected", "Nubes densas"), ("accepted", "Escena válida")],
+)
+def test_supervisor_registers_decision_and_reason(monkeypatch, decision, reason):
     database = setup_request(monkeypatch, "supervisor")
     try:
         response = client.post(
             f"/api/v1/datasets/memberships/{database.membership_id}/decisions",
-            json={"decision": "rejected", "reason": "  Nubes densas  "},
+            json={"decision": decision, "reason": f"  {reason}  "},
         )
     finally:
         app.dependency_overrides.clear()
 
     assert response.status_code == 201
-    assert response.json()["decision"] == "rejected"
-    assert response.json()["reason"] == "Nubes densas"
+    assert response.json()["decision"] == decision
+    assert response.json()["reason"] == reason
     assert response.json()["decided_by"] == database.user_id
+    assert response.json()["decided_at"] == "2026-10-27T00:00:00+00:00"
+    stored_decision = database.dataset_rows["decisions"][0]
+    assert stored_decision["decision"] == decision
+    assert stored_decision["reason"] == reason
+
+
+@pytest.mark.parametrize(
+    ("error_code", "expected_status", "postgrest_error"),
+    [
+        ("23505", 409, False),
+        ("23503", 404, False),
+        ("XX000", 500, False),
+        ("23505", 409, True),
+        ("23503", 404, True),
+        ("XX000", 500, True),
+    ],
+)
+def test_database_errors_are_mapped_when_registering_decision(
+    monkeypatch, error_code, expected_status, postgrest_error
+):
+    database = setup_request(monkeypatch, "supervisor")
+    database_error = (
+        APIError({"code": error_code, "message": "database error"})
+        if postgrest_error
+        else Exception("database error")
+    )
+    if not postgrest_error:
+        database_error.code = error_code
+    database.database_error = database_error
+
+    try:
+        response = client.post(
+            f"/api/v1/datasets/memberships/{database.membership_id}/decisions",
+            json={"decision": "accepted", "reason": "Escena válida"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == expected_status
+    assert database.dataset_rows["decisions"] == []
