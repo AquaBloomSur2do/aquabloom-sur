@@ -26,7 +26,7 @@ def test_ph_rejects_blank_unit(unit):
 def test_candidate_validation_accepts_naive_acquisition_date_as_utc():
     payload = CandidateValidationPayload(
         candidate_id=uuid4(),
-        acquisition_date=datetime(2026, 10, 29, 12),       # noqa: DTZ001
+        acquisition_date=datetime.fromisoformat("2026-10-29T12:00:00"),
         variables=[{"variable": "pH", "unit": "adimensional"}],
     )
 
