@@ -22,6 +22,7 @@ export interface DatasetVersion {
   id: string;
   dataset_id: string;
   version_number: number;
+  state?: string;
   status: string;
   created_at: string;
   memberships: DatasetSceneMembership[];
