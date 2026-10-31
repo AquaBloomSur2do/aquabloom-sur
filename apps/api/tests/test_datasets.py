@@ -1,3 +1,4 @@
+import hashlib
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -507,6 +508,44 @@ def test_update_version_state_persists_in_database(monkeypatch):
     assert database.dataset_rows["versions"][0]["status"] == "IN_REVIEW"
 
 
+def test_publishing_version_creates_small_versioned_training_file_and_manifest(monkeypatch):
+    database = setup_request(monkeypatch, "admin")
+    database.dataset_rows["versions"][0]["state"] = "APPROVED"
+    database.dataset_rows["versions"][0]["status"] = "APPROVED"
+    uploaded = {}
+
+    class FakeBucket:
+        def upload(self, path, content, file_options):
+            uploaded.update(
+                path=path,
+                content=content,
+                file_options=file_options,
+            )
+
+    class FakeStorage:
+        def from_(self, name):
+            assert name == "training_files"
+            return FakeBucket()
+
+    database.storage = FakeStorage()
+    try:
+        response = client.patch(
+            f"/api/v1/datasets/versions/{database.version_id}/state",
+            json={"state": "PUBLISHED"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    expected_content = b"temperatura,clorofila_a,turbidez,ph\r\n15.5,2.1,0.5,7.2\r\n"
+    assert response.status_code == 200
+    assert uploaded["path"] == f"versions/{database.version_id}/training.csv"
+    assert uploaded["content"] == expected_content
+    assert len(uploaded["content"]) <= 1024 * 1024
+    manifest = database.dataset_rows["training_manifests"][0]
+    assert manifest["version_id"] == database.version_id
+    assert manifest["storage_path"] == uploaded["path"]
+    assert manifest["checksum"] == hashlib.sha256(expected_content).hexdigest()
+
 def test_update_version_state_returns_404_for_missing_version(monkeypatch):
     setup_request(monkeypatch, "admin")
     try:
@@ -545,4 +584,132 @@ def test_update_version_state_returns_400_for_unknown_current_state(monkeypatch)
         app.dependency_overrides.clear()
 
     assert response.status_code == 400
+
+# --- Pruebas S2-137: Descarga Estricta de Archivo de Entrenamiento ---
+
+def test_training_file_generation_and_strict_download(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+
+    # Simular que el archivo se generó al publicar
+    csv_content = b"temperatura,clorofila_a,turbidez,ph\r\n15.5,2.1,0.5,7.2\r\n"
+    real_sha256 = hashlib.sha256(csv_content).hexdigest()
+
+    database.dataset_rows["versions"][0]["state"] = "PUBLISHED"
+    database.dataset_rows["training_manifests"] = [{
+        "id": "55555555-5555-5555-5555-555555555555",
+        "version_id": database.version_id,
+        "storage_path": f"versions/{database.version_id}/training.csv",
+        "checksum": real_sha256,
+        "variables": ["temperatura", "clorofila_a", "turbidez", "ph"]
+    }]
+
+    # Mockear Storage para devolver los bytes exactos
+    class FakeBucket:
+        def download(self, path):
+            return csv_content
+
+    class FakeStorage:
+        def from_(self, name):
+            return FakeBucket()
+
+    database.storage = FakeStorage()
+
+    try:
+        # 1. Probar metadatos y variables dinámicas
+        res_meta = client.get(f"/api/v1/datasets/versions/{database.version_id}/training-file")
+        assert res_meta.status_code == 200
+        data = res_meta.json()
+        assert data["checksum"] == real_sha256
+        assert data["manifest_id"] == "55555555-5555-5555-5555-555555555555"
+        assert data["download_url"].endswith("/download")
+        assert data["variables"] == [
+            "temperatura",
+            "clorofila_a",
+            "turbidez",
+            "ph",
+        ]
+
+        # 2. Probar descarga estricta (Proxy)
+        res_download = client.get(data["download_url"])
+        assert res_download.status_code == 200
+        assert res_download.content == csv_content
+        # Confirmar que el checksum del archivo real devuelto es idéntico al manifiesto
+        assert hashlib.sha256(res_download.content).hexdigest() == real_sha256
+        assert res_download.headers["Content-Disposition"] == f'attachment; filename="training_{database.version_id}.csv"'
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_training_file_denied_if_not_published(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    database.dataset_rows["versions"][0]["state"] = "DRAFT"
+    try:
+        res = client.get(f"/api/v1/datasets/versions/{database.version_id}/training-file")
+        res_down = client.get(f"/api/v1/datasets/versions/{database.version_id}/training-file/download")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert res.status_code == 403
+    assert res_down.status_code == 403
+
+
+def test_get_training_file_denied_wrong_org(monkeypatch):
+    database = setup_request(monkeypatch, "admin")
+    database.dataset_rows["versions"][0]["state"] = "PUBLISHED"
+    database.organization_memberships[0]["organization_id"] = "organization-other"
+    try:
+        res = client.get(f"/api/v1/datasets/versions/{database.version_id}/training-file")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert res.status_code == 403
+
+
+def test_get_training_file_denied_for_unapproved_role(monkeypatch):
+    database = setup_request(monkeypatch, "member")
+    database.dataset_rows["versions"][0]["state"] = "PUBLISHED"
+    try:
+        response = client.get(
+            f"/api/v1/datasets/versions/{database.version_id}/training-file"
+        )
+        download_response = client.get(
+            f"/api/v1/datasets/versions/{database.version_id}/training-file/download"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert download_response.status_code == 403
+
+
+def test_training_file_download_rejects_checksum_mismatch(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    database.dataset_rows["versions"][0]["state"] = "PUBLISHED"
+    database.dataset_rows["training_manifests"] = [
+        {
+            "id": "55555555-5555-5555-5555-555555555555",
+            "version_id": database.version_id,
+            "storage_path": f"versions/{database.version_id}/training.csv",
+            "checksum": "0" * 64,
+            "variables": ["temperatura", "clorofila_a", "turbidez", "ph"],
+        }
+    ]
+
+    class FakeBucket:
+        def download(self, path):
+            return b"temperatura,clorofila_a,turbidez,ph\r\n"
+
+    class FakeStorage:
+        def from_(self, name):
+            return FakeBucket()
+
+    database.storage = FakeStorage()
+    try:
+        response = client.get(
+            f"/api/v1/datasets/versions/{database.version_id}/training-file/download"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 502
     
