@@ -88,6 +88,31 @@ export const updateLake = async (session, lakeId, updateData) => {
   return await response.json();
 };
 
+## Creación asíncrona de trabajos científicos
+
+* **Ruta:** `POST /api/v1/executions/`
+* **Autenticación:** header `X-Internal-Token`.
+* **Entrenamiento:** requiere `dataset_id` y `version_id`; la versión debe
+  pertenecer al dataset y estar en estado `PUBLISHED`.
+* **Respuesta:** `202 Accepted` con `job_id`, `status` y `status_url`. La
+  solicitud registra el trabajo como `pending`; no ejecuta el entrenamiento
+  dentro del endpoint.
+
+```json
+{
+  "job_type": "training",
+  "config": {
+    "dataset_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "version_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "epochs": 50,
+    "learning_rate": 0.01
+  }
+}
+```
+
+Consulta el estado con `GET /api/v1/executions/{job_id}`, usando también el
+header `X-Internal-Token`.
+
 
 ### 4. Deshabilitar un Lago
 

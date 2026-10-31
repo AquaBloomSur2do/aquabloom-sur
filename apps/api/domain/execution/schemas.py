@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 class TrainingConfig(BaseModel):
     dataset_id: str
+    version_id: UUID
     epochs: int = Field(default=100, gt=0)
     learning_rate: float = Field(default=0.001, gt=0)
 
@@ -41,7 +42,7 @@ class JobResponse(BaseModel):
     job_id: UUID
     status: str
     status_url: str
-    message: str = "Job accepted and processing in background"
+    message: str = "Job created and awaiting background processing"
 
 
 class JobStatus(BaseModel):

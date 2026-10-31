@@ -79,7 +79,7 @@ app.include_router(gateway_router)
 app.include_router(organizations_router)
 app.include_router(imports_router)
 app.include_router(ingestion_router)
-app.include_router(execution_router, prefix="/api/v1/executions")
+app.include_router(execution_router)
 app.include_router(lakes_router)
 app.include_router(stations_router)
 app.include_router(datasets_router)
@@ -104,7 +104,6 @@ def read_root():
 def health_check():
     db_status = check_supabase_connection()
     return {"service": "AquaBloom Sur", "version": "v1", "status": "ok" if db_status["status"] == "ok" else "degraded", "database": db_status}
-
 
 
 
