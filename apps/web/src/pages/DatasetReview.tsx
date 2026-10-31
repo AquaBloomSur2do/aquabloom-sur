@@ -74,23 +74,33 @@ export function DatasetReview() {
   }, []);
 
   // --- Carga de Candidatos (S2-139) ---
+  // --- Carga de Candidatos (S2-139) ---
   useEffect(() => {
+    if (!datasetId) return;
+
     let mounted = true;
+    const controller = new AbortController(); // FIX 1: Instancia del controlador de red
+
     const loadCandidates = async () => {
-      if (!datasetId) return;
       setLoadingCandidates(true);
       try {
         // En una API real, esto sería un GET a /api/v1/datasets/candidates?lake_id=...
-        // Si no está implementado en backend, atrapamos el 404/501 y mockeamos para mostrar la vista (MVP).
-        const response = await apiClient.get<DatasetCandidate[]>(`datasets/candidates?dataset_id=${datasetId}`);
+        const response = await apiClient.get<DatasetCandidate[]>(
+          `datasets/candidates?dataset_id=${datasetId}`,
+          { signal: controller.signal } // Se enlaza la señal de cancelación
+        );
         if (mounted) setCandidates(response);
-      } catch {
-        // Mock de datos para evidenciar la S2-139 si el backend de Ingesta no expone GET candidatos.
+      } catch (error) {
+        // Ignorar el error silencioso si la petición fue cancelada intencionalmente
+        if (error instanceof Error && error.name === 'AbortError') return;
+
+        // Mock de datos para evidenciar la S2-139 si el backend no expone GET candidatos.
         if (mounted) {
-           setCandidates([
+          // TODO (Deuda Técnica): Eliminar este mock y consumir el endpoint real de Ingesta en el Sprint 3
+          setCandidates([
             {
               id: 'c-1',
-              lake_id: datasetId,
+              lake_id: 'lago-villarrica-uuid-mock', // FIX 3: Desacoplado semánticamente de datasetId
               data_uri: 's3://ingest/batch-1.csv',
               status: 'REJECTED',
               submitted_at: new Date().toISOString(),
@@ -99,7 +109,7 @@ export function DatasetReview() {
             },
             {
               id: 'c-2',
-              lake_id: datasetId,
+              lake_id: 'lago-villarrica-uuid-mock', // FIX 3: Desacoplado semánticamente de datasetId
               data_uri: 's3://ingest/batch-2.csv',
               status: 'PENDING',
               submitted_at: new Date().toISOString(),
@@ -112,9 +122,15 @@ export function DatasetReview() {
         if (mounted) setLoadingCandidates(false);
       }
     };
+    
     void loadCandidates();
-    return () => { mounted = false; };
-  }, [datasetId]);
+    
+    // Función de limpieza al desmontar
+    return () => { 
+      mounted = false; 
+      controller.abort(); // FIX 1: Cancela la petición HTTP en vuelo
+    };
+  }, [datasetId]); // FIX 2: Dependencia declarada explícitamente sin dependencias circulares ocultas
 
   const selectedDataset = datasets.find((dataset) => dataset.id === datasetId);
   const versions = selectedDataset?.versions ?? [];
