@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, useRef, type FormEvent } from 'react';
 import { Pagination } from './Pagination';
 import { ApiError, apiClient } from '../services/apiClient';
 import type { PaginatedScenes, Scene } from '../types/scene';
@@ -34,6 +34,16 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
   const [isSimulatingPost, setIsSimulatingPost] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState<string | null>(null);
 
+  // FIX 1: Referencia para evitar fugas de memoria (Memory Leaks)
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    // Cleanup de temporizadores al desmontar el componente
+    return () => {
+      timersRef.current.forEach(clearTimeout);
+    };
+  }, []);
+
   useEffect(() => {
     if (!dateRange) return;
 
@@ -42,6 +52,7 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
 
     const loadScenes = async () => {
       setIsLoading(true);
+      // FIX 2: Mantenemos el reseteo de error aislado para evitar ciclos si alguna herramienta de linting fuerza dependencias
       setError(null);
       const params = new URLSearchParams({
         start_date: dateRange.startDate,
@@ -91,27 +102,30 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
     setDateRange({ startDate, endDate });
   };
 
-  // Función para simular el registro de la escena (Opción 1)
   const handleSimulatedRegister = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSimulatingPost(true);
     setRegistrationSuccess(null);
 
-    // Simulamos un delay de red de 1 segundo
-    setTimeout(() => {
+    // TODO (Deuda Técnica): Reemplazar simulación con llamada real apiClient.post('/lakes/{lakeId}/scenes', ...) en el Sprint 3
+    const t1 = setTimeout(() => {
       setIsSimulatingPost(false);
       setRegistrationSuccess(`Escena ${newSceneId} simulada y "registrada" exitosamente en staging (API pendiente).`);
       
-      // Limpiamos el formulario
       setNewSceneId('');
       setNewSceneDate('');
       
-      // El éxito desaparece después de 4 segundos
-      setTimeout(() => setRegistrationSuccess(null), 4000);
+      const t2 = setTimeout(() => {
+        setRegistrationSuccess(null);
+      }, 4000);
+      timersRef.current.push(t2);
     }, 1000);
+    
+    timersRef.current.push(t1);
   };
 
-  const totalPages = Math.ceil(total / PAGE_SIZE) || 1;
+  // FIX 3: Cálculo correcto de paginación para estados vacíos
+  const totalPages = total > 0 ? Math.ceil(total / PAGE_SIZE) : 0;
 
   return (
     <div className="space-y-6">
@@ -170,7 +184,7 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
         </form>
       </section>
 
-      {/* SECCIÓN 2: Listado y Búsqueda de Escenas Existentes (Trabajo de tus compañeros) */}
+      {/* SECCIÓN 2: Listado y Búsqueda de Escenas Existentes */}
       <section
         className="bg-white p-5 md:p-6 rounded-xl shadow-sm border border-gray-200"
         aria-labelledby="scene-selector-title"
@@ -352,12 +366,15 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
                 </dl>
               </div>
             )}
-
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={setCurrentPage}
-            />
+            
+            {/* Solo mostramos la paginación si hay páginas */}
+            {totalPages > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+              />
+            )}
           </>
         )}
       </section>
