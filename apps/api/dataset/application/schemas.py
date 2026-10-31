@@ -49,7 +49,7 @@ class DatasetVersionResponse(DatasetVersionBase):
 
 class DatasetManifestBase(BaseModel):
     version_id: UUID = Field(..., description="ID de la versión consolidada")
-    file_paths: list[str] = Field(..., description="Listado exacto de los archivos incluidos")
+    file_paths: list[str] = Field(..., min_length=1, max_length=50, description="Listado exacto de los archivos incluidos")
     checksum: str = Field(..., description="Hash de validación de integridad (ej. SHA-256)")
 
 
@@ -57,6 +57,7 @@ class DatasetManifestResponse(DatasetManifestBase):
     id: UUID
     generated_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
 
 class CandidateVariableMetadata(BaseModel):
     variable: str = Field(..., description="Nombre de la variable (ej. temperatura)")
@@ -97,6 +98,7 @@ class CandidateValidationPayload(BaseModel):
     variables: list[CandidateVariableMetadata] = Field(
         ...,
         min_length=1,
+        max_length=50,
         description="Lista de variables reportadas por el candidato",
     )
 
@@ -115,17 +117,20 @@ class CandidateValidationPayload(BaseModel):
 
         return v
 
+
 class IncorporateCandidatesInput(BaseModel):
     candidate_ids: list[UUID] = Field(
         ...,
         min_length=1,
+        max_length=50,
         description="Lista de IDs de candidatos a incorporar desde la ingesta",
     )
+
 
 class TrainingManifestResponse(BaseModel):
     version_id: UUID
     manifest_id: UUID
-    variables: list[str]
+    variables: list[str] = Field(..., max_length=50)
     checksum: str
     download_url: str
 

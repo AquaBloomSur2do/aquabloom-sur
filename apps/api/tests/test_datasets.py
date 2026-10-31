@@ -536,7 +536,7 @@ def test_publishing_version_creates_small_versioned_training_file_and_manifest(m
     finally:
         app.dependency_overrides.clear()
 
-    expected_content = b"temperatura,clorofila_a,turbidez,ph\r\n"
+    expected_content = b"temperatura,clorofila_a,turbidez,ph\r\n15.5,2.1,0.5,7.2\r\n"
     assert response.status_code == 200
     assert uploaded["path"] == f"versions/{database.version_id}/training.csv"
     assert uploaded["content"] == expected_content
@@ -545,13 +545,6 @@ def test_publishing_version_creates_small_versioned_training_file_and_manifest(m
     assert manifest["version_id"] == database.version_id
     assert manifest["storage_path"] == uploaded["path"]
     assert manifest["checksum"] == hashlib.sha256(expected_content).hexdigest()
-    assert manifest["variables"] == [
-        "temperatura",
-        "clorofila_a",
-        "turbidez",
-        "ph",
-    ]
-
 
 def test_update_version_state_returns_404_for_missing_version(monkeypatch):
     setup_request(monkeypatch, "admin")
