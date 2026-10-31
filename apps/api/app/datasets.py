@@ -502,7 +502,7 @@ def incorporate_candidates_to_version(
 
     version_rows = _rows(
         dataset_client.table("versions")
-        .select("id, dataset_id")
+        .select("id, dataset_id, state, status")
         .eq("id", str(version_id))
         .limit(1)
     )
@@ -512,6 +512,15 @@ def incorporate_candidates_to_version(
             detail="La versión del dataset no existe.",
         )
 
+    # ---(S2-144) ---
+    version_state = str(version_rows[0].get("state") or version_rows[0].get("status")).upper()
+    if version_state in ["PUBLISHED", "ARCHIVED"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se pueden incorporar candidatos a una versión publicada o archivada (Inmutabilidad).",
+        )
+    # -----------------------------
+    
     dataset_id = version_rows[0]["dataset_id"]
 
     dataset_rows = _rows(

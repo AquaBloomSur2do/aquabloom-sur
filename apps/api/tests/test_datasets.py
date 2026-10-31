@@ -711,5 +711,21 @@ def test_training_file_download_rejects_checksum_mismatch(monkeypatch):
     finally:
         app.dependency_overrides.clear()
 
-    assert response.status_code == 502
+    assert response.status_code == 502    
     
+def test_s2_144_incorporate_candidate_to_published_version_rejected(monkeypatch):
+    database = setup_request(monkeypatch, "admin")
+    database.dataset_rows["versions"][0]["state"] = "PUBLISHED"
+    database.dataset_rows["versions"][0]["status"] = "PUBLISHED"
+    
+    try:
+        response = client.post(
+            f"/api/v1/datasets/versions/{database.version_id}/candidates",
+            json={"candidate_ids": [str(uuid4())]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    # El rechazo 400 Bad Request demuestra la inmutabilidad de la versión
+    assert response.status_code == 400
+
