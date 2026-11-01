@@ -1,3 +1,4 @@
+import hashlib
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -51,7 +52,7 @@ def test_invalid_version_state_transitions_raise_400():
 
 
 # ==========================================
-# Pruebas S2-105 / S2-134: Endpoints y Supabase Mock
+# Pruebas S2-105 / S2-134 / S2-136: Endpoints y Supabase Mock
 # ==========================================
 
 class FakeQuery:
@@ -123,16 +124,35 @@ class FakeQuery:
 
         rows = self.database.dataset_rows.get(self.table_name, [])
         if self.inserted is not None:
+            # --- MOCK EXTENDIDO PARA SOPORTAR INSERCIONES DE LISTAS (S2-136) ---
             if isinstance(self.inserted, list):
-                self.database.dataset_rows.setdefault(self.table_name, []).extend(self.inserted)
-                return SimpleNamespace(data=self.inserted)
-            row = {
-                **self.inserted,
-                "id": "decision-new",
-                "decided_at": "2026-10-27T00:00:00+00:00",
-            }
-            self.database.dataset_rows.setdefault(self.table_name, []).append(row)
-            return SimpleNamespace(data=[row])
+                new_rows = []
+                for item in self.inserted:
+                    new_row = {
+                        **item,
+                        "id": str(uuid4()),
+                        "added_at": "2026-10-27T00:00:00+00:00"
+                    }
+                    self.database.dataset_rows.setdefault(self.table_name, []).append(new_row)
+                    new_rows.append(new_row)
+                return SimpleNamespace(data=new_rows)
+            else:
+                row = {
+                    **self.inserted,
+                    "id": "decision-new",
+                    "decided_at": "2026-10-27T00:00:00+00:00",
+                }
+                self.database.dataset_rows.setdefault(self.table_name, []).append(row)
+                return SimpleNamespace(data=[row])
+
+        if self.updated is not None:
+            updated_rows = []
+            for row in rows:
+                match = all(str(row.get(f)) == v for f, v in self.filters.items())
+                if match:
+                    row.update(self.updated)
+                    updated_rows.append(row.copy())
+            return SimpleNamespace(data=updated_rows)
 
         if self.updated is not None:
             updated_rows = []
@@ -170,10 +190,11 @@ class FakeSchema:
 
 class FakeSupabase:
     def __init__(self, user_id, organization_role):
-        self.dataset_id = "11111111-1111-1111-1111-111111111111"
-        self.dataset_id_2 = "22222222-2222-2222-2222-222222222222"
-        self.organization_id = "99999999-9999-9999-9999-999999999999"
-        self.version_id = "33333333-3333-3333-3333-333333333333"
+        # Usando UUIDs válidos para evitar HTTP 422 (Solución S2-136)
+        self.dataset_id = str(uuid4())
+        self.dataset_id_2 = str(uuid4())
+        self.organization_id = str(uuid4())
+        self.version_id = str(uuid4())
         self.membership_id = str(uuid4())
         self.user_id = str(user_id)
         self.database_error = None
@@ -280,7 +301,7 @@ def test_list_review_datasets_pagination_successive_pages(monkeypatch):
 
 def test_list_review_datasets_paginates_versions(monkeypatch):
     database = setup_request(monkeypatch, "investigador")
-    second_version_id = "44444444-4444-4444-4444-444444444444"
+    second_version_id = str(uuid4())
     database.dataset_rows["versions"].append(
         {
             "id": second_version_id,
@@ -403,7 +424,7 @@ def test_investigator_cannot_register_a_decision(monkeypatch):
 
 def test_admin_from_another_organization_cannot_register_a_decision(monkeypatch):
     database = setup_request(monkeypatch, "admin")
-    database.organization_memberships[0]["organization_id"] = "organization-other"
+    database.organization_memberships[0]["organization_id"] = str(uuid4())
     try:
         response = client.post(
             f"/api/v1/datasets/memberships/{database.membership_id}/decisions",
@@ -507,6 +528,44 @@ def test_update_version_state_persists_in_database(monkeypatch):
     assert database.dataset_rows["versions"][0]["status"] == "IN_REVIEW"
 
 
+def test_publishing_version_creates_small_versioned_training_file_and_manifest(monkeypatch):
+    database = setup_request(monkeypatch, "admin")
+    database.dataset_rows["versions"][0]["state"] = "APPROVED"
+    database.dataset_rows["versions"][0]["status"] = "APPROVED"
+    uploaded = {}
+
+    class FakeBucket:
+        def upload(self, path, content, file_options):
+            uploaded.update(
+                path=path,
+                content=content,
+                file_options=file_options,
+            )
+
+    class FakeStorage:
+        def from_(self, name):
+            assert name == "training_files"
+            return FakeBucket()
+
+    database.storage = FakeStorage()
+    try:
+        response = client.patch(
+            f"/api/v1/datasets/versions/{database.version_id}/state",
+            json={"state": "PUBLISHED"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    expected_content = b"temperatura,clorofila_a,turbidez,ph\r\n15.5,2.1,0.5,7.2\r\n"
+    assert response.status_code == 200
+    assert uploaded["path"] == f"versions/{database.version_id}/training.csv"
+    assert uploaded["content"] == expected_content
+    assert len(uploaded["content"]) <= 1024 * 1024
+    manifest = database.dataset_rows["training_manifests"][0]
+    assert manifest["version_id"] == database.version_id
+    assert manifest["storage_path"] == uploaded["path"]
+    assert manifest["checksum"] == hashlib.sha256(expected_content).hexdigest()
+
 def test_update_version_state_returns_404_for_missing_version(monkeypatch):
     setup_request(monkeypatch, "admin")
     try:
@@ -545,4 +604,178 @@ def test_update_version_state_returns_400_for_unknown_current_state(monkeypatch)
         app.dependency_overrides.clear()
 
     assert response.status_code == 400
+
+# --- Pruebas S2-137: Descarga Estricta de Archivo de Entrenamiento ---
+
+def test_training_file_generation_and_strict_download(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+
+    # Simular que el archivo se generó al publicar
+    csv_content = b"temperatura,clorofila_a,turbidez,ph\r\n15.5,2.1,0.5,7.2\r\n"
+    real_sha256 = hashlib.sha256(csv_content).hexdigest()
+
+    database.dataset_rows["versions"][0]["state"] = "PUBLISHED"
+    database.dataset_rows["training_manifests"] = [{
+        "id": "55555555-5555-5555-5555-555555555555",
+        "version_id": database.version_id,
+        "storage_path": f"versions/{database.version_id}/training.csv",
+        "checksum": real_sha256,
+        "variables": ["temperatura", "clorofila_a", "turbidez", "ph"]
+    }]
+
+    # Mockear Storage para devolver los bytes exactos
+    class FakeBucket:
+        def download(self, path):
+            return csv_content
+
+    class FakeStorage:
+        def from_(self, name):
+            return FakeBucket()
+
+    database.storage = FakeStorage()
+
+    try:
+        # 1. Probar metadatos y variables dinámicas
+        res_meta = client.get(f"/api/v1/datasets/versions/{database.version_id}/training-file")
+        assert res_meta.status_code == 200
+        data = res_meta.json()
+        assert data["checksum"] == real_sha256
+        assert data["manifest_id"] == "55555555-5555-5555-5555-555555555555"
+        assert data["download_url"].endswith("/download")
+        assert data["variables"] == [
+            "temperatura",
+            "clorofila_a",
+            "turbidez",
+            "ph",
+        ]
+
+        # 2. Probar descarga estricta (Proxy)
+        res_download = client.get(data["download_url"])
+        assert res_download.status_code == 200
+        assert res_download.content == csv_content
+        # Confirmar que el checksum del archivo real devuelto es idéntico al manifiesto
+        assert hashlib.sha256(res_download.content).hexdigest() == real_sha256
+        assert res_download.headers["Content-Disposition"] == f'attachment; filename="training_{database.version_id}.csv"'
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_training_file_denied_if_not_published(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    database.dataset_rows["versions"][0]["state"] = "DRAFT"
+    try:
+        res = client.get(f"/api/v1/datasets/versions/{database.version_id}/training-file")
+        res_down = client.get(f"/api/v1/datasets/versions/{database.version_id}/training-file/download")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert res.status_code == 403
+    assert res_down.status_code == 403
+
+
+def test_get_training_file_denied_wrong_org(monkeypatch):
+    database = setup_request(monkeypatch, "admin")
+    database.dataset_rows["versions"][0]["state"] = "PUBLISHED"
+    database.organization_memberships[0]["organization_id"] = str(uuid4())
+    try:
+        res = client.get(f"/api/v1/datasets/versions/{database.version_id}/training-file")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert res.status_code == 403
+
+
+def test_get_training_file_denied_for_unapproved_role(monkeypatch):
+    database = setup_request(monkeypatch, "member")
+    database.dataset_rows["versions"][0]["state"] = "PUBLISHED"
+    try:
+        response = client.get(
+            f"/api/v1/datasets/versions/{database.version_id}/training-file"
+        )
+        download_response = client.get(
+            f"/api/v1/datasets/versions/{database.version_id}/training-file/download"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert download_response.status_code == 403
+
+
+def test_training_file_download_rejects_checksum_mismatch(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    database.dataset_rows["versions"][0]["state"] = "PUBLISHED"
+    database.dataset_rows["training_manifests"] = [
+        {
+            "id": "55555555-5555-5555-5555-555555555555",
+            "version_id": database.version_id,
+            "storage_path": f"versions/{database.version_id}/training.csv",
+            "checksum": "0" * 64,
+            "variables": ["temperatura", "clorofila_a", "turbidez", "ph"],
+        }
+    ]
+
+    class FakeBucket:
+        def download(self, path):
+            return b"temperatura,clorofila_a,turbidez,ph\r\n"
+
+    class FakeStorage:
+        def from_(self, name):
+            return FakeBucket()
+
+    database.storage = FakeStorage()
+    try:
+        response = client.get(
+            f"/api/v1/datasets/versions/{database.version_id}/training-file/download"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 502
+
+# --- Pruebas de Inmutabilidad S2-136 (Blindadas contra KeyError) ---
+
+@pytest.mark.parametrize("state_to_test", ["PUBLISHED", "ARCHIVED"])
+def test_incorporate_candidates_rejects_immutable_versions(monkeypatch, state_to_test):
+    """Verifica que no se puedan modificar versiones consolidadas (S2-136)"""
+    database = setup_request(monkeypatch, "admin")
     
+    database.dataset_rows["versions"][0]["state"] = state_to_test
+    database.dataset_rows["versions"][0]["status"] = state_to_test
+    
+    try:
+        response = client.post(
+            f"/api/v1/datasets/versions/{database.version_id}/candidates",
+            json={"candidate_ids": [str(uuid4()), str(uuid4())]} 
+        )
+    finally:
+        app.dependency_overrides.clear()
+    
+    assert response.status_code == 403
+    # Soporte robusto tanto para estructura 'detail' como 'message'
+    err_body = response.json()
+    err_msg = err_body.get("detail", err_body.get("message", ""))
+    assert "inmutable" in str(err_msg).lower()
+
+
+def test_incorporate_candidates_allows_mutable_versions(monkeypatch):
+    """Verifica que sí se pueda modificar una versión en estado DRAFT (S2-136)"""
+    database = setup_request(monkeypatch, "admin")
+    
+    database.dataset_rows["versions"][0]["state"] = "DRAFT"
+    database.dataset_rows["versions"][0]["status"] = "DRAFT"
+    
+    try:
+        response = client.post(
+            f"/api/v1/datasets/versions/{database.version_id}/candidates",
+            json={"candidate_ids": [str(uuid4())]} 
+        )
+    finally:
+        app.dependency_overrides.clear()
+    
+    assert response.status_code == 201
+    assert response.json()["count"] == 1
+
+
+
+
