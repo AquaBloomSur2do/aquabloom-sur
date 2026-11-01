@@ -741,10 +741,14 @@ def update_version_state(
                             "version_id": str(version_id),
                             "storage_path": storage_path,
                             "checksum": checksum,
-                            # Se eliminó la inyección redundante de "variables" para respetar el DEFAULT de la BD (Punto 3)
+                            "manifest_version": "1.0.0",
+                            "sources": ["sensor-telemetry-primary", "quality-control-node"],
+                            "is_experimental": True,
+                            "is_synthetic": False,
                         }
                     )
                 )
+                
                 if not manifest_rows:
                     raise RuntimeError("Fallo inserción vacía en BD.")
             except Exception as exc:
@@ -788,7 +792,7 @@ def _validate_training_file_access(version_id: UUID, user_id: str, client, datas
     if not membership or str(membership[0].get("role", "")).strip().lower() not in READ_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para esta organización.")
 
-    manifest_rows = _rows(dataset_schema.table("training_manifests").select("id, storage_path, checksum, variables").eq("version_id", str(version_id)).limit(1))
+    manifest_rows = _rows(dataset_schema.table("training_manifests").select("id, storage_path, checksum, variables, manifest_version, sources, is_experimental, is_synthetic").eq("version_id", str(version_id)).limit(1))
     if not manifest_rows:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="El manifiesto no existe.")
 
@@ -819,8 +823,11 @@ def get_training_file_metadata(version_id: UUID, payload: dict = Depends(verify_
         "variables": manifest["variables"],
         "checksum": manifest["checksum"],
         "download_url": f"/api/v1/datasets/versions/{version_id}/training-file/download",
+        "manifest_version": manifest.get("manifest_version", "1.0.0"),
+        "sources": manifest.get("sources", []),
+        "is_experimental": manifest.get("is_experimental", False),
+        "is_synthetic": manifest.get("is_synthetic", False),
     }
-
 
 @router.get("/versions/{version_id}/training-file/download")
 def download_training_file_proxy(version_id: UUID, payload: dict = Depends(verify_supabase_jwt)):  # noqa: B008

@@ -57,21 +57,59 @@ const reviewDatasets = [
   },
 ];
 
+const mockManifest = {
+  version_id: 'version-1',
+  manifest_id: 'manifest-1',
+  variables: ['temperatura', 'clorofila_a', 'turbidez', 'ph'],
+  checksum: 'a'.repeat(64),
+  download_url: '/api/v1/datasets/versions/version-1/training-file/download',
+  manifest_version: '1.0.0',
+  sources: ['sensor-telemetry-primary'],
+  is_experimental: true,
+  is_synthetic: true,
+};
+
 describe('DatasetReview', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGet.mockResolvedValue(reviewDatasets);
+    mockGet.mockImplementation((url: string) => {
+      if (url === 'datasets/review') {
+        return Promise.resolve(reviewDatasets);
+      }
+      if (url.includes('/training-file')) {
+        return Promise.resolve(mockManifest);
+      }
+      return Promise.reject(new Error('Unknown endpoint'));
+    });
   });
 
   afterEach(() => {
     cleanup();
   });
 
+  it('muestra la información del manifiesto y sus advertencias experimentales/sintéticas', async () => {
+    render(<DatasetReview />);
+
+    expect(
+      await screen.findByText('Manifiesto de Entrenamiento')
+    ).toBeInTheDocument();
+    expect(await screen.findByText(/1\.0\.0/)).toBeInTheDocument();
+    expect(
+      await screen.findByText('sensor-telemetry-primary')
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Aviso Experimental/i)).toBeInTheDocument();
+    expect(screen.getByText(/Aviso Sintético/i)).toBeInTheDocument();
+  });
+
   it('diferencia visualmente el estado de revisión técnica de la publicación oficial', async () => {
     render(<DatasetReview />);
-    
-    expect(await screen.findByText('Aprobado en revisión técnica (No publicado)')).toBeInTheDocument();
-    expect(screen.getByText(/No publicado \(pendiente de publicación\)/i)).toBeInTheDocument();
+
+    expect(
+      await screen.findByText('Aprobado en revisión técnica (No publicado)')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/No publicado \(pendiente de publicación\)/i)
+    ).toBeInTheDocument();
   });
 
   it('envía la decisión y el motivo y muestra la respuesta guardada', async () => {
@@ -126,3 +164,4 @@ describe('DatasetReview', () => {
     );
   });
 });
+

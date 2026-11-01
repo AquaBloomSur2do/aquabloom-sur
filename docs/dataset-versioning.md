@@ -61,28 +61,39 @@ esquema debe estar habilitado en la configuración **Exposed schemas** de la API
 de Supabase, además de tener aplicadas las migraciones 013 y 014.
 
 ## Archivos de Entrenamiento (Training Files) - S2-137
+
 Para garantizar la integridad y seguridad (Zero Trust), los archivos de entrenamiento se generan automáticamente cuando una versión transiciona al estado `PUBLISHED`.
 
-*   **Formato:** CSV UTF-8.
-*   **Columnas Estándar:** `temperatura`, `clorofila_a`, `turbidez`, `ph` (obtenidas dinámicamente del manifiesto).
-*   **Límite de Tamaño:** 1 MiB máximo por archivo.
-*   **Seguridad e Integridad:** 
-    *   Se almacena en Supabase Storage (Bucket privado `training_files`).
-    *   La BD exige un checksum estrictamente formateado (SHA-256 de 64 caracteres).
-    *   Para evitar la fuga de URLs firmadas, la descarga del archivo se sirve mediante un proxy en la API (`/versions/{version_id}/training-file/download`) que exige validar el JWT por cada petición HTTP.
-    
+- **Formato:** CSV UTF-8.
+- **Columnas Estándar:** `temperatura`, `clorofila_a`, `turbidez`, `ph` (obtenidas dinámicamente del manifiesto).
+- **Límite de Tamaño:** 1 MiB máximo por archivo.
+- **Seguridad e Integridad:**
+  - Se almacena en Supabase Storage (Bucket privado `training_files`).
+  - La BD exige un checksum estrictamente formateado (SHA-256 de 64 caracteres).
+  - Para evitar la fuga de URLs firmadas, la descarga del archivo se sirve mediante un proxy en la API (`/versions/{version_id}/training-file/download`) que exige validar el JWT por cada petición HTTP.
 
+### Metadatos Avanzados del Manifiesto (S2-143)
+
+Cada manifiesto generado incluye propiedades estrictas de trazabilidad:
+
+- `manifest_version`: Versión del esquema del manifiesto (ej. `1.0.0`).
+- `sources`: Listado de orígenes o identificadores de sensores que alimentaron el dataset.
+- `is_experimental`: Bandera booleana que advierte si el set de datos proviene de pruebas de laboratorio o entornos no productivos.
+- `is_synthetic`: Bandera booleana que indica si los datos fueron generados de forma artificial o sintética.
 
 ## Fronteras de Dominio con Ingesta (Sprint 2 - S2-129)
 
-El módulo `Dataset` ha sido separado estructuralmente del módulo `Ingestion`. 
-* **Ingesta (`imports.py`):** Su responsabilidad termina al validar y almacenar archivos como "candidatos".
-* **Dataset (`datasets.py`):** Es el único componente autorizado para evaluar candidatos y decidir su pertenencia a una versión oficial.
+El módulo `Dataset` ha sido separado estructuralmente del módulo `Ingestion`.
+
+- **Ingesta (`imports.py`):** Su responsabilidad termina al validar y almacenar archivos como "candidatos".
+- **Dataset (`datasets.py`):** Es el único componente autorizado para evaluar candidatos y decidir su pertenencia a una versión oficial.
 
 ### Reglas de Negocio del Dataset
-* **Pertenencia explícita:** Las importaciones no se convierten automáticamente en registros oficiales. Deben ser incorporadas mediante el endpoint `/candidates/validate` y `/versions/{version_id}/candidates`.
-* **Inmutabilidad:** Una vez que una versión alcanza el estado `PUBLISHED`, es inmutable.
-* **Aislamiento Organizacional:** Solo los usuarios con rol de aprobación (`admin`, `supervisor`) dentro de la organización propietaria pueden modificar el estado o registrar decisiones.
+
+- **Pertenencia explícita:** Las importaciones no se convierten automáticamente en registros oficiales. Deben ser incorporadas mediante el endpoint `/candidates/validate` y `/versions/{version_id}/candidates`.
+- **Inmutabilidad:** Una vez que una versión alcanza el estado `PUBLISHED`, es inmutable.
+- **Aislamiento Organizacional:** Solo los usuarios con rol de aprobación (`admin`, `supervisor`) dentro de la organización propietaria pueden modificar el estado o registrar decisiones.
 
 ### Integración en el API Gateway
+
 El módulo Dataset reside dentro del servicio `Core` y sus rutas (`/api/v1/datasets`) son servidas directamente por la aplicación FastAPI principal, mientras que las solicitudes a dominios satelitales y científicos son derivadas mediante el proxy del Gateway interno.

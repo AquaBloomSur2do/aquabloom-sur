@@ -126,13 +126,16 @@ class IncorporateCandidatesInput(BaseModel):
         description="Lista de IDs de candidatos a incorporar desde la ingesta",
     )
 
-
 class TrainingManifestResponse(BaseModel):
     version_id: UUID
     manifest_id: UUID
     variables: list[str] = Field(..., max_length=50)
     checksum: str
     download_url: str
+    manifest_version: str = "1.0.0"
+    sources: list[str] = Field(default_factory=list, max_length=50)
+    is_experimental: bool = False
+    is_synthetic: bool = False
 
     model_config = ConfigDict(from_attributes=True)
     
