@@ -24,6 +24,7 @@ class EstimationConfig(BaseModel):
 
 class JobCreate(BaseModel):
     job_type: Literal["training", "modeling", "estimation"]
+    organization_id: UUID
     config: TrainingConfig | ModelConfig | EstimationConfig
 
     @model_validator(mode="after")
@@ -39,14 +40,16 @@ class JobCreate(BaseModel):
 
 class JobResponse(BaseModel):
     job_id: UUID
-    status: str
+    status: Literal["pending", "running", "completed", "failed"]
     status_url: str
     message: str = "Job accepted and processing in background"
 
 
 class JobStatus(BaseModel):
     job_id: UUID
-    status: str
+    status: Literal["pending", "running", "completed", "failed"] = Field(
+        description="Estado actual: pending, running, completed o failed."
+    )
     result: dict[str, Any] | None = None
     created_at: datetime
     

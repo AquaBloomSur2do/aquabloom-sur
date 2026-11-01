@@ -87,7 +87,7 @@ async def create_import(
     idempotency_key = idempotency_key.strip() if idempotency_key else None
     if idempotency_key == "":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="La clave de idempotencia no puede estar vacía.",
         )
 
