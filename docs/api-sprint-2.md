@@ -288,3 +288,10 @@ GET /api/v1/lakes/11111111-1111-1111-1111-111111111111/scenes?start_date=2026-03
 ```
 
 La respuesta usa el formato paginado `items`, `page`, `page_size` y `total`. Cada escena incluye su identificador, lago, identificador de escena, fecha de adquisición y fecha de registro. Para crear la tabla de registros, aplica `database/migrations/013_create_scenes_table.sql`.
+
+### Idempotencia en Ejecuciones (S2-149)
+El endpoint `POST /api/v1/executions/` soporta peticiones idempotentes a través de la cabecera HTTP `X-Idempotency-Key`.
+- La clave es única exclusivamente para este endpoint y se conserva en la tabla `scientific_jobs` mientras exista el registro del trabajo.
+- Si se envía una solicitud con una clave existente y el **mismo contenido** (`job_type` y `config`), la API devolverá el mismo trabajo creado originalmente.
+- Si se envía una solicitud con una clave existente pero con un **contenido diferente**, la API producirá un error `409 Conflict`.
+- Las solicitudes enviadas sin esta cabecera continuarán procesándose de forma estándar, creando un trabajo nuevo en cada llamado.
