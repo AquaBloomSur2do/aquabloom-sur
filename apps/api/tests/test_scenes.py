@@ -1,5 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
+from starlette import status
 
 import app.lakes as lakes_module
 import app.scenes as scenes_module
@@ -105,9 +106,8 @@ def scenes_client(monkeypatch):
     app.dependency_overrides[verify_supabase_jwt] = lambda: {
         "sub": "123e4567-e89b-12d3-a456-426614174000"
     }
-
     yield TestClient(app), fake_db
-
+    app.dependency_overrides.clear()
     app.dependency_overrides.clear()
 
 
@@ -160,7 +160,10 @@ def test_list_scenes_rejects_reversed_date_range(scenes_client):
         headers=AUTH_HEADER,
     )
 
-    assert response.status_code in (400, 422)
+    assert response.status_code in (
+        status.HTTP_400_BAD_REQUEST,
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
+    )
 
 
 def test_list_scenes_requires_bounded_date_range(scenes_client):
@@ -171,7 +174,7 @@ def test_list_scenes_requires_bounded_date_range(scenes_client):
         headers=AUTH_HEADER,
     )
 
-    assert response.status_code == 422
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 def test_list_scenes_rejects_page_size_over_maximum(scenes_client):
@@ -187,7 +190,7 @@ def test_list_scenes_rejects_page_size_over_maximum(scenes_client):
         headers=AUTH_HEADER,
     )
 
-    assert response.status_code == 422
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 def test_list_scenes_returns_not_found_for_unknown_lake(scenes_client):
@@ -204,4 +207,3 @@ def test_list_scenes_returns_not_found_for_unknown_lake(scenes_client):
     )
 
     assert response.status_code == 404
-    

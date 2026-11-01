@@ -1,6 +1,7 @@
 import csv
 import hashlib
 import io
+from datetime import UTC, datetime
 from typing import Annotated, Literal, NoReturn
 from uuid import UUID
 
@@ -190,6 +191,34 @@ def _rows(query) -> list[dict]:
     return response.data or []
 
 
+def _raise_publication_database_error(exc: Exception) -> NoReturn:
+    error_code = getattr(exc, "code", None)
+    if str(error_code) == "PGRST116":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La versión del dataset no existe.",
+        ) from exc
+    if str(error_code) == "42501":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para publicar esta versión.",
+        ) from exc
+    if str(error_code) in {"23503", "23505"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No se pudo publicar la versión por un conflicto de datos.",
+        ) from exc
+    if str(error_code) == "22P02":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El identificador de versión no es válido.",
+        ) from exc
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="No se pudo publicar la versión.",
+    ) from exc
+
+
 def _page_rows(query, page_size: int) -> tuple[list[dict], bool]:
     rows = _rows(query)
     return rows[:page_size], len(rows) > page_size
@@ -282,7 +311,7 @@ def list_review_datasets(
         }
 
     datasets_by_id = {row["id"]: {**row, "versions": []} for row in datasets}
-    
+
     # Paginación de versiones
     version_offset = (version_page - 1) * version_page_size
     versions, has_more_versions = _page_rows(
@@ -382,6 +411,106 @@ def list_review_datasets(
         "has_more_decisions": has_more_decisions,
         "has_more_org_memberships": has_more_org_memberships,
     }
+
+
+@router.post(
+    "/versions/{version_id}/publish",
+    response_model=DatasetVersionResponse,
+)
+def publish_dataset_version(
+    version_id: UUID,
+    payload: dict = Depends(verify_supabase_jwt),  # noqa: B008
+):
+    """Publica una versión si el usuario es aprobador activo de su organización."""
+    client = _require_database()
+    user_id = _user_id(payload)
+    dataset_client = client.schema("dataset")
+
+    try:
+        version_rows = _rows(
+            dataset_client.table("versions")
+            .select(
+                "id, dataset_id, version_number, status, created_at, published_at"
+            )
+            .eq("id", str(version_id))
+            .limit(1)
+        )
+    except APIError as exc:
+        _raise_publication_database_error(exc)
+
+    if not version_rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La versión del dataset no existe.",
+        )
+
+    version = version_rows[0]
+    if version["status"] == "archived":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No se puede publicar una versión archivada.",
+        )
+
+    try:
+        dataset_rows = _rows(
+            dataset_client.table("datasets")
+            .select("id, organization_id")
+            .eq("id", version["dataset_id"])
+            .limit(1)
+        )
+    except APIError as exc:
+        _raise_publication_database_error(exc)
+
+    if not dataset_rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="El dataset asociado no existe.",
+        )
+
+    try:
+        organization_memberships = _rows(
+            client.table("memberships")
+            .select("role")
+            .eq("user_id", user_id)
+            .eq("organization_id", dataset_rows[0]["organization_id"])
+            .eq("status", "active")
+        )
+    except APIError as exc:
+        _raise_publication_database_error(exc)
+
+    if not any(
+        str(membership.get("role", "")).strip().lower() in APPROVAL_ROLES
+        for membership in organization_memberships
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para publicar esta versión.",
+        )
+
+    if version["status"] != "published":
+        publication_time = datetime.now(UTC)
+        try:
+            updated_rows = _rows(
+                dataset_client.table("versions")
+                .update(
+                    {
+                        "status": "published",
+                        "published_at": publication_time.isoformat(),
+                    }
+                )
+                .eq("id", str(version_id))
+            )
+        except APIError as exc:
+            _raise_publication_database_error(exc)
+
+        if not updated_rows:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="La versión no se actualizó al publicarla.",
+            )
+        version = updated_rows[0]
+
+    return version
 
 
 @router.post("/memberships/{membership_id}/decisions", status_code=201)
@@ -674,7 +803,7 @@ def update_version_state(
         )
         .eq("id", str(version_id))
     )
-    
+
     if not updated_rows:
         return {
             "id": str(version_id),
@@ -695,7 +824,7 @@ def update_version_state(
             writer = csv.writer(csv_buffer, lineterminator="\r\n")
             writer.writerow(TRAINING_VARIABLES)
             writer.writerow(["15.5", "2.1", "0.5", "7.2"]) # Fila de datos para evitar que esté vacío y asegurar coincidencia de hash en pruebas
-            
+
             csv_bytes = csv_buffer.getvalue().encode("utf-8")
 
             if len(csv_bytes) > MAX_TRAINING_FILE_SIZE:
@@ -712,7 +841,7 @@ def update_version_state(
 
             checksum = hashlib.sha256(csv_bytes).hexdigest()
             storage_path = f"versions/{version_id}/training.csv"
-            
+
             try:
                 client.storage.from_("training_files").upload(
                     storage_path,
@@ -755,14 +884,14 @@ def update_version_state(
                     client.storage.from_("training_files").remove([storage_path])
                 except Exception:  # noqa: BLE001, S110
                     pass
-                
+
                 # b) Revertir la versión
                 _rows(
                     dataset_client.table("versions")
                     .update({"state": raw_state, "status": raw_state})
                     .eq("id", str(version_id))
                 )
-                
+
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="No se pudo registrar el manifiesto de entrenamiento. Transacción revertida.",

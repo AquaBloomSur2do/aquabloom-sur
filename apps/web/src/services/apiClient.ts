@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import type { DatasetVersionPublication } from '../types/dataset';
 
 // Lightweight fetch-based API client for Vite + TypeScript
 
@@ -207,6 +208,12 @@ export const apiClient = {
   del: <T = unknown>(path: string, opts: Omit<RequestOptions, 'method'> = {}) =>
     request<T>(path, { ...opts, method: 'DELETE' }),
   getHealth: (): Promise<HealthResponse> => apiClient.get<HealthResponse>('health'),
+  publishDatasetVersion: (
+    versionId: string
+  ): Promise<DatasetVersionPublication> =>
+    apiClient.post<DatasetVersionPublication>(
+      `datasets/versions/${versionId}/publish`
+    ),
 };
 
 export default apiClient;

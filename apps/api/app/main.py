@@ -113,7 +113,6 @@ def health_check():
 
 
 
-
 @app.get(
     "/api/test-permission",
     dependencies=[Depends(require_permission("admin"))],

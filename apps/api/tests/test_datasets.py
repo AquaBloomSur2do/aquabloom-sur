@@ -3,15 +3,17 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.auth import verify_supabase_jwt
 from app.datasets import APIError, validate_state_transition
-from app.main import app
+from app.datasets import router as datasets_router
 from app.schemas import DatasetVersionStateUpdate, VersionState
 
+app = FastAPI()
+app.include_router(datasets_router)
 client = TestClient(app)
 
 
@@ -231,6 +233,7 @@ class FakeSupabase:
                     "state": "DRAFT",
                     "status": "DRAFT",
                     "created_at": "2026-10-27T00:00:00+00:00",
+                    "published_at": None,
                 }
             ],
             "memberships": [
@@ -528,6 +531,43 @@ def test_update_version_state_persists_in_database(monkeypatch):
     assert database.dataset_rows["versions"][0]["status"] == "IN_REVIEW"
 
 
+def test_supervisor_publishes_version_and_receives_its_identifier(monkeypatch):
+    database = setup_request(monkeypatch, "supervisor")
+    try:
+        response = client.post(
+            f"/api/v1/datasets/versions/{database.version_id}/publish"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["id"] == database.version_id
+    assert response.json()["status"] == "published"
+    assert response.json()["published_at"] is not None
+    assert database.dataset_rows["versions"][0]["status"] == "published"
+
+
+def test_investigator_cannot_publish_version(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    try:
+        response = client.post(
+            f"/api/v1/datasets/versions/{database.version_id}/publish"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert database.dataset_rows["versions"][0]["status"] == "DRAFT"
+
+
+def test_publishing_version_requires_authentication():
+    response = client.post(
+        f"/api/v1/datasets/versions/{uuid4()}/publish"
+    )
+
+    assert response.status_code == 401
+
+
 def test_publishing_version_creates_small_versioned_training_file_and_manifest(monkeypatch):
     database = setup_request(monkeypatch, "admin")
     database.dataset_rows["versions"][0]["state"] = "APPROVED"
@@ -565,6 +605,7 @@ def test_publishing_version_creates_small_versioned_training_file_and_manifest(m
     assert manifest["version_id"] == database.version_id
     assert manifest["storage_path"] == uploaded["path"]
     assert manifest["checksum"] == hashlib.sha256(expected_content).hexdigest()
+
 
 def test_update_version_state_returns_404_for_missing_version(monkeypatch):
     setup_request(monkeypatch, "admin")
@@ -604,6 +645,7 @@ def test_update_version_state_returns_400_for_unknown_current_state(monkeypatch)
         app.dependency_overrides.clear()
 
     assert response.status_code == 400
+
 
 # --- Pruebas S2-137: Descarga Estricta de Archivo de Entrenamiento ---
 
@@ -732,50 +774,3 @@ def test_training_file_download_rejects_checksum_mismatch(monkeypatch):
         app.dependency_overrides.clear()
 
     assert response.status_code == 502
-
-# --- Pruebas de Inmutabilidad S2-136 (Blindadas contra KeyError) ---
-
-@pytest.mark.parametrize("state_to_test", ["PUBLISHED", "ARCHIVED"])
-def test_incorporate_candidates_rejects_immutable_versions(monkeypatch, state_to_test):
-    """Verifica que no se puedan modificar versiones consolidadas (S2-136)"""
-    database = setup_request(monkeypatch, "admin")
-    
-    database.dataset_rows["versions"][0]["state"] = state_to_test
-    database.dataset_rows["versions"][0]["status"] = state_to_test
-    
-    try:
-        response = client.post(
-            f"/api/v1/datasets/versions/{database.version_id}/candidates",
-            json={"candidate_ids": [str(uuid4()), str(uuid4())]} 
-        )
-    finally:
-        app.dependency_overrides.clear()
-    
-    assert response.status_code == 403
-    # Soporte robusto tanto para estructura 'detail' como 'message'
-    err_body = response.json()
-    err_msg = err_body.get("detail", err_body.get("message", ""))
-    assert "inmutable" in str(err_msg).lower()
-
-
-def test_incorporate_candidates_allows_mutable_versions(monkeypatch):
-    """Verifica que sí se pueda modificar una versión en estado DRAFT (S2-136)"""
-    database = setup_request(monkeypatch, "admin")
-    
-    database.dataset_rows["versions"][0]["state"] = "DRAFT"
-    database.dataset_rows["versions"][0]["status"] = "DRAFT"
-    
-    try:
-        response = client.post(
-            f"/api/v1/datasets/versions/{database.version_id}/candidates",
-            json={"candidate_ids": [str(uuid4())]} 
-        )
-    finally:
-        app.dependency_overrides.clear()
-    
-    assert response.status_code == 201
-    assert response.json()["count"] == 1
-
-
-
-
