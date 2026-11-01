@@ -43,7 +43,7 @@ async def _process_scientific_job(job_id: str, config: dict[str, Any]):
             "completed_at": datetime.now(UTC).isoformat()
         }).eq("id", job_id).execute()
         
-    except asyncio.TimeoutError:
+    except TimeoutError:
         supabase.table("scientific_jobs").update({
             "status": "failed",
             "error_message": f"Tiempo máximo de ejecución excedido (Timeout de {JOB_TIMEOUT_SECONDS}s).",
@@ -184,7 +184,6 @@ def create_execution_job(
     background_tasks.add_task(_process_scientific_job, str(inserted_job["id"]), config)
 
     return _job_response(inserted_job)
-
 
 
 
