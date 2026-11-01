@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -10,7 +10,6 @@ from app.config import settings
 from app.dashboard import router as dashboard_router
 from app.database import check_supabase_connection
 from app.datasets import router as datasets_router
-from app.dependencies import require_permission
 from app.gateway import router as gateway_router
 from app.handlers import auth_exception_handler, global_exception_handler
 from app.imports import router as imports_router
