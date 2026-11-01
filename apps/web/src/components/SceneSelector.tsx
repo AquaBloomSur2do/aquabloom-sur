@@ -37,13 +37,19 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
   // FIX 1: Referencia para evitar fugas de memoria (Memory Leaks)
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-useEffect(() => {
-    // Cleanup de temporizadores al desmontar el componente
+  useEffect(() => {
     return () => {
+      // Limpieza segura de todos los temporizadores pendientes
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      timersRef.current.forEach((timer) => clearTimeout(timer));
+      for (const timerId of timersRef.current) {
+        clearTimeout(timerId);
+      }
+      // Vaciamos el arreglo para liberar memoria
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      timersRef.current = []; 
     };
   }, []);
+
 
   useEffect(() => {
     if (!dateRange) return;
