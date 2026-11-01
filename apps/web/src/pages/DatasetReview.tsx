@@ -120,6 +120,8 @@ export function DatasetReview() {
   const selectedDataset = datasets.find((dataset) => dataset.id === datasetId);
   const versions = selectedDataset?.versions ?? [];
   const selectedVersion = versions.find((version) => version.id === versionId);
+  const selectedVersionState =
+    selectedVersion?.state ?? selectedVersion?.status;
 
   const handleDatasetChange = (nextDatasetId: string) => {
     const nextDataset = datasets.find(
@@ -256,56 +258,100 @@ export function DatasetReview() {
             </label>
           </section>
 
-          {/* Sección de visualización del Manifiesto y sus advertencias (S2-143) */}
-          <section aria-label="Manifiesto de entrenamiento" className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm space-y-3">
-            <h2 className="text-lg font-semibold text-gray-900">Manifiesto de Entrenamiento</h2>
+          <section
+            aria-label="Manifiesto de entrenamiento"
+            className="space-y-3 rounded-lg border border-gray-200 bg-white p-5 shadow-sm"
+          >
+            <h2 className="text-lg font-semibold text-gray-900">
+              Manifiesto de Entrenamiento
+            </h2>
             {manifestLoading ? (
-              <p className="text-sm text-gray-500" role="status">Cargando manifiesto...</p>
+              <p className="text-sm text-gray-500" role="status">
+                Cargando manifiesto...
+              </p>
             ) : manifestError ? (
-              <p className="text-sm text-gray-500 italic">{manifestError}</p>
+              <p className="text-sm italic text-gray-500">{manifestError}</p>
             ) : manifest ? (
               <div className="space-y-3 text-sm text-gray-700">
                 <div className="grid gap-2 md:grid-cols-2">
-                  <p><strong>Versión del Manifiesto:</strong> {manifest.manifest_version}</p>
-                  <p><strong>Checksum SHA-256:</strong> <span className="font-mono text-xs bg-gray-100 p-1 rounded">{manifest.checksum}</span></p>
+                  <p>
+                    <strong>Versión del Manifiesto:</strong>{' '}
+                    {manifest.manifest_version}
+                  </p>
+                  <p>
+                    <strong>Checksum SHA-256:</strong>{' '}
+                    <span className="rounded bg-gray-100 p-1 font-mono text-xs">
+                      {manifest.checksum}
+                    </span>
+                  </p>
                 </div>
                 <div>
                   <strong>Fuentes de datos:</strong>
                   {manifest.sources && manifest.sources.length > 0 ? (
-                    <ul className="list-disc list-inside text-gray-600 mt-1">
+                    <ul className="mt-1 list-inside list-disc text-gray-600">
                       {manifest.sources.map((source, index) => (
                         <li key={index}>{source}</li>
                       ))}
                     </ul>
                   ) : (
-                    <span className="text-gray-500 ml-1">Sin fuentes registradas.</span>
+                    <span className="ml-1 text-gray-500">
+                      Sin fuentes registradas.
+                    </span>
                   )}
                 </div>
 
-                {/* Advertencias de condiciones experimental o sintética (S2-143) */}
                 <div className="space-y-2 pt-2">
                   {manifest.is_experimental && (
-                    <div className="p-3 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-md flex items-center gap-2">
+                    <div className="flex items-center gap-2 rounded-md border border-yellow-200 bg-yellow-50 p-3 text-yellow-800">
                       <span>⚠️</span>
                       <div>
-                        <strong>Aviso Experimental:</strong> Este dataset incluye registros de carácter experimental y no está garantizado para producción estricta.
+                        <strong>Aviso Experimental:</strong> Este dataset
+                        incluye registros de carácter experimental y no está
+                        garantizado para producción estricta.
                       </div>
                     </div>
                   )}
                   {manifest.is_synthetic && (
-                    <div className="p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-md flex items-center gap-2">
+                    <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-blue-800">
                       <span>ℹ️</span>
                       <div>
-                        <strong>Aviso Sintético:</strong> Este dataset contiene datos generados por simulación artificial (sintéticos).
+                        <strong>Aviso Sintético:</strong> Este dataset
+                        contiene datos generados por simulación artificial
+                        (sintéticos).
                       </div>
                     </div>
                   )}
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-gray-500">No hay manifiesto disponible para esta versión.</p>
+              <p className="text-sm text-gray-500">
+                No hay manifiesto disponible para esta versión.
+              </p>
             )}
           </section>
+
+          {selectedVersionState === 'APPROVED' && (
+            <section
+              aria-label="Estado de publicación"
+              className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+            >
+              <p className="font-semibold">
+                Aprobado en revisión técnica (No publicado)
+              </p>
+              <p className="mt-1">
+                No publicado (pendiente de publicación)
+              </p>
+            </section>
+          )}
+
+          {selectedVersionState === 'PUBLISHED' && (
+            <section
+              aria-label="Estado de publicación"
+              className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900"
+            >
+              <p className="font-semibold">Publicado oficialmente</p>
+            </section>
+          )}
 
           {!selectedVersion || selectedVersion.memberships.length === 0 ? (
             <p className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-600">
@@ -412,3 +458,4 @@ export function DatasetReview() {
     </main>
   );
 }
+

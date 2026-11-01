@@ -39,7 +39,8 @@ const reviewDatasets = [
         id: 'version-1',
         dataset_id: 'dataset-1',
         version_number: 1,
-        status: 'draft',
+        state: 'APPROVED',
+        status: 'APPROVED',
         created_at: '2026-10-27T00:00:00Z',
         memberships: [
           {
@@ -89,13 +90,26 @@ describe('DatasetReview', () => {
   it('muestra la información del manifiesto y sus advertencias experimentales/sintéticas', async () => {
     render(<DatasetReview />);
 
-    expect(await screen.findByText('Manifiesto de Entrenamiento')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Manifiesto de Entrenamiento')
+    ).toBeInTheDocument();
     expect(await screen.findByText(/1\.0\.0/)).toBeInTheDocument();
-    expect(await screen.findByText('sensor-telemetry-primary')).toBeInTheDocument();
-    
-    // Validar que se muestran las alertas requeridas por S2-143
+    expect(
+      await screen.findByText('sensor-telemetry-primary')
+    ).toBeInTheDocument();
     expect(screen.getByText(/Aviso Experimental/i)).toBeInTheDocument();
     expect(screen.getByText(/Aviso Sintético/i)).toBeInTheDocument();
+  });
+
+  it('diferencia visualmente el estado de revisión técnica de la publicación oficial', async () => {
+    render(<DatasetReview />);
+
+    expect(
+      await screen.findByText('Aprobado en revisión técnica (No publicado)')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/No publicado \(pendiente de publicación\)/i)
+    ).toBeInTheDocument();
   });
 
   it('envía la decisión y el motivo y muestra la respuesta guardada', async () => {
@@ -150,3 +164,4 @@ describe('DatasetReview', () => {
     );
   });
 });
+
