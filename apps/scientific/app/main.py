@@ -1,9 +1,10 @@
-from app.config import settings
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.config import settings
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
