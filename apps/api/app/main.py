@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -10,10 +10,14 @@ from app.config import settings
 from app.dashboard import router as dashboard_router
 from app.database import check_supabase_connection
 from app.datasets import router as datasets_router
+from app.dependencies import require_permission
 from app.gateway import router as gateway_router
 from app.handlers import auth_exception_handler, global_exception_handler
 from app.imports import router as imports_router
 from app.lakes import router as lakes_router
+
+# Router de la Tarea S2-135
+from app.manifests import router as manifests_router
 
 # Nuevos routers para registrar esquemas en OpenAPI
 from app.observations import router as observations_router
@@ -32,6 +36,7 @@ tags_metadata = [
     {"name": "Dashboard", "description": "Resumen de métricas del dashboard."},
     {"name": "Observations", "description": "Observaciones espectrales."},
     {"name": "Datasets", "description": "Versionado y manifiestos de datasets."},
+    {"name": "Manifests", "description": "Trazabilidad y validación criptográfica."},
 ]
 
 app = FastAPI(
@@ -82,11 +87,12 @@ app.include_router(ingestion_router)
 app.include_router(execution_router)
 app.include_router(lakes_router)
 app.include_router(stations_router)
-app.include_router(datasets_router)
 app.include_router(scenes_router)
 app.include_router(catalog_router, tags=["Catalog"])
 app.include_router(dashboard_router)
 app.include_router(observations_router, responses=COMMON_RESPONSES)
+app.include_router(datasets_router, responses=COMMON_RESPONSES)
+app.include_router(manifests_router, responses=COMMON_RESPONSES)
 
 app.add_middleware(
     CORSMiddleware,
