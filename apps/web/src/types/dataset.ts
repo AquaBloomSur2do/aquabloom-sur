@@ -22,6 +22,7 @@ export interface DatasetVersion {
   id: string;
   dataset_id: string;
   version_number: number;
+  state?: string;
   status: string;
   created_at: string;
   memberships: DatasetSceneMembership[];
@@ -39,4 +40,14 @@ export interface ReviewDataset {
 export interface DatasetDecisionInput {
   decision: DatasetDecisionValue;
   reason: string;
+}
+
+export interface DatasetCandidate {
+  id: string;
+  lake_id: string;
+  data_uri: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  submitted_at: string;
+  exclusion_reason?: string; // Motivo de exclusión si aplica
+  source_provider?: string;  // Procedencia
 }

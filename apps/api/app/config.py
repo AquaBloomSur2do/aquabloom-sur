@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_key: SecretStr
     supabase_jwt_secret: SecretStr | None = None
-
+    
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
@@ -21,3 +21,4 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",")]
 
 settings = Settings()
+

@@ -11,6 +11,7 @@ from domain.execution.schemas import (
     TrainingConfig,
 )
 
+# SOLUCIÓN AL 404: Se agregó el prefijo exacto de la ruta
 router = APIRouter(prefix="/api/v1/executions", tags=["Executions"])
 
 

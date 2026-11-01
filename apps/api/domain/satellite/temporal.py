@@ -1,6 +1,15 @@
 from collections.abc import Iterable
 from datetime import datetime, timedelta
 
+# Ventana temporal: Diferencia máxima en días entre la escena y la muestra in situ
+MATCHUP_TEMPORAL_WINDOW_DAYS = 3
+
+# Distancia Espacial: Radio máximo en metros
+MATCHUP_SPATIAL_RADIUS_METERS = 50
+
+# SRID Base de almacenamiento (WGS84)
+MATCHUP_BASE_SRID = 4326
+
 SCENE_PAIR_WINDOW = timedelta(days=5)
 ScenePair = tuple[datetime, datetime]
 
