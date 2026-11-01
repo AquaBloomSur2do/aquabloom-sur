@@ -6,22 +6,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
-from pydantic import BaseModel, Field, StringConstraints
-
-try:
-    from postgrest.exceptions import APIError
-except (ImportError, ModuleNotFoundError):
-    try:
-        from supabase.lib.client_options import APIError
-    except (ImportError, ModuleNotFoundError):
-
-        class APIError(Exception):
-            code: str = "500"
-
-            def __init__(self, error: object = None):
-                super().__init__(error)
-                if isinstance(error, dict):
-                    self.code = str(error.get("code", self.code))
 from pydantic import BaseModel, StringConstraints
 
 try:
@@ -38,7 +22,6 @@ except (ImportError, ModuleNotFoundError):
                 super().__init__(error)
                 if isinstance(error, dict):
                     self.code = str(error.get("code", self.code))
-
 from app.auth import verify_supabase_jwt
 from app.database import supabase
 from app.schemas import DatasetVersionStateUpdate, VersionState
@@ -61,17 +44,6 @@ TRAINING_VARIABLES = ["temperatura", "clorofila_a", "turbidez", "ph"]
 MAX_TRAINING_FILE_SIZE = 1024 * 1024
 
 
-# --- Definición Local del DTO faltante en main (S2-136) ---
-class DatasetVersionStateUpdate(BaseModel):
-    state: VersionState = Field(
-        ..., description="Nuevo estado del ciclo de vida de la versión"
-    )
-
-
-# --- Transiciones Permitidas del Ciclo de Vida (S2-134 + S2-136) ---
-
-ALLOWED_STATE_TRANSITIONS: dict[VersionState, list[VersionState]] = {
-    VersionState.DRAFT: [VersionState.IN_REVIEW, VersionState.ARCHIVED, VersionState.PUBLISHED], # Conservamos IN_REVIEW y PUBLISHED
 # --- Transiciones Permitidas del Ciclo de Vida (S2-134) ---
 
 ALLOWED_STATE_TRANSITIONS: dict[VersionState, list[VersionState]] = {
