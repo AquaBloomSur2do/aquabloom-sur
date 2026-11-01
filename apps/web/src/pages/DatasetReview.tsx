@@ -78,6 +78,8 @@ export function DatasetReview() {
   const selectedDataset = datasets.find((dataset) => dataset.id === datasetId);
   const versions = selectedDataset?.versions ?? [];
   const selectedVersion = versions.find((version) => version.id === versionId);
+  const selectedVersionState =
+    selectedVersion?.state ?? selectedVersion?.status;
 
   const handleDatasetChange = (nextDatasetId: string) => {
     const nextDataset = datasets.find(
@@ -156,6 +158,7 @@ export function DatasetReview() {
             version.id === published.id
               ? {
                   ...version,
+                  state: 'PUBLISHED',
                   status: published.status,
                   published_at: published.published_at,
                 }
@@ -278,6 +281,29 @@ export function DatasetReview() {
                   {publicationSuccess}
                 </p>
               )}
+            </section>
+          )}
+
+          {selectedVersionState === 'APPROVED' && (
+            <section
+              aria-label="Estado de publicación"
+              className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+            >
+              <p className="font-semibold">
+                Aprobado en revisión técnica (No publicado)
+              </p>
+              <p className="mt-1">
+                No publicado (pendiente de publicación)
+              </p>
+            </section>
+          )}
+
+          {selectedVersionState === 'PUBLISHED' && (
+            <section
+              aria-label="Estado de publicación"
+              className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900"
+            >
+              <p className="font-semibold">Publicado oficialmente</p>
             </section>
           )}
 
