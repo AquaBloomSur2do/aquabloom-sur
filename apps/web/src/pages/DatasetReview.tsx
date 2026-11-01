@@ -6,6 +6,7 @@ import type {
   DatasetDecisionInput,
   DatasetDecisionValue,
   ReviewDataset,
+  TrainingManifest,
 } from '../types/dataset';
 
 const decisionLabels: Record<DatasetDecisionValue, string> = {
@@ -15,6 +16,10 @@ const decisionLabels: Record<DatasetDecisionValue, string> = {
 
 function isDatasetList(value: unknown): value is ReviewDataset[] {
   return Array.isArray(value);
+}
+
+function isTrainingManifest(value: unknown): value is TrainingManifest {
+  return typeof value === 'object' && value !== null && 'manifest_id' in value;
 }
 
 export function DatasetReview() {
@@ -33,6 +38,11 @@ export function DatasetReview() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [successes, setSuccesses] = useState<Record<string, string>>({});
 
+  // Estados para el manifiesto de la versión activa (S2-143)
+  const [manifest, setManifest] = useState<TrainingManifest | null>(null);
+  const [manifestLoading, setManifestLoading] = useState(false);
+  const [manifestError, setManifestError] = useState<string | null>(null);
+
   useEffect(() => {
     let mounted = true;
 
@@ -46,8 +56,10 @@ export function DatasetReview() {
         }
         if (mounted) {
           setDatasets(response);
-          setDatasetId(response[0]?.id ?? '');
-          setVersionId(response[0]?.versions[0]?.id ?? '');
+          const firstDatasetId = response[0]?.id ?? '';
+          const firstVersionId = response[0]?.versions[0]?.id ?? '';
+          setDatasetId(firstDatasetId);
+          setVersionId(firstVersionId);
         }
       } catch (error) {
         if (mounted) {
@@ -68,6 +80,43 @@ export function DatasetReview() {
     };
   }, []);
 
+  // Efecto para cargar el manifiesto cuando cambia la versión seleccionada (S2-143)
+  useEffect(() => {
+    if (!versionId) return; // Limpio y sin setState síncronos
+
+    let mounted = true;
+    const fetchManifest = async () => {
+      setManifestLoading(true);
+      setManifestError(null);
+      try {
+        const response = await apiClient.get<unknown>(
+          `datasets/versions/${versionId}/training-file`
+        );
+        if (isTrainingManifest(response)) {
+          if (mounted) setManifest(response);
+        } else {
+          throw new Error('Formato de manifiesto inválido.');
+        }
+      } catch (error) {
+        if (mounted) {
+          setManifest(null);
+          setManifestError(
+            error instanceof ApiError && error.status === 403
+              ? 'El manifiesto solo está disponible para versiones publicadas con permisos de lectura.'
+              : 'No se pudo cargar el manifiesto de entrenamiento.'
+          );
+        }
+      } finally {
+        if (mounted) setManifestLoading(false);
+      }
+    };
+
+    void fetchManifest();
+    return () => {
+      mounted = false;
+    };
+  }, [versionId]);
+
   const selectedDataset = datasets.find((dataset) => dataset.id === datasetId);
   const versions = selectedDataset?.versions ?? [];
   const selectedVersion = versions.find((version) => version.id === versionId);
@@ -78,6 +127,9 @@ export function DatasetReview() {
     );
     setDatasetId(nextDatasetId);
     setVersionId(nextDataset?.versions[0]?.id ?? '');
+    // El linter prefiere que reseteemos aquí, respondiendo al evento de usuario
+    setManifest(null);
+    setManifestError(null);
   };
 
   const submitDecision = async (
@@ -155,7 +207,7 @@ export function DatasetReview() {
           Revisión de datasets
         </h1>
         <p className="mt-1 text-sm text-gray-600">
-          Revisa las escenas de una versión y registra su decisión de inclusión
+          Revisa las escenas de una versión, consulta su manifiesto de entrenamiento y registra su decisión de inclusión
           con el motivo correspondiente.
         </p>
       </header>
@@ -187,7 +239,12 @@ export function DatasetReview() {
               <select
                 className="mt-1 block w-full rounded-md border border-gray-300 p-2"
                 value={versionId}
-                onChange={(event) => setVersionId(event.target.value)}
+                onChange={(event) => {
+                  setVersionId(event.target.value);
+                  // Reseteamos el manifiesto aquí al cambiar la versión manualmente
+                  setManifest(null);
+                  setManifestError(null);
+                }}
                 disabled={versions.length === 0}
               >
                 {versions.map((version) => (
@@ -197,6 +254,57 @@ export function DatasetReview() {
                 ))}
               </select>
             </label>
+          </section>
+
+          {/* Sección de visualización del Manifiesto y sus advertencias (S2-143) */}
+          <section aria-label="Manifiesto de entrenamiento" className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm space-y-3">
+            <h2 className="text-lg font-semibold text-gray-900">Manifiesto de Entrenamiento</h2>
+            {manifestLoading ? (
+              <p className="text-sm text-gray-500" role="status">Cargando manifiesto...</p>
+            ) : manifestError ? (
+              <p className="text-sm text-gray-500 italic">{manifestError}</p>
+            ) : manifest ? (
+              <div className="space-y-3 text-sm text-gray-700">
+                <div className="grid gap-2 md:grid-cols-2">
+                  <p><strong>Versión del Manifiesto:</strong> {manifest.manifest_version}</p>
+                  <p><strong>Checksum SHA-256:</strong> <span className="font-mono text-xs bg-gray-100 p-1 rounded">{manifest.checksum}</span></p>
+                </div>
+                <div>
+                  <strong>Fuentes de datos:</strong>
+                  {manifest.sources && manifest.sources.length > 0 ? (
+                    <ul className="list-disc list-inside text-gray-600 mt-1">
+                      {manifest.sources.map((source, index) => (
+                        <li key={index}>{source}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span className="text-gray-500 ml-1">Sin fuentes registradas.</span>
+                  )}
+                </div>
+
+                {/* Advertencias de condiciones experimental o sintética (S2-143) */}
+                <div className="space-y-2 pt-2">
+                  {manifest.is_experimental && (
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-md flex items-center gap-2">
+                      <span>⚠️</span>
+                      <div>
+                        <strong>Aviso Experimental:</strong> Este dataset incluye registros de carácter experimental y no está garantizado para producción estricta.
+                      </div>
+                    </div>
+                  )}
+                  {manifest.is_synthetic && (
+                    <div className="p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-md flex items-center gap-2">
+                      <span>ℹ️</span>
+                      <div>
+                        <strong>Aviso Sintético:</strong> Este dataset contiene datos generados por simulación artificial (sintéticos).
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No hay manifiesto disponible para esta versión.</p>
+            )}
           </section>
 
           {!selectedVersion || selectedVersion.memberships.length === 0 ? (

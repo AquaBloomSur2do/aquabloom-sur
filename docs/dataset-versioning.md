@@ -70,4 +70,10 @@ Para garantizar la integridad y seguridad (Zero Trust), los archivos de entrenam
     *   Se almacena en Supabase Storage (Bucket privado `training_files`).
     *   La BD exige un checksum estrictamente formateado (SHA-256 de 64 caracteres).
     *   Para evitar la fuga de URLs firmadas, la descarga del archivo se sirve mediante un proxy en la API (`/versions/{version_id}/training-file/download`) que exige validar el JWT por cada petición HTTP.
-    
+
+### Metadatos Avanzados del Manifiesto (S2-143)
+Cada manifiesto generado incluye propiedades estrictas de trazabilidad:
+- `manifest_version`: Versión del esquema del manifiesto (ej. `1.0.0`).
+- `sources`: Listado de orígenes o identificadores de sensores que alimentaron el dataset.
+- `is_experimental`: Bandera booleana que advierte si el set de datos proviene de pruebas de laboratorio o entornos no productivos.
+- `is_synthetic`: Bandera booleana que indica si los datos fueron generados de forma artificial o sintética.

@@ -40,3 +40,15 @@ export interface DatasetDecisionInput {
   decision: DatasetDecisionValue;
   reason: string;
 }
+
+export interface TrainingManifest {
+  version_id: string;
+  manifest_id: string;
+  variables: string[];
+  checksum: string;
+  download_url: string;
+  manifest_version: string;
+  sources: string[];
+  is_experimental: boolean;
+  is_synthetic: boolean;
+}

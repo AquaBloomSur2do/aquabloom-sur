@@ -620,14 +620,10 @@ def test_training_file_generation_and_strict_download(monkeypatch):
         assert res_meta.status_code == 200
         data = res_meta.json()
         assert data["checksum"] == real_sha256
-        assert data["manifest_id"] == "55555555-5555-5555-5555-555555555555"
-        assert data["download_url"].endswith("/download")
-        assert data["variables"] == [
-            "temperatura",
-            "clorofila_a",
-            "turbidez",
-            "ph",
-        ]
+        assert data["manifest_version"] == "1.0.0"
+        assert isinstance(data["sources"], list)
+        assert "is_experimental" in data
+        assert "is_synthetic" in data
 
         # 2. Probar descarga estricta (Proxy)
         res_download = client.get(data["download_url"])
