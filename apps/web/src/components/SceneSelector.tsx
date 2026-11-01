@@ -37,10 +37,12 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
   // FIX 1: Referencia para evitar fugas de memoria (Memory Leaks)
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  useEffect(() => {
-    // Cleanup de temporizadores al desmontar el componente
+ useEffect(() => {
+    // Copiar la referencia a una variable local para la función de limpieza (Exigencia de ESLint)
+    const currentTimers = timersRef.current;
+    
     return () => {
-      timersRef.current.forEach(clearTimeout);
+      currentTimers.forEach((timer) => clearTimeout(timer));
     };
   }, []);
 
