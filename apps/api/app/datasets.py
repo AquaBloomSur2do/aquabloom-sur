@@ -1,6 +1,7 @@
 import csv
 import hashlib
 import io
+from collections.abc import Iterable
 from typing import Annotated, Literal, NoReturn
 from uuid import UUID
 
@@ -45,6 +46,21 @@ TRAINING_VARIABLES = ["temperatura", "clorofila_a", "turbidez", "ph"]
 MAX_TRAINING_FILE_SIZE = 1024 * 1024
 
 # --- Transiciones Permitidas del Ciclo de Vida (S2-134) ---
+
+
+def validate_partition_group_separation(
+    train_groups: Iterable[str], eval_groups: Iterable[str]
+) -> None:
+    overlapping_groups = sorted(set(train_groups).intersection(eval_groups))
+    if overlapping_groups:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                "Fuga de datos: los grupos "
+                f"{', '.join(overlapping_groups)} aparecen tanto en train como en eval."
+            ),
+        )
+
 
 ALLOWED_STATE_TRANSITIONS: dict[VersionState, list[VersionState]] = {
     VersionState.DRAFT: [VersionState.IN_REVIEW, VersionState.ARCHIVED],
