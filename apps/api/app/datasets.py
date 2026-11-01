@@ -22,7 +22,6 @@ except (ImportError, ModuleNotFoundError):
                 super().__init__(error)
                 if isinstance(error, dict):
                     self.code = str(error.get("code", self.code))
-
 from app.auth import verify_supabase_jwt
 from app.database import supabase
 from app.schemas import DatasetVersionStateUpdate, VersionState
@@ -43,6 +42,7 @@ router = APIRouter(prefix="/api/v1/datasets", tags=["Datasets"])
 
 TRAINING_VARIABLES = ["temperatura", "clorofila_a", "turbidez", "ph"]
 MAX_TRAINING_FILE_SIZE = 1024 * 1024
+
 
 # --- Transiciones Permitidas del Ciclo de Vida (S2-134) ---
 
@@ -500,9 +500,10 @@ def incorporate_candidates_to_version(
             detail="La lista de IDs de candidatos no puede estar vacía.",
         )
 
+    # 1. Verificar que la versión del dataset existe y validar inmutabilidad (S2-136)
     version_rows = _rows(
         dataset_client.table("versions")
-        .select("id, dataset_id")
+        .select("id, dataset_id, state, status")
         .eq("id", str(version_id))
         .limit(1)
     )
@@ -512,7 +513,16 @@ def incorporate_candidates_to_version(
             detail="La versión del dataset no existe.",
         )
 
-    dataset_id = version_rows[0]["dataset_id"]
+    version_data = version_rows[0]
+    raw_state = str(version_data.get("state") or version_data.get("status") or "DRAFT").upper()
+    
+    if raw_state in ["PUBLISHED", "ARCHIVED"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"No se pueden añadir candidatos a una versión inmutable ({raw_state}). Debe generar una nueva versión.",
+        )
+
+    dataset_id = version_data["dataset_id"]
 
     dataset_rows = _rows(
         dataset_client.table("datasets")

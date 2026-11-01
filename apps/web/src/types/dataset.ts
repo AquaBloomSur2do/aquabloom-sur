@@ -54,3 +54,12 @@ export interface TrainingManifest {
   is_synthetic: boolean;
 }
 
+export interface DatasetCandidate {
+  id: string;
+  lake_id: string;
+  data_uri: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  submitted_at: string;
+  exclusion_reason?: string; // Motivo de exclusión si aplica
+  source_provider?: string;  // Procedencia
+}
