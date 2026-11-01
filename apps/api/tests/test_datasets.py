@@ -8,7 +8,11 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.auth import verify_supabase_jwt
-from app.datasets import APIError, validate_state_transition
+from app.datasets import (
+    APIError,
+    validate_partition_group_separation,
+    validate_state_transition,
+)
 from app.main import app
 from app.schemas import DatasetVersionStateUpdate, VersionState
 
@@ -49,6 +53,25 @@ def test_invalid_version_state_transitions_raise_400():
     with pytest.raises(HTTPException) as exc_info:
         validate_state_transition(VersionState.ARCHIVED, VersionState.DRAFT)
     assert exc_info.value.status_code == 400
+
+
+def test_partition_group_separation_rejects_overlapping_groups():
+    with pytest.raises(HTTPException) as exc_info:
+        validate_partition_group_separation(
+            ["group-a", "group-b"],
+            ["group-c", "group-a"],
+        )
+
+    assert exc_info.value.status_code == 422
+    assert "group-a" in exc_info.value.detail
+    assert "tanto en train como en eval" in exc_info.value.detail
+
+
+def test_partition_group_separation_accepts_disjoint_groups():
+    validate_partition_group_separation(
+        ["group-a", "group-b"],
+        ["group-c", "group-d"],
+    )
 
 
 # ==========================================
