@@ -10,8 +10,7 @@ from pydantic import ValidationError
 from app.auth import verify_supabase_jwt
 from app.datasets import APIError, validate_state_transition
 from app.main import app
-from app.schemas import DatasetVersionStateUpdate
-from dataset.application.schemas import VersionState
+from app.schemas import DatasetVersionStateUpdate, VersionState
 
 client = TestClient(app)
 
@@ -145,6 +144,15 @@ class FakeQuery:
                 }
                 self.database.dataset_rows.setdefault(self.table_name, []).append(row)
                 return SimpleNamespace(data=[row])
+
+        if self.updated is not None:
+            updated_rows = []
+            for row in rows:
+                match = all(str(row.get(f)) == v for f, v in self.filters.items())
+                if match:
+                    row.update(self.updated)
+                    updated_rows.append(row.copy())
+            return SimpleNamespace(data=updated_rows)
 
         if self.updated is not None:
             updated_rows = []
@@ -352,7 +360,7 @@ def test_list_review_datasets_paginates_decisions(monkeypatch):
 
 def test_list_review_datasets_paginates_organization_memberships(monkeypatch):
     database = setup_request(monkeypatch, "investigador")
-    second_organization_id = str(uuid4())
+    second_organization_id = "88888888-8888-8888-8888-888888888888"
     database.organization_memberships.append(
         {
             "user_id": database.user_id,

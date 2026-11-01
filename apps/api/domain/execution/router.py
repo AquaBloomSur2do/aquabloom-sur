@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.dependencies import require_internal_service
 from domain.execution.schemas import JobCreate, JobResponse, JobStatus
 
-# SOLUCIÓN AL 404: Se agregó el prefijo de la ruta base
+# SOLUCIÓN AL 404: Se agregó el prefijo exacto de la ruta
 router = APIRouter(prefix="/api/v1/executions", tags=["Executions"])
 
 # Diccionario temporal en memoria para pruebas locales

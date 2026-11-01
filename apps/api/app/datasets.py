@@ -22,9 +22,26 @@ except (ImportError, ModuleNotFoundError):
                 super().__init__(error)
                 if isinstance(error, dict):
                     self.code = str(error.get("code", self.code))
+from pydantic import BaseModel, StringConstraints
+
+try:
+    from postgrest.exceptions import APIError
+except (ImportError, ModuleNotFoundError):
+    try:
+        from supabase.lib.client_options import APIError
+    except (ImportError, ModuleNotFoundError):
+
+        class APIError(Exception):
+            code: str = "500"
+
+            def __init__(self, error: object = None):
+                super().__init__(error)
+                if isinstance(error, dict):
+                    self.code = str(error.get("code", self.code))
 
 from app.auth import verify_supabase_jwt
 from app.database import supabase
+from app.schemas import DatasetVersionStateUpdate, VersionState
 from dataset.application.schemas import (
     CandidateValidationPayload,
     DatasetCandidateBase,
@@ -36,7 +53,6 @@ from dataset.application.schemas import (
     DatasetVersionResponse,
     IncorporateCandidatesInput,
     TrainingManifestResponse,
-    VersionState,  # <-- Importación de VersionState desde schemas unificada
 )
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["Datasets"])
@@ -56,6 +72,10 @@ class DatasetVersionStateUpdate(BaseModel):
 
 ALLOWED_STATE_TRANSITIONS: dict[VersionState, list[VersionState]] = {
     VersionState.DRAFT: [VersionState.IN_REVIEW, VersionState.ARCHIVED, VersionState.PUBLISHED], # Conservamos IN_REVIEW y PUBLISHED
+# --- Transiciones Permitidas del Ciclo de Vida (S2-134) ---
+
+ALLOWED_STATE_TRANSITIONS: dict[VersionState, list[VersionState]] = {
+    VersionState.DRAFT: [VersionState.IN_REVIEW, VersionState.ARCHIVED],
     VersionState.IN_REVIEW: [
         VersionState.APPROVED,
         VersionState.DRAFT,
@@ -758,6 +778,7 @@ def update_version_state(
             except Exception as exc:
                 # ROLLBACK COMPENSATORIO (Punto 1)
                 # a) Intentar eliminar el archivo huérfano
+                # a) Intentar eliminar el archivo huérfano
                 try:
                     client.storage.from_("training_files").remove([storage_path])
                 except Exception:  # noqa: BLE001, S110
@@ -856,7 +877,3 @@ def download_training_file_proxy(version_id: UUID, payload: dict = Depends(verif
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="training_{version_id}.csv"'}
     )
-
-
-
-
