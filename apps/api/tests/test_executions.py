@@ -260,3 +260,5 @@ def test_execution_job_handles_timeout_exceeded(monkeypatch, mock_supabase):
     assert "Timeout de 0.1s" in db_record["error_message"]
 
 
+
+
