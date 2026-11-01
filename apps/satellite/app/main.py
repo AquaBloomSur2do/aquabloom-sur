@@ -12,6 +12,8 @@ from starlette.responses import JSONResponse
 from app.config import settings
 from app.queueing import enqueue_measurement_summary, get_redis_client
 
+from .baseline import MeanBaseline
+
 app = FastAPI(
     title=settings.service_name,
     description="Servicio Satellite para encolar trabajos científicos.",
@@ -94,3 +96,21 @@ def enqueue_summary(
         ) from exc
 
     return EnqueuedTaskResponse(task_id=task_id, status="queued")
+
+class BaselineRequest(BaseModel):
+    y_train: list[float]
+    num_predictions: int
+
+class BaselineResponse(BaseModel):
+    predictions: list[float]
+
+@app.post("/api/v1/baseline", response_model=BaselineResponse)
+def run_baseline(payload: BaselineRequest):
+    try:
+        baseline = MeanBaseline()
+        baseline.fit(payload.y_train)
+        predictions = baseline.predict(payload.num_predictions)
+        return BaselineResponse(predictions=predictions)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    
