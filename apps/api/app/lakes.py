@@ -100,7 +100,7 @@ def list_lake_scenes(
 ) -> PaginatedScenes:
     if start_date > end_date:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="La fecha inicial debe ser anterior o igual a la fecha final.",
         )
 
