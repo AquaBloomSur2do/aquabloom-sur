@@ -7,7 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class TrainingConfig(BaseModel):
-    dataset_id: str
+    dataset_id: UUID
+    version_id: UUID
     epochs: int = Field(default=100, gt=0)
     learning_rate: float = Field(default=0.001, gt=0)
 
