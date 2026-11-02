@@ -35,6 +35,30 @@ docker compose logs -f scientific-worker
 El gateway de la API también reenvía las solicitudes `/api/v1/satellite/*` al
 servicio Satellite, de acuerdo con `SATELLITE_SERVICE_URL`.
 
+## Persistencia del artefacto de modelo
+
+El servicio que completa un trabajo de entrenamiento puede registrar el
+artefacto mediante `POST /api/v1/executions/{job_id}/artifact`, autenticándose
+con `X-Internal-Token` y enviando un multipart `file`. La API valida que el
+identificador corresponda a un trabajo `training`, limita el archivo a 100 MiB
+y calcula su checksum SHA-256.
+
+Los trabajos científicos se guardan en `scientific_jobs` y su estado se consulta
+con `GET /api/v1/executions/{job_id}`. Esto permite conservar la relación del
+artefacto aunque la API se reinicie.
+
+El archivo se almacena en el bucket privado `model_artifacts`. PostgreSQL
+registra su nombre, tipo MIME, tamaño, checksum, ruta de Storage y
+`training_job_id` como clave foránea a `scientific_jobs`. Se permite repetir la
+carga del mismo contenido sin crear duplicados; reemplazar un artefacto ya
+asociado a ese entrenamiento responde `409`.
+
+La metadata persistida se consulta con
+`GET /api/v1/executions/{job_id}/artifact`, también usando `X-Internal-Token`.
+Las migraciones que crean la tabla y el bucket están en
+`database/migrations/20261028_create_model_artifacts.sql` y
+`supabase/migrations/20261028_create_model_artifacts.sql`.
+
 ## Carácter temporal
 
 Redis se inicia con RDB y AOF desactivados y no tiene un volumen persistente.
