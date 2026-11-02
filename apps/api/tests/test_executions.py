@@ -5,6 +5,8 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
@@ -12,8 +14,6 @@ os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 from app.config import settings
 from app.main import app
 from domain.execution import router as execution_router
-from fastapi.testclient import TestClient
-from pydantic import SecretStr
 
 # 1. Envolvemos el token en SecretStr para que coincida con el modelo de configuración
 settings.internal_service_token = SecretStr("test-secret-token")
