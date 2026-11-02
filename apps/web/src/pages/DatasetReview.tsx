@@ -41,6 +41,13 @@ export function DatasetReview() {
   
   // Estado añadido para cumplir con la observación UX de paginación
   const [currentPage, setCurrentPage] = useState(1);
+  const [publishingVersionId, setPublishingVersionId] = useState<string | null>(
+    null
+  );
+  const [publicationError, setPublicationError] = useState<string | null>(null);
+  const [publicationSuccess, setPublicationSuccess] = useState<string | null>(
+    null
+  );
 
   // Estados para el manifiesto de la versión activa (S2-143)
   const [manifest, setManifest] = useState<TrainingManifest | null>(null);
@@ -256,6 +263,52 @@ export function DatasetReview() {
     }
   };
 
+  const publishVersion = async () => {
+    if (!selectedVersion) return;
+
+    const targetVersionId = selectedVersion.id;
+    setPublishingVersionId(targetVersionId);
+    setPublicationError(null);
+    setPublicationSuccess(null);
+
+    try {
+      const published =
+        await apiClient.publishDatasetVersion(targetVersionId);
+      setDatasets((current) =>
+        current.map((dataset) => ({
+          ...dataset,
+          versions: dataset.versions.map((version) =>
+            version.id === published.id
+              ? {
+                  ...version,
+                  ...published,
+                  state: 'PUBLISHED',
+                  memberships: version.memberships,
+                }
+              : version
+          ),
+        }))
+      );
+      setPublicationSuccess(`Versión publicada. ID: ${published.id}`);
+    } catch (error) {
+      const message =
+        error instanceof ApiError && error.status === 401
+          ? 'Tu sesión ya no está autorizada para publicar esta versión.'
+          : error instanceof ApiError && error.status === 403
+            ? 'No tienes permisos para publicar esta versión.'
+            : error instanceof ApiError && error.status === 404
+              ? 'La versión seleccionada ya no existe.'
+              : error instanceof ApiError && error.status === 409
+                ? 'No se puede publicar esta versión en su estado actual.'
+                : error instanceof Error
+                  ? error.message
+                  : 'No se pudo publicar la versión.';
+      setPublicationError(message);
+    } finally {
+      setPublishingVersionId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-8 text-center text-gray-500" role="status">
@@ -400,6 +453,35 @@ export function DatasetReview() {
               </p>
             )}
           </section>
+          {selectedVersion && (
+            <section className="rounded-lg border border-gray-200 bg-white p-5">
+              <button
+                type="button"
+                onClick={() => void publishVersion()}
+                disabled={
+                  selectedVersion.status === 'published' ||
+                  publishingVersionId !== null
+                }
+                className="rounded-md bg-blue-700 px-4 py-2 font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {publishingVersionId === selectedVersion.id
+                  ? 'Publicando...'
+                  : selectedVersion.status === 'published'
+                    ? 'Versión publicada'
+                    : 'Publicar versión'}
+              </button>
+              {publicationError && (
+                <p className="mt-3 text-sm text-red-700" role="alert">
+                  {publicationError}
+                </p>
+              )}
+              {publicationSuccess && (
+                <p className="mt-3 text-sm text-green-700" role="status">
+                  {publicationSuccess}
+                </p>
+              )}
+            </section>
+          )}
 
           {selectedVersionState === 'APPROVED' && (
             <section
@@ -575,4 +657,3 @@ export function DatasetReview() {
     </main>
   );
 }
-

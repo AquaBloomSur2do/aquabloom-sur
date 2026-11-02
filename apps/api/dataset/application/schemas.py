@@ -12,9 +12,9 @@ class CandidateState(str, Enum):
 
 
 class VersionState(str, Enum):
-    DRAFT = "DRAFT"
-    PUBLISHED = "PUBLISHED"
-    ARCHIVED = "ARCHIVED"
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
 
 
 class DatasetCandidateBase(BaseModel):
@@ -41,8 +41,12 @@ class DatasetVersionBase(BaseModel):
     changelog: str = Field(..., description="Registro detallado de modificaciones")
 
 
-class DatasetVersionResponse(DatasetVersionBase):
+class DatasetVersionResponse(BaseModel):
     id: UUID
+    dataset_id: UUID
+    version_number: int
+    status: VersionState
+    created_at: datetime
     published_at: datetime | None = None
     model_config = ConfigDict(from_attributes=True)
 
