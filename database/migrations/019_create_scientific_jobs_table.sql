@@ -1,30 +1,52 @@
--- Crear esquema para el dominio científico aislando su responsabilidad
+-- Creación del esquema aislado para el dominio científico (S2-145)
 CREATE SCHEMA IF NOT EXISTS scientific;
 
--- Crear tipos enumerados para restringir valores y asegurar integridad
-CREATE TYPE scientific.job_status AS ENUM ('queued', 'running', 'completed', 'failed');
-CREATE TYPE scientific.job_type AS ENUM ('training', 'modeling', 'estimation');
-
--- Eliminar la tabla pública si alguien la levantó por error en el entorno local
-DROP TABLE IF EXISTS public.scientific_jobs;
-
--- Crear la tabla principal de trabajos en el esquema correcto (S2-145)
-CREATE TABLE IF NOT EXISTS scientific.jobs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    job_type scientific.job_type NOT NULL,
-    status scientific.job_status NOT NULL DEFAULT 'queued',
-    config JSONB NOT NULL,
-    result JSONB DEFAULT '{}'::jsonb,
-    dataset_version_id UUID,
-    model_version_id UUID,
-    requested_by UUID, 
-    error_message TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    started_at TIMESTAMPTZ,
-    completed_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+-- Tipos enumerados para integridad estricta a nivel de motor SQL
+CREATE TYPE scientific.job_type AS ENUM (
+    'TRAINING',
+    'ESTIMATION'
 );
 
--- Índices para optimizar las colas y consultas de estado
-CREATE INDEX idx_scientific_jobs_status ON scientific.jobs(status);
-CREATE INDEX idx_scientific_jobs_type ON scientific.jobs(job_type);
+CREATE TYPE scientific.job_status AS ENUM (
+    'PENDING',
+    'IN_PROGRESS',
+    'COMPLETED',
+    'FAILED',
+    'CANCELLED'
+);
+
+-- Tabla principal de persistencia de trabajos asíncronos
+CREATE TABLE IF NOT EXISTS scientific.jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    
+    job_type scientific.job_type NOT NULL,
+    status scientific.job_status NOT NULL DEFAULT 'PENDING',
+    
+    -- Relaciones e Integridad Referencial (Llaves Foráneas estrictas)
+    dataset_version_id UUID REFERENCES dataset.versions(id) ON DELETE SET NULL,
+    model_version_id UUID, -- TODO: Referenciar model_versions(id) en tareas futuras cuando se cree la tabla
+    
+    -- Trazabilidad de Auditoría
+    requested_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    
+    -- Control de Tiempos
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    started_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    
+    -- Metadatos y Artefactos Resultantes (Estructura flexible)
+    result_metadata JSONB DEFAULT '{}'::jsonb,
+    error_message TEXT
+);
+
+-- Índices para optimización de consultas de trabajadores y dashboard
+CREATE INDEX IF NOT EXISTS idx_scientific_jobs_status ON scientific.jobs(status);
+CREATE INDEX IF NOT EXISTS idx_scientific_jobs_dataset_version ON scientific.jobs(dataset_version_id);
+CREATE INDEX IF NOT EXISTS idx_scientific_jobs_requested_by ON scientific.jobs(requested_by);
+
+-- Habilitar Seguridad a Nivel de Filas (RLS) y otorgar permisos
+ALTER TABLE scientific.jobs ENABLE ROW LEVEL SECURITY;
+
+GRANT USAGE ON SCHEMA scientific TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON scientific.jobs TO service_role;
+
