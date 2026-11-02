@@ -12,6 +12,7 @@ import { OrganizationsList } from './pages/OrganizationsList';
 import { StationForm } from './pages/StationForm';
 import { LakeDetail } from './pages/LakeDetail';
 import { DatasetReview } from './pages/DatasetReview';
+import { BaselineMetrics } from './pages/BaselineMetrics';
 import { NotFound } from './pages/NotFound';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import LakeCreate from './pages/LakeCreate';
@@ -39,6 +40,10 @@ function App() {
               <Route path="/stations" element={<StationsList />} />
               <Route path="/organizations" element={<OrganizationsList />} />
               <Route path="/datasets/review" element={<DatasetReview />} />
+              <Route
+                path="/experiments/baseline"
+                element={<BaselineMetrics />}
+              />
               <Route path="/admin" element={<OrganizationsList />} />
               <Route
                 path="/lakes/:lakeId/stations/new"
