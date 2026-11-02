@@ -29,6 +29,11 @@ const MENU_ITEMS = [
     ],
   },
   {
+    path: '/experiments/baseline',
+    label: 'Métricas vs. baseline',
+    allowedRoles: ['administrador', 'investigador'],
+  },
+  {
     path: '/organizations',
     label: 'Administración',
     allowedRoles: ['administrador'],
