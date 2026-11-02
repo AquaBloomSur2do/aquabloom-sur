@@ -792,7 +792,7 @@ def _validate_training_file_access(version_id: UUID, user_id: str, client, datas
     if not membership or str(membership[0].get("role", "")).strip().lower() not in READ_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para esta organización.")
 
-    manifest_rows = _rows(dataset_schema.table("training_manifests").select("id, storage_path, checksum, variables, manifest_version, sources, is_experimental, is_synthetic").eq("version_id", str(version_id)).limit(1))
+    manifest_rows = _rows(dataset_schema.table("training_manifests").select("id, storage_path, checksum, variables").eq("version_id", str(version_id)).limit(1))
     if not manifest_rows:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="El manifiesto no existe.")
 

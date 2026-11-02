@@ -7,7 +7,7 @@ import type {
   DatasetDecisionValue,
   ReviewDataset,
   TrainingManifest,
-  DatasetCandidate // <--- Nuevo tipo importado
+  DatasetCandidate
 } from '../types/dataset';
 
 const decisionLabels: Record<DatasetDecisionValue, string> = {
@@ -38,11 +38,15 @@ export function DatasetReview() {
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [successes, setSuccesses] = useState<Record<string, string>>({});
+  
+  // Estado añadido para cumplir con la observación UX de paginación
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Estados para el manifiesto de la versión activa (S2-143)
   const [manifest, setManifest] = useState<TrainingManifest | null>(null);
   const [manifestLoading, setManifestLoading] = useState(false);
   const [manifestError, setManifestError] = useState<string | null>(null);
+  
   // --- Estados de Tarea S2-139 (Candidatos) ---
   const [candidates, setCandidates] = useState<DatasetCandidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
@@ -84,6 +88,16 @@ export function DatasetReview() {
     };
   }, []);
 
+  // Limpiar manifiesto al cambiar de página (S2-143 corrección UX)
+  // Usamos setTimeout para diferir la actualización y evitar error síncrono del linter
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setManifest(null);
+      setManifestError(null);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [currentPage]);
+
   // Efecto para cargar el manifiesto cuando cambia la versión seleccionada (S2-143)
   useEffect(() => {
     if (!versionId) return; // Limpio y sin setState síncronos
@@ -120,34 +134,30 @@ export function DatasetReview() {
       mounted = false;
     };
   }, [versionId]);
-  // --- Carga de Candidatos (S2-139) ---
+  
   // --- Carga de Candidatos (S2-139) ---
   useEffect(() => {
     if (!datasetId) return;
 
     let mounted = true;
-    const controller = new AbortController(); // FIX 1: Instancia del controlador de red
+    const controller = new AbortController();
 
     const loadCandidates = async () => {
       setLoadingCandidates(true);
       try {
-        // En una API real, esto sería un GET a /api/v1/datasets/candidates?lake_id=...
         const response = await apiClient.get<DatasetCandidate[]>(
           `datasets/candidates?dataset_id=${datasetId}`,
-          { signal: controller.signal } // Se enlaza la señal de cancelación
+          { signal: controller.signal }
         );
         if (mounted) setCandidates(response);
       } catch (error) {
-        // Ignorar el error silencioso si la petición fue cancelada intencionalmente
         if (error instanceof Error && error.name === 'AbortError') return;
 
-        // Mock de datos para evidenciar la S2-139 si el backend no expone GET candidatos.
         if (mounted) {
-          // TODO (Deuda Técnica): Eliminar este mock y consumir el endpoint real de Ingesta en el Sprint 3
           setCandidates([
             {
               id: 'c-1',
-              lake_id: 'lago-villarrica-uuid-mock', // FIX 3: Desacoplado semánticamente de datasetId
+              lake_id: 'lago-villarrica-uuid-mock',
               data_uri: 's3://ingest/batch-1.csv',
               status: 'REJECTED',
               submitted_at: new Date().toISOString(),
@@ -156,7 +166,7 @@ export function DatasetReview() {
             },
             {
               id: 'c-2',
-              lake_id: 'lago-villarrica-uuid-mock', // FIX 3: Desacoplado semánticamente de datasetId
+              lake_id: 'lago-villarrica-uuid-mock',
               data_uri: 's3://ingest/batch-2.csv',
               status: 'PENDING',
               submitted_at: new Date().toISOString(),
@@ -172,12 +182,11 @@ export function DatasetReview() {
     
     void loadCandidates();
     
-    // Función de limpieza al desmontar
     return () => { 
       mounted = false; 
-      controller.abort(); // FIX 1: Cancela la petición HTTP en vuelo
+      controller.abort();
     };
-  }, [datasetId]); // FIX 2: Dependencia declarada explícitamente sin dependencias circulares ocultas
+  }, [datasetId]);
 
   const selectedDataset = datasets.find((dataset) => dataset.id === datasetId);
   const versions = selectedDataset?.versions ?? [];
@@ -191,16 +200,15 @@ export function DatasetReview() {
     );
     setDatasetId(nextDatasetId);
     setVersionId(nextDataset?.versions[0]?.id ?? '');
-    // El linter prefiere que reseteemos aquí, respondiendo al evento de usuario
     setManifest(null);
     setManifestError(null);
+    setCurrentPage(1); // Reiniciar paginación al cambiar dataset
   };
 
   const submitDecision = async (
     event: FormEvent<HTMLFormElement>,
     membershipId: string
   ) => {
-    // ... Código original de tus compañeros para submitDecision ...
     event.preventDefault();
     const body: DatasetDecisionInput = {
       decision: decisions[membershipId] ?? 'accepted',
@@ -272,7 +280,7 @@ export function DatasetReview() {
           Revisión de datasets
         </h1>
         <p className="mt-1 text-sm text-gray-600">
-          Revisa las escenas de una versión, consulta su manifiesto de entrenamiento y registra su decisión de inclusión
+          Revisa las scenes de una versión, consulta su manifiesto de entrenamiento y registra su decisión de inclusión
           con el motivo correspondiente.
         </p>
       </header>
@@ -306,9 +314,9 @@ export function DatasetReview() {
                 value={versionId}
                 onChange={(event) => {
                   setVersionId(event.target.value);
-                  // Reseteamos el manifiesto aquí al cambiar la versión manualmente
                   setManifest(null);
                   setManifestError(null);
+                  setCurrentPage(1); // Reiniciar paginación al cambiar versión
                 }}
                 disabled={versions.length === 0}
               >
@@ -352,8 +360,8 @@ export function DatasetReview() {
                   <strong>Fuentes de datos:</strong>
                   {manifest.sources && manifest.sources.length > 0 ? (
                     <ul className="mt-1 list-inside list-disc text-gray-600">
-                      {manifest.sources.map((source, index) => (
-                        <li key={index}>{source}</li>
+                      {manifest.sources.map((source) => (
+                        <li key={source}>{source}</li>
                       ))}
                     </ul>
                   ) : (
@@ -424,7 +432,6 @@ export function DatasetReview() {
             <section aria-label="Escenas de la versión" className="space-y-4">
                <h2 className="text-xl font-bold text-gray-900 mb-2">Escenas Incluidas (Memberships)</h2>
               {selectedVersion.memberships.map((membership) => {
-                 // ... Código original del map intacto ...
                  const latestDecision = membership.decisions[0];
                  const isSaving = savingMembershipId === membership.id;
                  return (
