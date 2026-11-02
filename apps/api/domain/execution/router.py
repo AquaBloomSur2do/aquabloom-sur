@@ -1,7 +1,5 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-
 from app.database import supabase
 from app.dependencies import require_internal_service
 from domain.execution.schemas import (
@@ -10,6 +8,7 @@ from domain.execution.schemas import (
     JobStatus,
     TrainingConfig,
 )
+from fastapi import APIRouter, Depends, HTTPException, status
 
 # SOLUCIÓN AL 404: Se agregó el prefijo exacto de la ruta
 router = APIRouter(prefix="/api/v1/executions", tags=["Executions"])
@@ -42,7 +41,7 @@ def _validate_training_version(client, config: TrainingConfig) -> None:
         )
 
     version = rows[0]
-    if str(version.get("dataset_id")) != config.dataset_id:
+    if str(version.get("dataset_id")) != str(config.dataset_id):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="La versión no pertenece al dataset indicado.",
@@ -72,7 +71,7 @@ def create_execution_job(payload: JobCreate):
             {
                 "job_type": payload.job_type,
                 "config": payload.config.model_dump(mode="json"),
-                "status": "pending",
+                "status": "queued",
             }
         )
         .execute()
@@ -105,7 +104,11 @@ def get_job_status(job_id: UUID):
     client = _require_database()
     response = (
         client.table("scientific_jobs")
-        .select("id, status, result, created_at")
+        .select(
+            "id, job_type, status, config, result, dataset_version_id, "
+            "model_version_id, requested_by, error_message, created_at, "
+            "started_at, completed_at, updated_at"
+        )
         .eq("id", str(job_id))
         .limit(1)
         .execute()
@@ -117,9 +120,4 @@ def get_job_status(job_id: UUID):
             detail="No se encontró el trabajo.",
         )
     job = rows[0]
-    return {
-        "job_id": job["id"],
-        "status": job["status"],
-        "result": job.get("result"),
-        "created_at": job["created_at"],
-    }
+    return job

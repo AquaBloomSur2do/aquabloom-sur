@@ -95,7 +95,7 @@ export const updateLake = async (session, lakeId, updateData) => {
 * **Entrenamiento:** requiere `dataset_id` y `version_id`; la versión debe
   pertenecer al dataset y estar en estado `PUBLISHED`.
 * **Respuesta:** `202 Accepted` con `job_id`, `status` y `status_url`. La
-  solicitud registra el trabajo como `pending`; no ejecuta el entrenamiento
+  solicitud registra el trabajo como `queued`; no ejecuta el entrenamiento
   dentro del endpoint.
 
 ```json

@@ -1,15 +1,19 @@
 
+import os
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from fastapi.testclient import TestClient
-from pydantic import SecretStr
+
+os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
+os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 
 from app.config import settings
 from app.main import app
 from domain.execution import router as execution_router
+from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 # 1. Envolvemos el token en SecretStr para que coincida con el modelo de configuración
 settings.internal_service_token = SecretStr("test-secret-token")
@@ -134,7 +138,7 @@ def test_create_execution_job_returns_202():
     assert response.status_code == 202
     data = response.json()
     assert "job_id" in data
-    assert data["status"] == "pending"
+    assert data["status"] == "queued"
     assert "status_url" in data
     assert data["job_id"] in data["status_url"]
 
@@ -203,6 +207,14 @@ def test_training_requires_a_version_id():
     assert response.status_code == 422
 
 
+def test_training_requires_dataset_id_to_be_a_uuid():
+    payload = training_payload(dataset_id="id-invalido")
+
+    response = client.post("/api/v1/executions/", json=payload, headers=HEADERS)
+
+    assert response.status_code == 422
+
+
 def test_training_requires_version_to_belong_to_dataset(fake_database):
     payload = training_payload(dataset_id="cccccccc-cccc-4ccc-8ccc-cccccccccccc")
 
@@ -213,17 +225,17 @@ def test_training_requires_version_to_belong_to_dataset(fake_database):
     assert fake_database.jobs == []
 
 
-def test_training_is_persisted_as_pending_without_running_inline(fake_database):
+def test_training_is_persisted_as_queued_and_returns_202(fake_database):
     response = client.post(
         "/api/v1/executions/", json=training_payload(), headers=HEADERS
     )
 
     assert response.status_code == 202
     data = response.json()
-    assert data["status"] == "pending"
+    assert data["status"] == "queued"
     assert data["status_url"] == f"/api/v1/executions/{data['job_id']}"
     assert len(fake_database.jobs) == 1
-    assert fake_database.jobs[0]["status"] == "pending"
+    assert fake_database.jobs[0]["status"] == "queued"
     assert fake_database.jobs[0]["job_type"] == "training"
 
 
