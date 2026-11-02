@@ -1,13 +1,16 @@
 import csv
 import hashlib
 import io
+import logging
 from datetime import UTC, datetime
 from typing import Annotated, Literal, NoReturn
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
+from httpx import HTTPError
 from pydantic import BaseModel, StringConstraints
+from storage3.utils import StorageException
 
 try:
     from postgrest.exceptions import APIError
@@ -40,6 +43,7 @@ from dataset.application.schemas import (
 )
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["Datasets"])
+logger = logging.getLogger(__name__)
 
 TRAINING_VARIABLES = ["temperatura", "clorofila_a", "turbidez", "ph"]
 MAX_TRAINING_FILE_SIZE = 1024 * 1024
@@ -895,13 +899,21 @@ def update_version_state(
                 # a) Intentar eliminar el archivo huérfano
                 try:
                     client.storage.from_("training_files").remove([storage_path])
-                except Exception:  # noqa: BLE001, S110
-                    pass
+                except (HTTPError, StorageException) as cleanup_exc:
+                    logger.warning(
+                        f"No se pudo limpiar el archivo parcial de Storage: {cleanup_exc}"
+                    )
 
                 # b) Revertir la versión
                 _rows(
                     dataset_client.table("versions")
-                    .update({"state": raw_state, "status": raw_state})
+                    .update(
+                        {
+                            "state": raw_state,
+                            "status": raw_state,
+                            "published_at": None,
+                        }
+                    )
                     .eq("id", str(version_id))
                 )
 

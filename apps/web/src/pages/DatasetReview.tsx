@@ -223,9 +223,9 @@ export function DatasetReview() {
             version.id === published.id
               ? {
                   ...version,
+                  ...published,
                   state: 'PUBLISHED',
-                  status: published.status,
-                  published_at: published.published_at,
+                  memberships: version.memberships,
                 }
               : version
           ),
@@ -524,4 +524,3 @@ export function DatasetReview() {
     </main>
   );
 }
-
