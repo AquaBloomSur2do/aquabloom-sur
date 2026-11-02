@@ -1,8 +1,9 @@
 from datetime import datetime
+from enum import Enum
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class TrainingConfig(BaseModel):
@@ -20,6 +21,19 @@ class ModelConfig(BaseModel):
 class EstimationConfig(BaseModel):
     model_id: str
     scene_id: str
+
+
+class ScientificJobType(str, Enum):
+    TRAINING = "training"
+    MODELING = "modeling"
+    ESTIMATION = "estimation"
+
+
+class ScientificJobStatusEnum(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class JobCreate(BaseModel):
@@ -42,11 +56,23 @@ class JobResponse(BaseModel):
     status: str
     status_url: str
     message: str = "Job accepted and processing in background"
+    
+    model_config = ConfigDict(from_attributes=True)
 
 
 class JobStatus(BaseModel):
-    job_id: UUID
-    status: str
+    id: UUID = Field(alias="job_id")  # Alias para mantener retrocompatibilidad con clientes existentes
+    job_type: ScientificJobType
+    status: ScientificJobStatusEnum
+    config: dict[str, Any]
     result: dict[str, Any] | None = None
+    dataset_version_id: UUID | None = None
+    model_version_id: UUID | None = None
+    requested_by: UUID | None = None
+    error_message: str | None = None
     created_at: datetime
-    
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
