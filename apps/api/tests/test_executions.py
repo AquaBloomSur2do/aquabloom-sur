@@ -4,6 +4,7 @@ from pydantic import SecretStr
 
 from app.config import settings
 from app.main import app
+from domain.execution.router import JOBS_DB
 
 # 1. Envolvemos el token en SecretStr para que coincida con el modelo de configuración
 settings.internal_service_token = SecretStr("test-secret-token")
@@ -38,6 +39,10 @@ def test_get_job_status_returns_200():
         "job_type": "training",
         "config": {
             "dataset_id": "dataset_123",
+            "evaluation_split": {
+                "strategy": "acquisition_date",
+                "evaluation_fraction": 0.2,
+            },
             "epochs": 50,
             "learning_rate": 0.01,
         },
@@ -74,6 +79,37 @@ def test_create_execution_job_invalid_payload():
     assert response.status_code == 422
 
 
+def test_training_requires_an_explicit_evaluation_split():
+    payload = {
+        "job_type": "training",
+        "config": {"dataset_id": "dataset_123"},
+    }
+
+    response = client.post("/api/v1/executions/", json=payload, headers=HEADERS)
+
+    assert response.status_code == 422
+
+
+def test_training_job_records_evaluation_split_before_processing():
+    evaluation_split = {
+        "strategy": "acquisition_date",
+        "evaluation_fraction": 0.2,
+    }
+    payload = {
+        "job_type": "training",
+        "config": {
+            "dataset_id": "dataset_123",
+            "evaluation_split": evaluation_split,
+        },
+    }
+
+    response = client.post("/api/v1/executions/", json=payload, headers=HEADERS)
+
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+    assert JOBS_DB[job_id]["config"]["evaluation_split"] == evaluation_split
+
+
 def test_create_execution_job_rejects_without_token():
     payload = {
         "job_type": "estimation",
@@ -87,4 +123,3 @@ def test_create_execution_job_rejects_without_token():
     
     assert response.status_code == 401
     assert response.json()["message"] == "Autenticación interna requerida."
-

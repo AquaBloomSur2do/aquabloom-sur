@@ -5,8 +5,14 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 
+class EvaluationSplitConfig(BaseModel):
+    strategy: Literal["acquisition_date"]
+    evaluation_fraction: float = Field(gt=0, lt=1)
+
+
 class TrainingConfig(BaseModel):
     dataset_id: str
+    evaluation_split: EvaluationSplitConfig
     epochs: int = Field(default=100, gt=0)
     learning_rate: float = Field(default=0.001, gt=0)
 
