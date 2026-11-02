@@ -7,6 +7,25 @@ resumen calculado en sus logs. La respuesta `202` devuelve un identificador de
 seguimiento, pero no se almacena el resultado ni se mantiene un historial de
 tareas.
 
+## Partición de evaluación antes del entrenamiento
+
+Para el piloto se eligió una partición temporal por `acquisition_date`: las
+fechas se ordenan cronológicamente y el tramo más reciente se reserva para
+evaluación (20% de las fechas distintas, con al menos una fecha y sin dejar vacío
+el conjunto de entrenamiento). Todos los registros de una misma fecha se
+mantienen juntos para evitar fuga temporal. La decisión (`strategy` y
+`evaluation_fraction`) forma parte de la configuración requerida del trabajo
+de entrenamiento y debe quedar registrada antes de ejecutarlo.
+
+No se eligió una partición por campaña porque el esquema disponible no define
+un campo de campaña. Aunque las escenas sí almacenan `acquisition_date`, el CSV
+de entrenamiento publicado actualmente solo contiene las variables
+`temperatura`, `clorofila_a`, `turbidez` y `ph`. Por tanto, hasta que el origen
+de los registros incluya `acquisition_date` y haya al menos dos fechas
+distintas, la partición temporal falla explícitamente y el entrenamiento no
+debe comenzar. `app.evaluation.split_by_acquisition_date` implementa y valida
+esta regla.
+
 ## Ejecución con Docker Compose
 
 Desde la raíz del repositorio:
