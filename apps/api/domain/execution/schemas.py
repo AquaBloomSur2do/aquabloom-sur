@@ -1,12 +1,14 @@
 from datetime import datetime
+from enum import Enum
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class TrainingConfig(BaseModel):
-    dataset_id: str
+    dataset_id: UUID
+    version_id: UUID
     epochs: int = Field(default=100, gt=0)
     learning_rate: float = Field(default=0.001, gt=0)
 
@@ -20,6 +22,20 @@ class ModelConfig(BaseModel):
 class EstimationConfig(BaseModel):
     model_id: str
     scene_id: str
+
+
+class ScientificJobType(str, Enum):
+    TRAINING = "training"
+    MODELING = "modeling"
+    ESTIMATION = "estimation"
+
+
+class ScientificJobStatusEnum(str, Enum):
+    PENDING = "pending"
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class JobCreate(BaseModel):
@@ -40,16 +56,26 @@ class JobCreate(BaseModel):
 
 class JobResponse(BaseModel):
     job_id: UUID
-    status: Literal["pending", "running", "completed", "failed"]
+    status: Literal["pending", "queued", "running", "completed", "failed"]
     status_url: str
     message: str = "Job accepted and processing in background"
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class JobStatus(BaseModel):
-    job_id: UUID
-    status: Literal["pending", "running", "completed", "failed"] = Field(
-        description="Estado actual: pending, running, completed o failed."
-    )
+    id: UUID = Field(alias="job_id")  # Alias para mantener retrocompatibilidad con clientes existentes
+    job_type: ScientificJobType
+    status: ScientificJobStatusEnum
+    config: dict[str, Any]
     result: dict[str, Any] | None = None
+    dataset_version_id: UUID | None = None
+    model_version_id: UUID | None = None
+    requested_by: UUID | None = None
+    error_message: str | None = None
     created_at: datetime
-    
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)

@@ -776,6 +776,115 @@ def test_incorporate_candidates_allows_mutable_versions(monkeypatch):
     assert response.status_code == 201
     assert response.json()["count"] == 1
 
+# ==========================================
+# Pruebas de Integración S2-144: Recorrido Escena–Dataset
+# ==========================================
 
+
+def test_s2_144_decision_on_nonexistent_membership_returns_404(monkeypatch):
+    """Verifica que una decisión sobre una pertenencia inexistente sea rechazada con 404."""
+    setup_request(monkeypatch, "supervisor")
+    try:
+        response = client.post(
+            f"/api/v1/datasets/memberships/{uuid4()}/decisions",
+            json={"decision": "accepted", "reason": "Intento sobre membresía inexistente"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize("immutable_state", ["PUBLISHED", "ARCHIVED"])
+def test_s2_144_decision_on_published_or_archived_version_rejected(
+    monkeypatch, immutable_state
+):
+    """Verifica que no se puedan agregar decisiones una vez publicada o archivada la versión."""
+    database = setup_request(monkeypatch, "supervisor")
+    database.dataset_rows["versions"][0]["state"] = immutable_state
+    database.dataset_rows["versions"][0]["status"] = immutable_state
+
+    try:
+        response = client.post(
+            f"/api/v1/datasets/memberships/{database.membership_id}/decisions",
+            json={"decision": "accepted", "reason": "Intento tardío tras publicación"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    err_body = response.json()
+    err_msg = err_body.get("detail", err_body.get("message", ""))
+    assert "inmutable" in str(err_msg).lower()
+
+
+def test_s2_144_full_scene_to_dataset_lifecycle_journey(monkeypatch):
+    """
+    Valida el recorrido completo escena-dataset (S2-144):
+    1. Incorpora candidato (escena/muestra) a una versión en DRAFT.
+    2. Registra decisión de inclusión y verifica el enlace en GET /review.
+    3. Avanza el estado DRAFT -> IN_REVIEW -> APPROVED -> PUBLISHED generando manifiesto.
+    4. Comprueba que ediciones posteriores (nuevos candidatos o decisiones) sean rechazadas (403).
+    """
+    database = setup_request(monkeypatch, "admin")
+
+    class FakeBucket:
+        def upload(self, path, content, file_options):
+            pass
+
+    class FakeStorage:
+        def from_(self, name):
+            return FakeBucket()
+
+    database.storage = FakeStorage()
+    candidate_scene_id = str(uuid4())
+
+    try:
+        # 1. Incorporar candidato a la versión en DRAFT
+        inc_resp = client.post(
+            f"/api/v1/datasets/versions/{database.version_id}/candidates",
+            json={"candidate_ids": [candidate_scene_id]},
+        )
+        assert inc_resp.status_code == 201
+        new_membership_id = inc_resp.json()["inserted"][0]["id"]
+
+        # 2. Registrar decisión curatorial sobre el candidato incorporado
+        dec_resp = client.post(
+            f"/api/v1/datasets/memberships/{new_membership_id}/decisions",
+            json={"decision": "accepted", "reason": "Par escena-muestra validado sin nubes"},
+        )
+        assert dec_resp.status_code == 201
+
+        # 3. Verificar en el listado de revisión que la versión enlaza la escena y su decisión
+        rev_resp = client.get("/api/v1/datasets/review")
+        assert rev_resp.status_code == 200
+        version_view = rev_resp.json()["items"][0]["versions"][0]
+        linked_Scenes = {m["scene_external_id"]: m for m in version_view["memberships"]}
+        assert candidate_scene_id in linked_Scenes
+        assert linked_Scenes[candidate_scene_id]["decisions"][0]["decision"] == "accepted"
+
+        # 4. Recorrer transiciones de estado hasta PUBLISHED
+        for next_state in ["IN_REVIEW", "APPROVED", "PUBLISHED"]:
+            st_resp = client.patch(
+                f"/api/v1/datasets/versions/{database.version_id}/state",
+                json={"state": next_state},
+            )
+            assert st_resp.status_code == 200
+
+        # 5. Intentar editar la versión publicada (incorporar candidato o registrar decisión)
+        late_inc = client.post(
+            f"/api/v1/datasets/versions/{database.version_id}/candidates",
+            json={"candidate_ids": [str(uuid4())]},
+        )
+        assert late_inc.status_code == 403
+
+        late_dec = client.post(
+            f"/api/v1/datasets/memberships/{new_membership_id}/decisions",
+            json={"decision": "rejected", "reason": "Cambio post-publicación no permitido"},
+        )
+        assert late_dec.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+        
 
 
