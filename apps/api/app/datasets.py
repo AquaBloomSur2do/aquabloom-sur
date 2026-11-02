@@ -410,7 +410,7 @@ def create_membership_decision(
 
     version_rows = _rows(
         dataset_client.table("versions")
-        .select("id, dataset_id")
+        .select("id, dataset_id, state, status")
         .eq("id", membership_rows[0]["version_id"])
         .limit(1)
     )
@@ -418,6 +418,19 @@ def create_membership_decision(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="La versión del dataset no existe.",
+        )
+
+    version_data = version_rows[0]
+    raw_state = str(
+        version_data.get("state") or version_data.get("status") or "DRAFT"
+    ).upper()
+    if raw_state in ["PUBLISHED", "ARCHIVED"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"No se pueden registrar decisiones en una versión inmutable ({raw_state}). "
+                "Debe generar una nueva versión."
+            ),
         )
 
     dataset_rows = _rows(
