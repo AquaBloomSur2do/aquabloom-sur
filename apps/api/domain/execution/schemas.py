@@ -31,6 +31,7 @@ class ScientificJobType(str, Enum):
 
 
 class ScientificJobStatusEnum(str, Enum):
+    PENDING = "pending"
     QUEUED = "queued"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -39,6 +40,7 @@ class ScientificJobStatusEnum(str, Enum):
 
 class JobCreate(BaseModel):
     job_type: Literal["training", "modeling", "estimation"]
+    organization_id: UUID
     config: TrainingConfig | ModelConfig | EstimationConfig
 
     @model_validator(mode="after")
@@ -54,10 +56,10 @@ class JobCreate(BaseModel):
 
 class JobResponse(BaseModel):
     job_id: UUID
-    status: str
+    status: Literal["pending", "queued", "running", "completed", "failed"]
     status_url: str
     message: str = "Job accepted and processing in background"
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
