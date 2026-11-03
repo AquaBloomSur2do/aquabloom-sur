@@ -65,7 +65,11 @@ const reviewDatasets = [
 describe('DatasetReview', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGet.mockResolvedValue(reviewDatasets);
+    mockGet.mockImplementation((path: string) =>
+      path === 'datasets/review'
+        ? Promise.resolve({ items: reviewDatasets })
+        : Promise.resolve([])
+    );
   });
 
   afterEach(() => {
@@ -129,6 +133,29 @@ describe('DatasetReview', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'No tienes permisos para registrar decisiones en este dataset.'
     );
+  });
+
+  it('no inventa candidatos cuando el servidor no ofrece el listado', async () => {
+    mockGet.mockImplementation((path: string) =>
+      path === 'datasets/review'
+        ? Promise.resolve({ items: reviewDatasets })
+        : Promise.reject(
+            new ApiError({
+              message: 'Not Found',
+              status: 404,
+            })
+          )
+    );
+
+    render(<DatasetReview />);
+
+    expect(await screen.findByText('scene-pilot')).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'El servidor no ofrece el listado de candidatos para este dataset.'
+    );
+    expect(
+      screen.queryByText('s3://ingest/batch-1.csv')
+    ).not.toBeInTheDocument();
   });
 
   it('publica la versión seleccionada y muestra el identificador de respuesta', async () => {

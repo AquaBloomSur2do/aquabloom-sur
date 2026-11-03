@@ -18,6 +18,17 @@ function isDatasetList(value: unknown): value is ReviewDataset[] {
   return Array.isArray(value);
 }
 
+function isDatasetListResponse(
+  value: unknown
+): value is { items: ReviewDataset[] } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'items' in value &&
+    isDatasetList(value.items)
+  );
+}
+
 export function DatasetReview() {
   const [datasets, setDatasets] = useState<ReviewDataset[]>([]);
   const [datasetId, setDatasetId] = useState('');
@@ -44,6 +55,9 @@ export function DatasetReview() {
   // --- Estados de Tarea S2-139 (Candidatos) ---
   const [candidates, setCandidates] = useState<DatasetCandidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [candidateLoadError, setCandidateLoadError] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -51,15 +65,20 @@ export function DatasetReview() {
     const loadDatasets = async () => {
       try {
         const response = await apiClient.get<unknown>('datasets/review');
-        if (!isDatasetList(response)) {
+        const datasetItems = isDatasetList(response)
+          ? response
+          : isDatasetListResponse(response)
+            ? response.items
+            : null;
+        if (!datasetItems) {
           throw new Error(
             'La respuesta de datasets no tiene un formato válido.'
           );
         }
         if (mounted) {
-          setDatasets(response);
-          setDatasetId(response[0]?.id ?? '');
-          setVersionId(response[0]?.versions[0]?.id ?? '');
+          setDatasets(datasetItems);
+          setDatasetId(datasetItems[0]?.id ?? '');
+          setVersionId(datasetItems[0]?.versions[0]?.id ?? '');
         }
       } catch (error) {
         if (mounted) {
@@ -89,41 +108,31 @@ export function DatasetReview() {
     const controller = new AbortController(); // FIX 1: Instancia del controlador de red
 
     const loadCandidates = async () => {
+      setCandidates([]);
+      setCandidateLoadError(null);
       setLoadingCandidates(true);
       try {
-        // En una API real, esto sería un GET a /api/v1/datasets/candidates?lake_id=...
         const response = await apiClient.get<DatasetCandidate[]>(
           `datasets/candidates?dataset_id=${datasetId}`,
           { signal: controller.signal } // Se enlaza la señal de cancelación
         );
         if (mounted) setCandidates(response);
       } catch (error) {
-        // Ignorar el error silencioso si la petición fue cancelada intencionalmente
-        if (error instanceof Error && error.name === 'AbortError') return;
+        if (
+          (error instanceof ApiError && error.isCancelled) ||
+          (error instanceof Error && error.name === 'AbortError')
+        ) {
+          return;
+        }
 
-        // Mock de datos para evidenciar la S2-139 si el backend no expone GET candidatos.
         if (mounted) {
-          // TODO (Deuda Técnica): Eliminar este mock y consumir el endpoint real de Ingesta en el Sprint 3
-          setCandidates([
-            {
-              id: 'c-1',
-              lake_id: 'lago-villarrica-uuid-mock', // FIX 3: Desacoplado semánticamente de datasetId
-              data_uri: 's3://ingest/batch-1.csv',
-              status: 'REJECTED',
-              submitted_at: new Date().toISOString(),
-              exclusion_reason: 'Falla regla S2-121: 85% de nubosidad.',
-              source_provider: 'Sentinel-2 L2A'
-            },
-            {
-              id: 'c-2',
-              lake_id: 'lago-villarrica-uuid-mock', // FIX 3: Desacoplado semánticamente de datasetId
-              data_uri: 's3://ingest/batch-2.csv',
-              status: 'PENDING',
-              submitted_at: new Date().toISOString(),
-              exclusion_reason: 'Evaluación de calidad geoespacial pendiente.',
-              source_provider: 'Estación Fija (Terreno)'
-            }
-          ]);
+          setCandidateLoadError(
+            error instanceof ApiError && error.status === 404
+              ? 'El servidor no ofrece el listado de candidatos para este dataset.'
+              : error instanceof Error
+                ? `No se pudieron cargar los candidatos: ${error.message}`
+                : 'No se pudieron cargar los candidatos.'
+          );
         }
       } finally {
         if (mounted) setLoadingCandidates(false);
@@ -480,7 +489,14 @@ export function DatasetReview() {
                 </p>
              </div>
 
-             {loadingCandidates ? (
+             {candidateLoadError ? (
+               <p
+                 className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+                 role="alert"
+               >
+                 {candidateLoadError}
+               </p>
+             ) : loadingCandidates ? (
                <p className="text-sm text-gray-500">Cargando candidatos...</p>
              ) : candidates.length === 0 ? (
                <p className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-sm text-gray-600">
