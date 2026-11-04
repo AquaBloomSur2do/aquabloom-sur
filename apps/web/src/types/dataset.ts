@@ -54,10 +54,21 @@ export interface DatasetDecisionInput {
 
 export interface DatasetCandidate {
   id: string;
+  dataset_id: string;
   lake_id: string;
   data_uri: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   submitted_at: string;
-  exclusion_reason?: string; // Motivo de exclusión si aplica
-  source_provider?: string;  // Procedencia
+  exclusion_reason: string | null;
+  source_provider: string;
+  decisions: DatasetCandidateDecision[];
+}
+
+export interface DatasetCandidateDecision {
+  id: string;
+  candidate_id: string;
+  decision: DatasetDecisionValue;
+  reason: string;
+  decided_by: string | null;
+  decided_at: string;
 }

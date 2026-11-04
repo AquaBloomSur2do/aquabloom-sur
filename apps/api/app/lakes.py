@@ -135,9 +135,10 @@ def list_lake_scenes(
 
     try:
         response = (
-            supabase.table("scenes")
+            supabase.schema("satellite")
+            .table("scenes")
             .select(
-                "id, lake_id, scene_identifier, acquisition_date, created_at",
+                "id, lake_id, scene_identifier, acquisition_date, created_at, metadata, file_references",
                 count="exact",
             )
             .eq("lake_id", str(lake_id))

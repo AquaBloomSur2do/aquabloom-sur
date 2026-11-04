@@ -79,6 +79,43 @@ describe('SceneSelector', () => {
     );
   });
 
+  it('muestra procedencia, calidad y checksum desde el detalle de Satellite', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      items: [
+        {
+          ...scene,
+          cloud_cover: null,
+          provider: 'Sentinel-2 L2A sintético',
+          quality: 'ACCEPTABLE',
+          checksum: 'a'.repeat(64),
+          file_count: 1,
+        },
+      ],
+      page: 1,
+      page_size: 20,
+      total: 1,
+    });
+
+    render(<SceneSelector lakeId="lake-1" />);
+    fireEvent.change(screen.getByLabelText('Desde'), {
+      target: { value: '2026-03-01' },
+    });
+    fireEvent.change(screen.getByLabelText('Hasta'), {
+      target: { value: '2026-03-31' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Buscar escenas' }));
+    fireEvent.click(
+      await screen.findByRole('radio', {
+        name: 'Seleccionar escena S2A_20260320',
+      })
+    );
+
+    expect(screen.getByText('Sentinel-2 L2A sintético')).toBeInTheDocument();
+    expect(screen.getByText('ACCEPTABLE')).toBeInTheDocument();
+    expect(screen.getByText('a'.repeat(64))).toBeInTheDocument();
+    expect(screen.getByText('1 archivo(s)')).toBeInTheDocument();
+  });
+
   it('rejects reversed dates without calling the API', async () => {
     render(<SceneSelector lakeId="lake-1" />);
     fireEvent.change(screen.getByLabelText('Desde'), {

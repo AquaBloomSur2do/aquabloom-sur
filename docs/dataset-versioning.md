@@ -62,6 +62,26 @@ sin payload. Requiere una membership activa con rol `admin`, `administrador` o
 `supervisor`; devuelve el identificador de la versión, su estado `published` y
 `published_at`. La migración 017 agrega esta última columna.
 
+### Candidatos de ingesta
+
+La migración `019_create_dataset_candidates.sql` crea `dataset.candidates` y
+`dataset.candidate_decisions`, con historial de decisiones separado de las
+escenas que ya pertenecen a una versión. El backend ofrece:
+
+- `POST /api/v1/datasets/candidates` para registrar un candidato, con
+  `dataset_id`, `lake_id`, `data_uri` y `source_provider`.
+- `GET /api/v1/datasets/candidates?dataset_id={uuid}` para listar los candidatos
+  del dataset y su estado más reciente (`PENDING`, `APPROVED` o `REJECTED`).
+- `POST /api/v1/datasets/candidates/{candidate_id}/decisions` para guardar una
+  decisión `accepted` o `rejected` con motivo obligatorio.
+
+La membership activa de la organización propietaria es necesaria para listar o
+registrar candidatos; solo `admin`, `administrador` y `supervisor` pueden
+registrar decisiones. La pantalla **Candidatos de ingesta** consume estos
+endpoints. El productor de ingesta debe proporcionar explícitamente los IDs de
+dataset y lago al crear el candidato; la API no infiere esa relación desde
+`prepared_inputs`.
+
 ## Archivos de Entrenamiento (Training Files) - S2-137
 Para garantizar la integridad y seguridad (Zero Trust), los archivos de entrenamiento se generan automáticamente cuando una versión transiciona al estado `PUBLISHED`.
 

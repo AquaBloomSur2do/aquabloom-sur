@@ -141,7 +141,9 @@ class FakeQuery:
             else:
                 row = {
                     **self.inserted,
-                    "id": "decision-new",
+                    "id": str(uuid4()),
+                    "submitted_at": "2026-10-27T00:00:00+00:00",
+                    "status": "PENDING",
                     "decided_at": "2026-10-27T00:00:00+00:00",
                 }
                 self.database.dataset_rows.setdefault(self.table_name, []).append(row)
@@ -173,7 +175,14 @@ class FakeQuery:
         if self._limit is not None:
             rows = rows[:self._limit]
 
-        if self._range is not None and self.table_name in ["datasets", "versions", "memberships", "decisions"]:
+        if self._range is not None and self.table_name in [
+            "datasets",
+            "versions",
+            "memberships",
+            "decisions",
+            "candidates",
+            "candidate_decisions",
+        ]:
             start, end = self._range
             rows = rows[start:end + 1]
 
@@ -246,6 +255,8 @@ class FakeSupabase:
                 }
             ],
             "decisions": [],
+            "candidates": [],
+            "candidate_decisions": [],
         }
 
     def table(self, table_name):
@@ -326,6 +337,119 @@ def test_list_review_datasets_paginates_versions(monkeypatch):
     v1_id = resp_v1.json()["items"][0]["versions"][0]["id"]
     v2_id = resp_v2.json()["items"][0]["versions"][0]["id"]
     assert v1_id != v2_id
+
+
+def test_create_dataset_candidate_persists_source_fields(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    candidate_payload = {
+        "dataset_id": database.dataset_id,
+        "lake_id": str(uuid4()),
+        "data_uri": "s3://ingest/scene-1.tif",
+        "source_provider": "Sentinel-2 L2A",
+    }
+    try:
+        response = client.post(
+            "/api/v1/datasets/candidates",
+            json=candidate_payload,
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    assert response.json()["dataset_id"] == database.dataset_id
+    assert response.json()["data_uri"] == candidate_payload["data_uri"]
+    assert response.json()["source_provider"] == "Sentinel-2 L2A"
+    assert response.json()["status"] == "PENDING"
+
+
+def test_list_dataset_candidates_includes_latest_decision_and_reason(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    candidate_id = str(uuid4())
+    database.dataset_rows["candidates"] = [
+        {
+            "id": candidate_id,
+            "dataset_id": database.dataset_id,
+            "lake_id": str(uuid4()),
+            "data_uri": "s3://ingest/scene-1.tif",
+            "source_provider": "Sentinel-2 L2A",
+            "submitted_at": "2026-10-27T00:00:00+00:00",
+        }
+    ]
+    database.dataset_rows["candidate_decisions"] = [
+        {
+            "id": str(uuid4()),
+            "candidate_id": candidate_id,
+            "decision": "rejected",
+            "reason": "Cobertura de nubes sobre el límite",
+            "decided_by": database.user_id,
+            "decided_at": "2026-10-28T00:00:00+00:00",
+        }
+    ]
+    try:
+        response = client.get(
+            "/api/v1/datasets/candidates",
+            params={"dataset_id": database.dataset_id},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    candidate = response.json()[0]
+    assert candidate["status"] == "REJECTED"
+    assert candidate["exclusion_reason"] == "Cobertura de nubes sobre el límite"
+    assert candidate["decisions"][0]["decision"] == "rejected"
+
+
+def test_supervisor_can_record_candidate_decision(monkeypatch):
+    database = setup_request(monkeypatch, "supervisor")
+    candidate_id = str(uuid4())
+    database.dataset_rows["candidates"] = [
+        {
+            "id": candidate_id,
+            "dataset_id": database.dataset_id,
+            "lake_id": str(uuid4()),
+            "data_uri": "s3://ingest/scene-1.tif",
+            "source_provider": "Sentinel-2 L2A",
+            "submitted_at": "2026-10-27T00:00:00+00:00",
+        }
+    ]
+    try:
+        response = client.post(
+            f"/api/v1/datasets/candidates/{candidate_id}/decisions",
+            json={"decision": "accepted", "reason": "Escena de buena calidad"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    assert response.json()["candidate_id"] == candidate_id
+    assert response.json()["decision"] == "accepted"
+    assert response.json()["reason"] == "Escena de buena calidad"
+
+
+def test_investigator_cannot_record_candidate_decision(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    candidate_id = str(uuid4())
+    database.dataset_rows["candidates"] = [
+        {
+            "id": candidate_id,
+            "dataset_id": database.dataset_id,
+            "lake_id": str(uuid4()),
+            "data_uri": "s3://ingest/scene-1.tif",
+            "source_provider": "Sentinel-2 L2A",
+            "submitted_at": "2026-10-27T00:00:00+00:00",
+        }
+    ]
+    try:
+        response = client.post(
+            f"/api/v1/datasets/candidates/{candidate_id}/decisions",
+            json={"decision": "rejected", "reason": "Motivo"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert database.dataset_rows["candidate_decisions"] == []
 
 
 def test_list_review_datasets_paginates_decisions(monkeypatch):
