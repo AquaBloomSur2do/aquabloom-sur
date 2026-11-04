@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from shapely.geometry import mapping
 from shapely.wkt import loads as parse_wkt
 
@@ -166,41 +166,6 @@ class SceneOut(BaseModel):
     scene_identifier: str
     acquisition_date: date
     created_at: datetime
-    provider: str | None = None
-    external_id: str | None = None
-    cloud_cover: float | None = None
-    status: str | None = None
-    quality: str | None = None
-    checksum: str | None = None
-    file_count: int = 0
-
-    @model_validator(mode="before")
-    @classmethod
-    def expose_scene_details(cls, value: Any) -> Any:
-        if not isinstance(value, dict):
-            return value
-
-        metadata = value.get("metadata")
-        metadata = metadata if isinstance(metadata, dict) else {}
-        file_references = value.get("file_references")
-        file_count = len(file_references) if isinstance(file_references, list) else 0
-
-        def metadata_value(*keys: str) -> Any:
-            return next(
-                (metadata[key] for key in keys if metadata.get(key) is not None),
-                None,
-            )
-
-        return {
-            **value,
-            "provider": metadata_value("provenance", "provider", "satellite"),
-            "external_id": metadata_value("external_id") or value.get("scene_identifier"),
-            "cloud_cover": metadata_value("cloud_cover_percentage", "cloud_cover"),
-            "status": metadata_value("status", "processing_status"),
-            "quality": metadata_value("quality_status", "quality"),
-            "checksum": metadata_value("sha256", "checksum"),
-            "file_count": file_count,
-        }
 
 
 class PaginatedScenes(BaseModel):

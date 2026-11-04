@@ -349,7 +349,7 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
                       Identificador externo
                     </dt>
                     <dd className="break-all font-mono text-gray-600">
-                      {selectedScene.external_id || selectedScene.scene_identifier}
+                      {selectedScene.external_id || 'No disponible'}
                     </dd>
                   </div>
                   <div>
@@ -363,33 +363,11 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
                     </dd>
                   </div>
                   <div>
-                    <dt className="font-medium text-gray-700">Calidad</dt>
-                    <dd className="text-gray-600">
-                      {selectedScene.quality || 'No disponible'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="font-medium text-gray-700">
-                      Checksum SHA-256
-                    </dt>
-                    <dd className="break-all font-mono text-xs text-gray-600">
-                      {selectedScene.checksum || 'No disponible'}
-                    </dd>
-                  </div>
-                  <div>
                     <dt className="font-medium text-gray-700">
                       Estado de la escena
                     </dt>
                     <dd className="text-gray-600">
                       {selectedScene.status || 'No disponible'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="font-medium text-gray-700">
-                      Archivos asociados
-                    </dt>
-                    <dd className="text-gray-600">
-                      {selectedScene.file_count ?? 0} archivo(s)
                     </dd>
                   </div>
                 </dl>
@@ -410,3 +388,4 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
     </div>
   );
 }
+

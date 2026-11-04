@@ -312,9 +312,4 @@ Ejemplo:
 GET /api/v1/lakes/11111111-1111-1111-1111-111111111111/scenes?start_date=2026-03-01&end_date=2026-03-31&page=1&page_size=20
 ```
 
-La respuesta usa el formato paginado `items`, `page`, `page_size` y `total`.
-Las escenas se leen de `satellite.scenes` después de aplicar
-`database/migrations/015_create_satellite_scenes_table.sql`. Cada escena expone
-un resumen seguro de procedencia, identificador externo, cobertura de nubes,
-estado, calidad, checksum SHA-256 y cantidad de archivos asociados; no devuelve
-el metadata completo ni referencias/rutas de archivos.
+La respuesta usa el formato paginado `items`, `page`, `page_size` y `total`. Cada escena incluye su identificador, lago, identificador de escena, fecha de adquisición y fecha de registro. Para crear la tabla de registros, aplica `database/migrations/013_create_scenes_table.sql`.

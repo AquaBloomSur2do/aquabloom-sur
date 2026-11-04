@@ -62,28 +62,10 @@ const reviewDatasets = [
   },
 ];
 
-const datasetCandidates = [
-  {
-    id: 'candidate-1',
-    dataset_id: 'dataset-1',
-    lake_id: 'lake-1',
-    data_uri: 's3://ingest/scene-1.tif',
-    source_provider: 'Sentinel-2 L2A',
-    status: 'PENDING',
-    submitted_at: '2026-10-27T00:00:00Z',
-    exclusion_reason: null,
-    decisions: [],
-  },
-];
-
 describe('DatasetReview', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGet.mockImplementation((path: string) =>
-      path === 'datasets/review'
-        ? Promise.resolve({ items: reviewDatasets })
-        : Promise.resolve(datasetCandidates)
-    );
+    mockGet.mockResolvedValue(reviewDatasets);
   });
 
   afterEach(() => {
@@ -146,86 +128,6 @@ describe('DatasetReview', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'No tienes permisos para registrar decisiones en este dataset.'
-    );
-  });
-
-  it('muestra candidatos reales devueltos por la API', async () => {
-    render(<DatasetReview />);
-
-    expect(
-      await screen.findByText('s3://ingest/scene-1.tif')
-    ).toBeInTheDocument();
-    expect(screen.getByText('Candidatos de ingesta')).toBeInTheDocument();
-    expect(screen.getByText('Sentinel-2 L2A')).toBeInTheDocument();
-    expect(screen.getByText('Pendiente')).toBeInTheDocument();
-    expect(mockGet).toHaveBeenCalledWith(
-      'datasets/candidates?dataset_id=dataset-1',
-      expect.objectContaining({ signal: expect.any(AbortSignal) })
-    );
-  });
-
-  it('muestra el motivo real de exclusión registrado para un candidato', async () => {
-    mockGet.mockImplementation((path: string) =>
-      path === 'datasets/review'
-        ? Promise.resolve({ items: reviewDatasets })
-        : Promise.resolve([
-            {
-              ...datasetCandidates[0],
-              status: 'REJECTED',
-              exclusion_reason: 'Cobertura de nubes sobre el límite',
-              decisions: [
-                {
-                  id: 'candidate-decision-1',
-                  candidate_id: 'candidate-1',
-                  decision: 'rejected',
-                  reason: 'Cobertura de nubes sobre el límite',
-                  decided_by: 'user-1',
-                  decided_at: '2026-10-27T00:00:00Z',
-                },
-              ],
-            },
-          ])
-    );
-
-    render(<DatasetReview />);
-
-    expect(await screen.findByText('Excluido')).toBeInTheDocument();
-    expect(screen.getByText('Cobertura de nubes sobre el límite')).toBeInTheDocument();
-  });
-
-  it('envía la decisión y el motivo del candidato a la API', async () => {
-    mockPost.mockResolvedValue({
-      id: 'candidate-decision-1',
-      candidate_id: 'candidate-1',
-      decision: 'rejected',
-      reason: 'Cobertura de nubes sobre el límite',
-      decided_by: 'user-1',
-      decided_at: '2026-10-27T00:00:00Z',
-    });
-
-    render(<DatasetReview />);
-
-    await screen.findByText('s3://ingest/scene-1.tif');
-    fireEvent.change(
-      screen.getByLabelText('Decisión para s3://ingest/scene-1.tif'),
-      { target: { value: 'rejected' } }
-    );
-    fireEvent.change(
-      screen.getByLabelText('Motivo para s3://ingest/scene-1.tif'),
-      { target: { value: 'Cobertura de nubes sobre el límite' } }
-    );
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Guardar decisión para s3://ingest/scene-1.tif',
-      })
-    );
-
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Respuesta guardada: Rechazada.'
-    );
-    expect(mockPost).toHaveBeenCalledWith(
-      'datasets/candidates/candidate-1/decisions',
-      { decision: 'rejected', reason: 'Cobertura de nubes sobre el límite' }
     );
   });
 

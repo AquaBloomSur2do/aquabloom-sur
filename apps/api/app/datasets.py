@@ -32,7 +32,6 @@ from app.schemas import DatasetVersionStateUpdate, VersionState
 from dataset.application.schemas import (
     CandidateValidationPayload,
     DatasetCandidateBase,
-    DatasetCandidateDecisionResponse,
     DatasetCandidateResponse,
     DatasetDecisionCreate,
     DatasetManifestBase,
@@ -84,6 +83,14 @@ def validate_state_transition(
 
 
 # --- Stubs de S2-105 para Especificación OpenAPI ---
+
+
+@router.post("/candidates", response_model=DatasetCandidateResponse, status_code=201)
+async def create_candidate(payload: DatasetCandidateBase):
+    """Registra un nuevo dataset candidato."""
+    raise HTTPException(
+        status_code=501, detail="Endpoint en construcción (S2-105)"
+    )
 
 
 @router.post("/decisions", response_model=dict, status_code=201)
@@ -219,189 +226,6 @@ def _raise_publication_database_error(exc: Exception) -> NoReturn:
 def _page_rows(query, page_size: int) -> tuple[list[dict], bool]:
     rows = _rows(query)
     return rows[:page_size], len(rows) > page_size
-
-
-def _candidate_dataset_access(
-    dataset_id: UUID,
-    user_id: str,
-    allowed_roles: set[str],
-) -> dict:
-    dataset_rows = _rows(
-        _require_database()
-        .schema("dataset")
-        .table("datasets")
-        .select("id, organization_id")
-        .eq("id", str(dataset_id))
-        .limit(1)
-    )
-    if not dataset_rows:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="El dataset no existe.",
-        )
-
-    memberships = _rows(
-        _require_database()
-        .table("memberships")
-        .select("role")
-        .eq("user_id", user_id)
-        .eq("organization_id", dataset_rows[0]["organization_id"])
-        .eq("status", "active")
-    )
-    if not any(
-        str(membership.get("role", "")).strip().lower() in allowed_roles
-        for membership in memberships
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para acceder a los candidatos de este dataset.",
-        )
-    return dataset_rows[0]
-
-
-@router.post(
-    "/candidates",
-    response_model=DatasetCandidateResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_candidate(
-    candidate: DatasetCandidateBase,
-    payload: dict = Depends(verify_supabase_jwt),  # noqa: B008
-):
-    user_id = _user_id(payload)
-    _candidate_dataset_access(candidate.dataset_id, user_id, READ_ROLES)
-    inserted = _rows(
-        _require_database()
-        .schema("dataset")
-        .table("candidates")
-        .insert(
-            {
-                **candidate.model_dump(mode="json"),
-            }
-        )
-    )
-    if not inserted:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="No se devolvió el candidato registrado.",
-        )
-    return inserted[0]
-
-
-@router.get(
-    "/candidates",
-    response_model=list[DatasetCandidateResponse],
-)
-def list_dataset_candidates(
-    dataset_id: UUID,
-    page: Annotated[int, Query(ge=1)] = 1,
-    page_size: Annotated[int, Query(ge=1, le=100)] = 50,
-    payload: dict = Depends(verify_supabase_jwt),  # noqa: B008
-):
-    user_id = _user_id(payload)
-    _candidate_dataset_access(dataset_id, user_id, READ_ROLES)
-    dataset_client = _require_database().schema("dataset")
-    offset = (page - 1) * page_size
-    candidates = _rows(
-        dataset_client.table("candidates")
-        .select(
-            "id, dataset_id, lake_id, data_uri, source_provider, submitted_at"
-        )
-        .eq("dataset_id", str(dataset_id))
-        .order("submitted_at", desc=True)
-        .range(offset, offset + page_size - 1)
-    )
-    if not candidates:
-        return []
-
-    candidate_ids = [candidate["id"] for candidate in candidates]
-    decisions = _rows(
-        dataset_client.table("candidate_decisions")
-        .select(
-            "id, candidate_id, decision, reason, decided_by, decided_at"
-        )
-        .in_("candidate_id", candidate_ids)
-        .order("decided_at", desc=True)
-    )
-    decisions_by_candidate: dict[str, list[dict]] = {
-        str(candidate_id): [] for candidate_id in candidate_ids
-    }
-    for decision in decisions:
-        decisions_by_candidate.setdefault(
-            str(decision["candidate_id"]), []
-        ).append(decision)
-
-    response = []
-    for candidate in candidates:
-        candidate_decisions = decisions_by_candidate.get(
-            str(candidate["id"]), []
-        )
-        latest_decision = candidate_decisions[0] if candidate_decisions else None
-        candidate_status = (
-            "APPROVED"
-            if latest_decision and latest_decision["decision"] == "accepted"
-            else "REJECTED"
-            if latest_decision
-            else "PENDING"
-        )
-        response.append(
-            {
-                **candidate,
-                "status": candidate_status,
-                "exclusion_reason": (
-                    latest_decision["reason"]
-                    if latest_decision and latest_decision["decision"] == "rejected"
-                    else None
-                ),
-                "decisions": candidate_decisions,
-            }
-        )
-    return response
-
-
-@router.post(
-    "/candidates/{candidate_id}/decisions",
-    response_model=DatasetCandidateDecisionResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_candidate_decision(
-    candidate_id: UUID,
-    decision_input: DatasetDecisionInput,
-    payload: dict = Depends(verify_supabase_jwt),  # noqa: B008
-):
-    user_id = _user_id(payload)
-    dataset_client = _require_database().schema("dataset")
-    candidates = _rows(
-        dataset_client.table("candidates")
-        .select("id, dataset_id")
-        .eq("id", str(candidate_id))
-        .limit(1)
-    )
-    if not candidates:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="El candidato no existe.",
-        )
-    _candidate_dataset_access(
-        UUID(candidates[0]["dataset_id"]), user_id, APPROVAL_ROLES
-    )
-
-    inserted = _rows(
-        dataset_client.table("candidate_decisions").insert(
-            {
-                "candidate_id": str(candidate_id),
-                "decision": decision_input.decision,
-                "reason": decision_input.reason,
-                "decided_by": user_id,
-            }
-        )
-    )
-    if not inserted:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="No se devolvió la decisión guardada.",
-        )
-    return inserted[0]
 
 
 @router.get("/review")

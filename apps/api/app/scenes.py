@@ -50,12 +50,8 @@ def list_scenes(
 
     offset = (page - 1) * page_size
     response = (
-        client.schema("satellite")
-        .table("scenes")
-        .select(
-            "id, lake_id, scene_identifier, acquisition_date, created_at, metadata, file_references",
-            count="exact",
-        )
+        client.table("scenes")
+        .select("id, lake_id, scene_identifier, acquisition_date, created_at", count="exact")
         .eq("lake_id", str(lake_id))
         .gte("acquisition_date", start_date.isoformat())
         .lte("acquisition_date", end_date.isoformat())

@@ -1,16 +1,8 @@
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    StringConstraints,
-    field_validator,
-    model_validator,
-)
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class CandidateState(str, Enum):
@@ -26,36 +18,14 @@ class VersionState(str, Enum):
 
 
 class DatasetCandidateBase(BaseModel):
-    dataset_id: UUID = Field(..., description="Identificador del dataset asociado")
     lake_id: UUID = Field(..., description="Identificador del lago origen")
-    data_uri: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)
-    ] = Field(..., description="Ruta de almacenamiento o referencia del candidato")
-    source_provider: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
-    ] = Field(
-        ..., description="Procedencia del candidato"
-    )
-
-
-class DatasetCandidateDecisionResponse(BaseModel):
-    id: UUID
-    candidate_id: UUID
-    decision: Literal["accepted", "rejected"]
-    reason: str
-    decided_by: UUID | None
-    decided_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
+    data_uri: str = Field(..., description="Ruta de almacenamiento del dataset candidato (ej. s3://...)")
+    status: CandidateState = Field(default=CandidateState.PENDING, description="Estado actual del candidato")
 
 
 class DatasetCandidateResponse(DatasetCandidateBase):
     id: UUID
     submitted_at: datetime
-    status: CandidateState = CandidateState.PENDING
-    exclusion_reason: str | None = None
-    decisions: list[DatasetCandidateDecisionResponse] = Field(default_factory=list)
-
     model_config = ConfigDict(from_attributes=True)
 
 

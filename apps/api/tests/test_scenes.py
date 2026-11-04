@@ -79,12 +79,6 @@ class FakeSupabase:
                 "scene_identifier": "S2A_MSIL2A_20260320T142701",
                 "acquisition_date": "2026-03-20",
                 "created_at": "2026-03-20T15:00:00Z",
-                "metadata": {
-                    "provenance": "Sentinel-2 L2A",
-                    "sha256": "a" * 64,
-                    "quality_status": "ACCEPTABLE",
-                },
-                "file_references": ["scene.tif"],
             },
             {
                 "id": "33333333-3333-3333-3333-333333333333",
@@ -92,8 +86,6 @@ class FakeSupabase:
                 "scene_identifier": "S2A_MSIL2A_20260310T142701",
                 "acquisition_date": "2026-03-10",
                 "created_at": "2026-03-10T15:00:00Z",
-                "metadata": {},
-                "file_references": [],
             },
         ]
 
@@ -103,10 +95,6 @@ class FakeSupabase:
         elif table_name == "scenes":
             return FakeQueryBuilder("scenes", self.scenes_data)
         return FakeQueryBuilder(table_name, [])
-
-    def schema(self, schema_name):
-        assert schema_name == "satellite"
-        return self
 
 
 @pytest.fixture
@@ -139,30 +127,6 @@ def test_list_scenes_filters_by_lake_and_inclusive_date_range(scenes_client):
     data = response.json()
     assert len(data["items"]) == 1
     assert data["items"][0]["acquisition_date"] == "2026-03-20"
-    assert data["items"][0]["provider"] == "Sentinel-2 L2A"
-    assert data["items"][0]["quality"] == "ACCEPTABLE"
-    assert data["items"][0]["checksum"] == "a" * 64
-    assert data["items"][0]["file_count"] == 1
-    assert "metadata" not in data["items"][0]
-
-
-def test_list_scenes_alias_returns_satellite_details(scenes_client):
-    client, _ = scenes_client
-
-    response = client.get(
-        "/api/v1/scenes",
-        params={
-            "lake_id": LAKE_ID,
-            "start_date": "2026-03-20",
-            "end_date": "2026-03-20",
-        },
-        headers=AUTH_HEADER,
-    )
-
-    assert response.status_code == 200
-    item = response.json()["items"][0]
-    assert item["scene_identifier"] == "S2A_MSIL2A_20260320T142701"
-    assert item["checksum"] == "a" * 64
 
 
 def test_list_scenes_is_paginated_and_ordered_newest_first(scenes_client):

@@ -8,9 +8,6 @@ export interface Scene {
   external_id?: string | null;
   cloud_cover?: number | null;
   status?: 'pending' | 'processed' | 'failed' | 'rejected' | null;
-  quality?: string | null;
-  checksum?: string | null;
-  file_count?: number;
 }
 
 export interface PaginatedScenes {

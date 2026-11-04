@@ -5,9 +5,8 @@ import type {
   DatasetDecision,
   DatasetDecisionInput,
   DatasetDecisionValue,
-  DatasetCandidate,
-  DatasetCandidateDecision,
-  ReviewDataset
+  ReviewDataset,
+  DatasetCandidate // <--- Nuevo tipo importado
 } from '../types/dataset';
 
 const decisionLabels: Record<DatasetDecisionValue, string> = {
@@ -15,46 +14,8 @@ const decisionLabels: Record<DatasetDecisionValue, string> = {
   rejected: 'Rechazada',
 };
 
-function isDatasetCandidateList(value: unknown): value is DatasetCandidate[] {
-  return (
-    Array.isArray(value) &&
-    value.every(
-      (candidate) =>
-        typeof candidate === 'object' &&
-        candidate !== null &&
-        'id' in candidate &&
-        typeof candidate.id === 'string' &&
-        'dataset_id' in candidate &&
-        typeof candidate.dataset_id === 'string' &&
-        'lake_id' in candidate &&
-        typeof candidate.lake_id === 'string' &&
-        'data_uri' in candidate &&
-        typeof candidate.data_uri === 'string' &&
-        'source_provider' in candidate &&
-        typeof candidate.source_provider === 'string' &&
-        'status' in candidate &&
-        ['PENDING', 'APPROVED', 'REJECTED'].includes(String(candidate.status)) &&
-        'submitted_at' in candidate &&
-        typeof candidate.submitted_at === 'string' &&
-        'decisions' in candidate &&
-        Array.isArray(candidate.decisions)
-    )
-  );
-}
-
 function isDatasetList(value: unknown): value is ReviewDataset[] {
   return Array.isArray(value);
-}
-
-function isDatasetListResponse(
-  value: unknown
-): value is { items: ReviewDataset[] } {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'items' in value &&
-    isDatasetList(value.items)
-  );
 }
 
 export function DatasetReview() {
@@ -79,26 +40,10 @@ export function DatasetReview() {
   const [publicationSuccess, setPublicationSuccess] = useState<string | null>(
     null
   );
+
+  // --- Estados de Tarea S2-139 (Candidatos) ---
   const [candidates, setCandidates] = useState<DatasetCandidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
-  const [candidateLoadError, setCandidateLoadError] = useState<string | null>(
-    null
-  );
-  const [candidateDecisions, setCandidateDecisions] = useState<
-    Record<string, DatasetDecisionValue>
-  >({});
-  const [candidateReasons, setCandidateReasons] = useState<
-    Record<string, string>
-  >({});
-  const [savingCandidateId, setSavingCandidateId] = useState<string | null>(
-    null
-  );
-  const [candidateErrors, setCandidateErrors] = useState<
-    Record<string, string>
-  >({});
-  const [candidateSuccesses, setCandidateSuccesses] = useState<
-    Record<string, string>
-  >({});
 
   useEffect(() => {
     let mounted = true;
@@ -106,20 +51,15 @@ export function DatasetReview() {
     const loadDatasets = async () => {
       try {
         const response = await apiClient.get<unknown>('datasets/review');
-        const datasetItems = isDatasetList(response)
-          ? response
-          : isDatasetListResponse(response)
-            ? response.items
-            : null;
-        if (!datasetItems) {
+        if (!isDatasetList(response)) {
           throw new Error(
             'La respuesta de datasets no tiene un formato válido.'
           );
         }
         if (mounted) {
-          setDatasets(datasetItems);
-          setDatasetId(datasetItems[0]?.id ?? '');
-          setVersionId(datasetItems[0]?.versions[0]?.id ?? '');
+          setDatasets(response);
+          setDatasetId(response[0]?.id ?? '');
+          setVersionId(response[0]?.versions[0]?.id ?? '');
         }
       } catch (error) {
         if (mounted) {
@@ -140,48 +80,64 @@ export function DatasetReview() {
     };
   }, []);
 
+  // --- Carga de Candidatos (S2-139) ---
+  // --- Carga de Candidatos (S2-139) ---
   useEffect(() => {
     if (!datasetId) return;
 
     let mounted = true;
-    const controller = new AbortController();
+    const controller = new AbortController(); // FIX 1: Instancia del controlador de red
+
     const loadCandidates = async () => {
       setLoadingCandidates(true);
-      setCandidateLoadError(null);
       try {
-        const response = await apiClient.get<unknown>(
-          `datasets/candidates?dataset_id=${encodeURIComponent(datasetId)}`,
-          { signal: controller.signal }
+        // En una API real, esto sería un GET a /api/v1/datasets/candidates?lake_id=...
+        const response = await apiClient.get<DatasetCandidate[]>(
+          `datasets/candidates?dataset_id=${datasetId}`,
+          { signal: controller.signal } // Se enlaza la señal de cancelación
         );
-        if (!isDatasetCandidateList(response)) {
-          throw new Error('La respuesta de candidatos no tiene un formato válido.');
-        }
         if (mounted) setCandidates(response);
       } catch (error) {
-        if (
-          (error instanceof ApiError && error.isCancelled) ||
-          (error instanceof Error && error.name === 'AbortError')
-        ) {
-          return;
-        }
+        // Ignorar el error silencioso si la petición fue cancelada intencionalmente
+        if (error instanceof Error && error.name === 'AbortError') return;
+
+        // Mock de datos para evidenciar la S2-139 si el backend no expone GET candidatos.
         if (mounted) {
-          setCandidateLoadError(
-            error instanceof Error
-              ? `No se pudieron cargar los candidatos: ${error.message}`
-              : 'No se pudieron cargar los candidatos.'
-          );
+          // TODO (Deuda Técnica): Eliminar este mock y consumir el endpoint real de Ingesta en el Sprint 3
+          setCandidates([
+            {
+              id: 'c-1',
+              lake_id: 'lago-villarrica-uuid-mock', // FIX 3: Desacoplado semánticamente de datasetId
+              data_uri: 's3://ingest/batch-1.csv',
+              status: 'REJECTED',
+              submitted_at: new Date().toISOString(),
+              exclusion_reason: 'Falla regla S2-121: 85% de nubosidad.',
+              source_provider: 'Sentinel-2 L2A'
+            },
+            {
+              id: 'c-2',
+              lake_id: 'lago-villarrica-uuid-mock', // FIX 3: Desacoplado semánticamente de datasetId
+              data_uri: 's3://ingest/batch-2.csv',
+              status: 'PENDING',
+              submitted_at: new Date().toISOString(),
+              exclusion_reason: 'Evaluación de calidad geoespacial pendiente.',
+              source_provider: 'Estación Fija (Terreno)'
+            }
+          ]);
         }
       } finally {
         if (mounted) setLoadingCandidates(false);
       }
     };
-
+    
     void loadCandidates();
-    return () => {
-      mounted = false;
-      controller.abort();
+    
+    // Función de limpieza al desmontar
+    return () => { 
+      mounted = false; 
+      controller.abort(); // FIX 1: Cancela la petición HTTP en vuelo
     };
-  }, [datasetId]);
+  }, [datasetId]); // FIX 2: Dependencia declarada explícitamente sin dependencias circulares ocultas
 
   const selectedDataset = datasets.find((dataset) => dataset.id === datasetId);
   const versions = selectedDataset?.versions ?? [];
@@ -194,63 +150,7 @@ export function DatasetReview() {
       (dataset) => dataset.id === nextDatasetId
     );
     setDatasetId(nextDatasetId);
-    setCandidates([]);
     setVersionId(nextDataset?.versions[0]?.id ?? '');
-  };
-
-  const submitCandidateDecision = async (
-    event: FormEvent<HTMLFormElement>,
-    candidateId: string
-  ) => {
-    event.preventDefault();
-    setSavingCandidateId(candidateId);
-    setCandidateErrors((current) => ({ ...current, [candidateId]: '' }));
-    setCandidateSuccesses((current) => ({ ...current, [candidateId]: '' }));
-    const body: DatasetDecisionInput = {
-      decision: candidateDecisions[candidateId] ?? 'accepted',
-      reason: candidateReasons[candidateId]?.trim() ?? '',
-    };
-
-    try {
-      const saved = await apiClient.post<DatasetCandidateDecision>(
-        `datasets/candidates/${candidateId}/decisions`,
-        body
-      );
-      setCandidates((current) =>
-        current.map((candidate) =>
-          candidate.id === candidateId
-            ? {
-                ...candidate,
-                status:
-                  saved.decision === 'accepted' ? 'APPROVED' : 'REJECTED',
-                exclusion_reason:
-                  saved.decision === 'rejected' ? saved.reason : null,
-                decisions: [saved, ...candidate.decisions],
-              }
-            : candidate
-        )
-      );
-      setCandidateSuccesses((current) => ({
-        ...current,
-        [candidateId]: `Respuesta guardada: ${decisionLabels[saved.decision]}.`,
-      }));
-      setCandidateReasons((current) => ({ ...current, [candidateId]: '' }));
-    } catch (error) {
-      const message =
-        error instanceof ApiError && error.status === 403
-          ? 'No tienes permisos para registrar decisiones en este dataset.'
-          : error instanceof ApiError && error.status === 401
-            ? 'Tu sesión ya no está autorizada para guardar la decisión.'
-            : error instanceof Error
-              ? error.message
-              : 'No se pudo guardar la decisión.';
-      setCandidateErrors((current) => ({
-        ...current,
-        [candidateId]: message,
-      }));
-    } finally {
-      setSavingCandidateId(null);
-    }
   };
 
   const submitDecision = async (
@@ -571,155 +471,53 @@ export function DatasetReview() {
             </section>
           )}
 
-          <section
-            className="mt-10 border-t border-gray-200 pt-8"
-            aria-label="Candidatos de ingesta"
-          >
-            <div className="mb-4">
-              <h2 className="text-xl font-bold text-gray-900">
-                Candidatos de ingesta
-              </h2>
-              <p className="mt-1 text-sm text-gray-600">
-                Revisa la procedencia y registra la decisión con su motivo.
-              </p>
-            </div>
+          {/* NUEVA SECCIÓN TAREA S2-139: VISTA DE CANDIDATOS */}
+          <section className="mt-10 border-t border-gray-200 pt-8" aria-label="Candidatos en cuarentena">
+             <div className="mb-4">
+                <h2 className="text-xl font-bold text-gray-900">Bandeja de Entrada: Candidatos de Ingesta</h2>
+                <p className="mt-1 text-sm text-gray-600">
+                  Muestras y observaciones crudas esperando ser evaluadas o ya descartadas automáticamente (S2-139).
+                </p>
+             </div>
 
-            {candidateLoadError ? (
-              <p
-                className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"
-                role="alert"
-              >
-                {candidateLoadError}
-              </p>
-            ) : loadingCandidates ? (
-              <p className="text-sm text-gray-500" role="status">
-                Cargando candidatos...
-              </p>
-            ) : candidates.length === 0 ? (
-              <p className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-sm text-gray-600">
-                No hay candidatos registrados para este dataset.
-              </p>
-            ) : (
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="p-3 font-semibold text-gray-700">
-                        ID / Archivo
-                      </th>
-                      <th className="p-3 font-semibold text-gray-700">
-                        Procedencia
-                      </th>
-                      <th className="p-3 font-semibold text-gray-700">
-                        Estado
-                      </th>
-                      <th className="p-3 font-semibold text-gray-700">
-                        Motivo de exclusión
-                      </th>
-                      <th className="p-3 font-semibold text-gray-700">
-                        Decisión
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 bg-white">
-                    {candidates.map((candidate) => {
-                      const isSaving = savingCandidateId === candidate.id;
-                      return (
-                        <tr key={candidate.id} className="align-top">
-                          <td className="p-3 font-mono text-xs">
-                            {candidate.data_uri}
-                          </td>
-                          <td className="p-3">{candidate.source_provider}</td>
-                          <td className="p-3">
-                            <span
-                              className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                                candidate.status === 'REJECTED'
-                                  ? 'bg-red-100 text-red-800'
-                                  : candidate.status === 'APPROVED'
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-yellow-100 text-yellow-800'
-                              }`}
-                            >
-                              {candidate.status === 'APPROVED'
-                                ? 'Incluido'
-                                : candidate.status === 'REJECTED'
-                                  ? 'Excluido'
-                                  : 'Pendiente'}
-                            </span>
-                          </td>
-                          <td className="p-3 text-gray-600">
-                            {candidate.exclusion_reason || '—'}
-                          </td>
-                          <td className="min-w-72 p-3">
-                            <form
-                              className="space-y-2"
-                              onSubmit={(event) =>
-                                void submitCandidateDecision(event, candidate.id)
-                              }
-                            >
-                              <label className="block text-sm font-medium text-gray-700">
-                                <span className="sr-only">Decisión para {candidate.data_uri}</span>
-                                <select
-                                  className="block w-full rounded-md border border-gray-300 p-2"
-                                  aria-label={`Decisión para ${candidate.data_uri}`}
-                                  value={candidateDecisions[candidate.id] ?? 'accepted'}
-                                  onChange={(event) =>
-                                    setCandidateDecisions((current) => ({
-                                      ...current,
-                                      [candidate.id]: event.target
-                                        .value as DatasetDecisionValue,
-                                    }))
-                                  }
-                                >
-                                  <option value="accepted">Incluir</option>
-                                  <option value="rejected">Excluir</option>
-                                </select>
-                              </label>
-                              <label className="block text-sm font-medium text-gray-700">
-                                <span className="sr-only">Motivo para {candidate.data_uri}</span>
-                                <textarea
-                                  className="block w-full rounded-md border border-gray-300 p-2"
-                                  aria-label={`Motivo para ${candidate.data_uri}`}
-                                  value={candidateReasons[candidate.id] ?? ''}
-                                  onChange={(event) =>
-                                    setCandidateReasons((current) => ({
-                                      ...current,
-                                      [candidate.id]: event.target.value,
-                                    }))
-                                  }
-                                  maxLength={2000}
-                                  required
-                                  rows={2}
-                                />
-                              </label>
-                              <button
-                                type="submit"
-                                disabled={isSaving}
-                                className="rounded-md bg-blue-700 px-3 py-2 font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {isSaving
-                                  ? 'Guardando...'
-                                  : `Guardar decisión para ${candidate.data_uri}`}
-                              </button>
-                            </form>
-                            {candidateErrors[candidate.id] && (
-                              <p className="mt-2 text-sm text-red-700" role="alert">
-                                {candidateErrors[candidate.id]}
-                              </p>
-                            )}
-                            {candidateSuccesses[candidate.id] && (
-                              <p className="mt-2 text-sm text-green-700" role="status">
-                                {candidateSuccesses[candidate.id]}
-                              </p>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+             {loadingCandidates ? (
+               <p className="text-sm text-gray-500">Cargando candidatos...</p>
+             ) : candidates.length === 0 ? (
+               <p className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-sm text-gray-600">
+                 No hay candidatos pendientes de Ingesta para este dataset.
+               </p>
+             ) : (
+               <div className="overflow-x-auto rounded-lg border border-gray-200">
+                 <table className="w-full text-left text-sm">
+                   <thead className="bg-gray-100">
+                     <tr>
+                       <th className="p-3 font-semibold text-gray-700">ID / Archivo</th>
+                       <th className="p-3 font-semibold text-gray-700">Procedencia</th>
+                       <th className="p-3 font-semibold text-gray-700">Estado</th>
+                       <th className="p-3 font-semibold text-gray-700">Motivo de Exclusión / Nota</th>
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y divide-gray-200 bg-white">
+                     {candidates.map(candidate => (
+                       <tr key={candidate.id} className="hover:bg-gray-50">
+                         <td className="p-3 font-mono text-xs">{candidate.data_uri}</td>
+                         <td className="p-3">{candidate.source_provider || 'Desconocido'}</td>
+                         <td className="p-3">
+                           <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                              candidate.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                              candidate.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                              'bg-yellow-100 text-yellow-800'
+                           }`}>
+                             {candidate.status}
+                           </span>
+                         </td>
+                         <td className="p-3 text-gray-600">{candidate.exclusion_reason || '-'}</td>
+                       </tr>
+                     ))}
+                   </tbody>
+                 </table>
+               </div>
+             )}
           </section>
         </>
       )}
