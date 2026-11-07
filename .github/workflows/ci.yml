@@ -35,6 +35,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: .
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_KEY: test-key
     steps:
       - name: Checkout del código
         uses: actions/checkout@v4
@@ -45,7 +47,8 @@ jobs:
       - name: Instalar dependencias
         run: |
           pip install -r apps/api/requirements.txt
-          pip install pytest ruff
+          pip install -r apps/satellite/requirements.txt
+          pip install pytest ruff redis rasterio pyjwt httpx
       - name: Ejecutar Linter
         run: ruff check apps/api/
       - name: Ejecutar pruebas
@@ -56,6 +59,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: .
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_KEY: test-key
     steps:
       - name: Checkout del código
         uses: actions/checkout@v4
@@ -66,9 +71,11 @@ jobs:
       - name: Instalar dependencias y herramientas
         run: |
           pip install -r apps/satellite/requirements.txt
-          pip install httpx pytest ruff
+          pip install -r apps/api/requirements.txt
+          pip install pytest ruff redis rasterio pyjwt httpx
       - name: Ejecutar linter
         run: ruff check apps/satellite/
       - name: Ejecutar pruebas
         run: pytest apps/satellite/tests/ -v
 
+        
