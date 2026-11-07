@@ -1,8 +1,10 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-
-from apps.satellite.app.domains.observations.domain_observations import SCENE_PAIR_WINDOW, filter_scene_pairs
+from apps.satellite.app.domains.observations.domain_observations import (
+    SCENE_PAIR_WINDOW,
+    filter_scene_pairs,
+)
 
 
 def test_filter_scene_pairs_accepts_pairs_inside_and_on_window_boundary():

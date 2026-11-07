@@ -8,8 +8,8 @@ from pydantic import ValidationError
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 
-from apps.api.app.domains.catalog.domain_catalog import validate_station_inside_lake
 from apps.api.app.domains.catalog.controller_catalog import create_station
+from apps.api.app.domains.catalog.domain_catalog import validate_station_inside_lake
 from apps.api.app.domains.catalog.schemas_catalog import StationCreate
 
 

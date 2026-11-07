@@ -2,11 +2,10 @@ import secrets
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
-
 from apps.api.app.core.auth import verify_supabase_jwt
 from apps.api.app.core.config import settings
 from apps.api.app.core.permissions import has_permission
+from fastapi import Depends, Header, HTTPException, status
 
 __all__ = ["mock_get_current_user", "require_internal_service", "require_permission"]
 

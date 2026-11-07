@@ -1,7 +1,5 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Security, status
-
 from apps.api.app.core.auth import verify_supabase_jwt
 from apps.api.app.core.database import supabase
 from apps.api.app.core.dependencies import require_admin
@@ -22,6 +20,7 @@ from apps.api.app.domains.identity.service_identity import (
     get_organization_members_for_user,
     get_user_organizations_service,
 )
+from fastapi import APIRouter, Depends, HTTPException, Security, status
 
 router = APIRouter()
 

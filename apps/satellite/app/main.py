@@ -23,11 +23,16 @@ try:
     )
 except ModuleNotFoundError:
     from apps.satellite.app.core.config import settings
-    from apps.satellite.app.core.queueing import enqueue_measurement_summary, get_redis_client
+    from apps.satellite.app.core.queueing import (
+        enqueue_measurement_summary,
+        get_redis_client,
+    )
     from apps.satellite.app.domains.observations.controller_observations import (
         router as observations_router,
     )
-    from apps.satellite.app.domains.scenes.controller_scenes import router as scenes_router
+    from apps.satellite.app.domains.scenes.controller_scenes import (
+        router as scenes_router,
+    )
 
 app = FastAPI(
     title=settings.service_name,

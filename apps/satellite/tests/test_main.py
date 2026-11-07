@@ -1,13 +1,15 @@
 import json
 import logging
 
+from apps.satellite.app.core.config import Settings
+from apps.satellite.app.core.queueing import TASK_QUEUE, get_redis_client
+from apps.satellite.app.domains.observations.service_observations import (
+    consume_once,
+    execute_task,
+)
+from apps.satellite.app.main import app
 from fastapi.testclient import TestClient
 from redis.exceptions import RedisError
-
-from apps.satellite.app.core.config import Settings
-from apps.satellite.app.main import app
-from apps.satellite.app.core.queueing import TASK_QUEUE, get_redis_client
-from apps.satellite.app.domains.observations.service_observations import consume_once, execute_task
 
 client = TestClient(app)
 

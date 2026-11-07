@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from shapely.geometry import mapping
 from shapely.wkt import loads as parse_wkt
 
-
 # --- Esquemas de Lake ---
 
 

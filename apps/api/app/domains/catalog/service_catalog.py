@@ -4,6 +4,8 @@ from uuid import UUID
 from apps.api.app.core.permissions import CATALOG_ACTIONS, has_permission
 from apps.api.app.domains.catalog.model_catalog import (
     get_lake_by_id as get_active_lake_by_id,
+)
+from apps.api.app.domains.catalog.model_catalog import (
     soft_delete_lake,
 )
 from apps.api.app.domains.catalog.schemas_catalog import (

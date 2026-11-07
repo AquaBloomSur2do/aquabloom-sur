@@ -2,11 +2,12 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
-from fastapi.testclient import TestClient
-
 from apps.api.app.core.auth import verify_supabase_jwt
+from apps.api.app.domains.identity.service_identity import (
+    get_organization_members_for_user,
+)
 from apps.api.app.main import app
-from apps.api.app.domains.identity.service_identity import get_organization_members_for_user
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 

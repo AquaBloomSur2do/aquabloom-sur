@@ -1,9 +1,3 @@
-from fastapi import Depends, FastAPI
-from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from starlette.exceptions import HTTPException as StarletteHTTPException
-
 from apps.api.app.core.auth import AuthException
 from apps.api.app.core.auth import router as auth_router
 from apps.api.app.core.config import settings
@@ -26,7 +20,6 @@ from apps.api.app.domains.ingestion.controller_ingestion import (
     router as ingestion_router,
 )
 from apps.api.app.gateway.controller_gateway import router as gateway_router
-
 from apps.satellite.app.domains.observations.controller_observations import (
     router as observations_router,
 )
@@ -36,6 +29,11 @@ from apps.satellite.app.domains.scenes.controller_scenes import (
 from apps.scientific.app.domains.execution.controller_execution import (
     router as execution_router,
 )
+from fastapi import Depends, FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},

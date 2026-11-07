@@ -1,8 +1,5 @@
 from uuid import UUID
 
-from fastapi import HTTPException, status
-from supabase import Client
-
 from apps.api.app.domains.identity.model_identity import (
     count_active_lakes,
     count_active_stations,
@@ -23,6 +20,8 @@ from apps.api.app.domains.identity.model_identity import (
     upsert_user_profile,
 )
 from apps.api.app.domains.identity.schemas_identity import DashboardSummaryResponse
+from fastapi import HTTPException, status
+from supabase import Client
 
 
 def get_dashboard_summary(

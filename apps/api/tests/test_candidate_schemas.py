@@ -2,13 +2,12 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
-
 from apps.api.app.domains.dataset.schemas_dataset import (
     CandidateValidationPayload,
     CandidateVariableMetadata,
     IncorporateCandidatesInput,
 )
+from pydantic import ValidationError
 
 
 def test_ph_requires_adimensional_unit():

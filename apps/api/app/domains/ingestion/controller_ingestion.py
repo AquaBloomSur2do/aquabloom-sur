@@ -1,17 +1,5 @@
 from typing import Annotated
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    File,
-    Header,
-    HTTPException,
-    Query,
-    Response,
-    UploadFile,
-    status,
-)
-
 from apps.api.app.core.auth import verify_supabase_jwt
 from apps.api.app.core.database import supabase
 from apps.api.app.domains.ingestion.schemas_ingestion import (
@@ -24,6 +12,17 @@ from apps.api.app.domains.ingestion.service_ingestion import (
     list_samples_service,
     process_file_import_service,
     register_prepared_input_service,
+)
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Header,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
 )
 
 router = APIRouter()
@@ -105,7 +104,7 @@ async def list_samples(
         return list_samples_service(
             supabase, quarantine=quarantine, page=page, page_size=page_size
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al consultar las muestras: {e!s}",

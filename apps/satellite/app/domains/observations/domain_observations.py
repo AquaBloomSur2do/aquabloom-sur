@@ -1,13 +1,12 @@
-from collections.abc import Iterable, Mapping
-from datetime import datetime, timedelta
 import logging
 import math
+from collections.abc import Iterable, Mapping
+from datetime import datetime, timedelta
 from math import fsum
 from pathlib import Path
 
 import numpy as np
 import rasterio
-
 from apps.satellite.app.domains.observations.schemas_observations import (
     NdciObservationSchema,
 )

@@ -3,10 +3,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 import rasterio
+from apps.satellite.app.domains.observations.domain_observations import (
+    calculate_ndci,
+    process_pilot_ndci,
+)
+from apps.satellite.app.domains.observations.schemas_observations import (
+    NdciObservationSchema,
+)
 from rasterio.transform import from_origin
-
-from apps.satellite.app.domains.observations.domain_observations import calculate_ndci, process_pilot_ndci
-from apps.satellite.app.domains.observations.schemas_observations import NdciObservationSchema
 
 
 @pytest.fixture

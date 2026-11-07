@@ -10,8 +10,8 @@ os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 from apps.api.app.core import auth
 from apps.api.app.domains.catalog import controller_catalog as lakes_module
 from apps.api.app.domains.catalog import model_catalog as repositories_module
-from apps.api.app.main import app
 from apps.api.app.domains.catalog.model_catalog import get_active_lakes
+from apps.api.app.main import app
 
 
 class FakeResponse:

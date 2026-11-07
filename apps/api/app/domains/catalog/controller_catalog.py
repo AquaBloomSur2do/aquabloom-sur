@@ -4,8 +4,6 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-
 from apps.api.app.core.auth import (
     optional_verify_supabase_jwt,
     require_catalog_create_permission,
@@ -44,6 +42,7 @@ from apps.api.app.domains.catalog.schemas_catalog import (
 )
 from apps.api.app.domains.catalog.service_catalog import disable_lake, get_lake_by_id
 from apps.api.app.domains.identity.service_identity import log_audit_event
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 router = APIRouter()
 lakes_router = APIRouter(prefix="/api/v1/lakes", tags=["Catalog"])

@@ -2,12 +2,11 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-
 from apps.satellite.app.core.auth import verify_supabase_jwt
 from apps.satellite.app.core.database import supabase
 from apps.satellite.app.domains.scenes.schemas_scenes import PaginatedScenes
 from apps.satellite.app.domains.scenes.service_scenes import list_scenes_service
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 router = APIRouter(prefix="/api/v1/scenes", tags=["Scenes"])
 
