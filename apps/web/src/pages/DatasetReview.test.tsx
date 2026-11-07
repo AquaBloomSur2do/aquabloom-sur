@@ -149,6 +149,11 @@ describe('DatasetReview', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Versión publicada. ID: version-1'
     );
+    expect(
+      screen.getByText(
+        new Date('2026-10-29T00:00:00Z').toLocaleDateString()
+      )
+    ).toBeInTheDocument();
     expect(mockPublishVersion).toHaveBeenCalledWith('version-1');
     expect(
       screen.getByRole('button', { name: 'Versión publicada' })

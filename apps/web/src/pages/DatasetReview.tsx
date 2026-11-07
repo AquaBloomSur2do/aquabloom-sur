@@ -369,6 +369,13 @@ export function DatasetReview() {
               className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900"
             >
               <p className="font-semibold">Publicado oficialmente</p>
+              {selectedVersion.published_at && (
+                <p>
+                  {new Date(
+                    selectedVersion.published_at,
+                  ).toLocaleDateString()}
+                </p>
+              )}
             </section>
           )}
 
