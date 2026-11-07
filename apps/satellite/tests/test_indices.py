@@ -1,6 +1,6 @@
 import numpy as np
 
-from app.indices import calculate_ndwi
+from apps.satellite.app.domains.observations.domain_observations import calculate_ndwi
 
 
 def test_calculate_ndwi_uses_mcfeeters_formula():

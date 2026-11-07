@@ -1,6 +1,6 @@
 import pytest
 
-from app.permissions import CATALOG_ACTIONS, check_catalog_permission
+from apps.api.app.core.permissions import CATALOG_ACTIONS, check_catalog_permission
 
 
 def test_explicit_roles_permissions():
