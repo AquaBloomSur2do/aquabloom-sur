@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
+
 from apps.satellite.app.domains.observations.schemas_observations import (
     NdciObservationSchema,
 )

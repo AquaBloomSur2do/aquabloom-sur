@@ -4,7 +4,6 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
-
 from scripts.prepare_pilot_data import generate_pilot_data
 
 

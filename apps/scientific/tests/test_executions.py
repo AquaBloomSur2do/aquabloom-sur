@@ -13,10 +13,10 @@ os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 
 from apps.scientific.app.core.config import settings
 from apps.scientific.app.main import app
-from apps.scientific.app.domains.execution import controller_execution as execution_router
 
 settings.internal_service_token = SecretStr("test-secret-token")
 from apps.api.app.core.config import settings as api_settings
+
 api_settings.internal_service_token = SecretStr("test-secret-token")
 client = TestClient(app)
 

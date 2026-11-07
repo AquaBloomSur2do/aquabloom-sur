@@ -1,7 +1,8 @@
-from apps.api.app.core.auth import AuthException
-from apps.api.app.domains.identity.schemas_identity import ErrorResponse
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+from apps.api.app.core.auth import AuthException
+from apps.api.app.domains.identity.schemas_identity import ErrorResponse
 
 
 async def global_exception_handler(request: Request, exc: Exception):

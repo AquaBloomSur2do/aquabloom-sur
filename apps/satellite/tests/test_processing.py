@@ -1,6 +1,7 @@
 import logging
 
 import numpy as np
+
 from apps.satellite.app.domains.observations.domain_observations import (
     apply_quality_mask,
 )

@@ -1,4 +1,5 @@
 import pytest
+
 from apps.api.app.core.permissions import CATALOG_ACTIONS, check_catalog_permission
 
 

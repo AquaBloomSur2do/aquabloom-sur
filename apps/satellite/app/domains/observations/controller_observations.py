@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
 from apps.satellite.app.core.auth import verify_supabase_jwt
 from apps.satellite.app.core.database import supabase
 from apps.satellite.app.domains.observations.schemas_observations import (
@@ -11,7 +13,6 @@ from apps.satellite.app.domains.observations.service_observations import (
     extract_observation_user_id,
     get_observations_service,
 )
-from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 router = APIRouter(prefix="/api/v1/observations", tags=["Observations"])
 

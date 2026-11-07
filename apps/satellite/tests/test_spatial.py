@@ -1,4 +1,5 @@
 import pytest
+
 from apps.satellite.app.domains.observations.domain_observations import (
     SpatialThresholdError,
     validate_spatial_pair,

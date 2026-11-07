@@ -1,4 +1,5 @@
 import numpy as np
+
 from apps.satellite.app.domains.observations.domain_observations import calculate_ndwi
 
 

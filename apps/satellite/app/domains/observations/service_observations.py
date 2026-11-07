@@ -4,6 +4,9 @@ import time
 from typing import Any, Protocol
 from uuid import UUID
 
+from fastapi import HTTPException, status
+from redis.exceptions import RedisError
+
 from apps.satellite.app.core.queueing import TASK_QUEUE, get_redis_client
 from apps.satellite.app.domains.observations.domain_observations import (
     summarize_measurements,
@@ -18,8 +21,6 @@ from apps.satellite.app.domains.observations.model_observations import (
 from apps.satellite.app.domains.observations.schemas_observations import (
     SpectralObservationCreate,
 )
-from fastapi import HTTPException, status
-from redis.exceptions import RedisError
 
 logger = logging.getLogger("scientific-worker")
 

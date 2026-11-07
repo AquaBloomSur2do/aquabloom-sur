@@ -1,10 +1,11 @@
-import apps.api.app.domains.catalog.controller_catalog as lakes_module
 import pytest
+from fastapi.testclient import TestClient
+from starlette import status
+
+import apps.api.app.domains.catalog.controller_catalog as lakes_module
 from apps.api.app.core.auth import verify_supabase_jwt
 from apps.api.app.main import app
 from apps.satellite.app.domains.scenes import controller_scenes as scenes_module
-from fastapi.testclient import TestClient
-from starlette import status
 
 LAKE_ID = "11111111-1111-1111-1111-111111111111"
 AUTH_HEADER = {"Authorization": "Bearer fake_token"}

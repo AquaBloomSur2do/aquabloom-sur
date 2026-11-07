@@ -1,6 +1,8 @@
 from datetime import date
 from uuid import UUID
 
+from fastapi import HTTPException, status
+
 from apps.satellite.app.domains.scenes.domain_scenes import (
     is_valid_scene_date_range,
 )
@@ -8,7 +10,6 @@ from apps.satellite.app.domains.scenes.model_scenes import (
     lake_exists_in_db,
     query_scenes_by_lake_and_dates,
 )
-from fastapi import HTTPException, status
 
 
 def list_scenes_service(

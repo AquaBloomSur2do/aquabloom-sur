@@ -1,9 +1,10 @@
+from fastapi import APIRouter, Request, Response
+
 from apps.api.app.core.config import settings
 from apps.api.app.gateway.service_gateway import (
     PROXY_METHODS,
     forward_proxy_request,
 )
-from fastapi import APIRouter, Request, Response
 
 router = APIRouter(tags=["Gateway"])
 

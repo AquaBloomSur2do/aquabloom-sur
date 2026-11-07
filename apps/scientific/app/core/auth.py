@@ -7,10 +7,10 @@ from fastapi import APIRouter, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
+from apps.api.app.domains.identity.service_identity import get_current_user_profile
 from apps.scientific.app.core.config import settings
 from apps.scientific.app.core.database import supabase
 from apps.scientific.app.core.permissions import CATALOG_ACTIONS, has_permission
-from apps.api.app.domains.identity.service_identity import get_current_user_profile
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 security = HTTPBearer()
