@@ -15,7 +15,7 @@ export function SatelliteQueryPanel({ lakeId }: SatelliteQueryPanelProps) {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await apiClient.get<SatelliteScene[]>(`/api/v1/satellite/scenes?lake_id=${lakeId}`);
+      const data = await apiClient.get<SatelliteScene[]>(`satellite/scenes?lake_id=${lakeId}`);
       setScenes(data);
     } catch {
       setError('Error al consultar las escenas satelitales.');
@@ -30,7 +30,7 @@ export function SatelliteQueryPanel({ lakeId }: SatelliteQueryPanelProps) {
       setIsLoading(true);
       setError(null);
       try {
-        const data = await apiClient.get<SatelliteScene[]>(`/api/v1/satellite/scenes?lake_id=${lakeId}`);
+        const data = await apiClient.get<SatelliteScene[]>(`satellite/scenes?lake_id=${lakeId}`);
         if (isMounted) {
           setScenes(data);
         }

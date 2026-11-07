@@ -1,20 +1,25 @@
-from app.config import settings
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from apps.scientific.app.core.config import settings
+from apps.scientific.app.domains.execution.controller_execution import (
+    router as execution_router,
+)
+
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
     {"name": "Scientific", "description": "Entrenamiento de modelos y estimaciones."},
+    {"name": "Executions", "description": "Ejecución y estado de trabajos científicos."},
 ]
 
 app = FastAPI(
     title="AquaBloom Sur Scientific API",
     description="Microservicio científico para el piloto de estimaciones de Clorofila-a.",
     version="v1",
-    servers=[{"url": "http://localhost:8002"}],
+    servers=[{"url": "http://localhost:8003"}],
     openapi_tags=tags_metadata,
 )
 
@@ -42,6 +47,8 @@ async def validation_exception_handler(request, exc):
     )
 
 
+app.include_router(execution_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -58,7 +65,9 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"message": f"Servicio Scientific inicializado en ambiente: {settings.environment}"}
+    return {
+        "message": f"Servicio Scientific inicializado en ambiente: {settings.environment}"
+    }
 
 
 @app.get("/api/v1/health", tags=["System"])
@@ -68,3 +77,4 @@ def health_check():
         "version": "v1",
         "status": "ok",
     }
+

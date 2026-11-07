@@ -1,6 +1,6 @@
 import pytest
 
-from app.spatial import SpatialThresholdError, validate_spatial_pair
+from apps.satellite.app.domains.observations.domain_observations import SpatialThresholdError, validate_spatial_pair
 
 
 def test_validate_spatial_pair_within_threshold():

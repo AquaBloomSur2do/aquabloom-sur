@@ -7,10 +7,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from app.auth import verify_supabase_jwt
-from app.datasets import APIError, validate_state_transition
-from app.datasets import router as datasets_router
-from app.schemas import DatasetVersionStateUpdate, VersionState
+from apps.api.app.core.auth import verify_supabase_jwt
+from apps.api.app.domains.dataset.service_dataset import validate_state_transition
+from apps.api.app.domains.dataset.model_dataset import APIError
+from apps.api.app.domains.dataset.controller_dataset import router as datasets_router
+from apps.api.app.domains.dataset.schemas_dataset import DatasetVersionStateUpdate, VersionState
 
 app = FastAPI()
 app.include_router(datasets_router)
@@ -258,7 +259,7 @@ class FakeSupabase:
 def setup_request(monkeypatch, role):
     user_id = uuid4()
     database = FakeSupabase(user_id, role)
-    monkeypatch.setattr("app.datasets.supabase", database)
+    monkeypatch.setattr("apps.api.app.domains.dataset.controller_dataset.supabase", database)
     app.dependency_overrides[verify_supabase_jwt] = lambda: {"sub": str(user_id)}
     return database
 

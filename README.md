@@ -195,32 +195,42 @@ Los comandos deben ejecutarse desde el directorio de la aplicación correspondie
 
 ## Estructura del Proyecto
 
+## Estructura del Proyecto y Arquitectura Limpia (DDD)
+
+El backend está dividido en microservicios independientes, orquestados por un API Gateway. Cada microservicio organiza su código en **Dominios** estrictos, aplicando separación de responsabilidades a través de 5 capas fundamentales:
+
+* **`controller_*.py` (Capa de Presentación):** Define las rutas de FastAPI (`@router`), inyecta dependencias y maneja los códigos HTTP. No contiene lógica de negocio ni consultas a la base de datos.
+* **`schemas_*.py` (Capa de Contratos):** Define los modelos Pydantic V2 (`model_config = ConfigDict(...)`) para validar entradas (Request) y salidas (Response) y generar el OpenAPI.
+* **`service_*.py` (Capa de Aplicación):** Orquesta los casos de uso. Recibe datos del controlador, aplica reglas de negocio, llama a los modelos de datos y devuelve el resultado.
+* **`domain_*.py` (Capa de Dominio):** Contiene la lógica pura, cálculos matemáticos, reglas geoespaciales o constantes del negocio (sin dependencias de base de datos ni frameworks externos).
+* **`model_*.py` (Capa de Infraestructura/Datos):** Centraliza todas las consultas y escrituras a PostgreSQL/Supabase. Es el único lugar donde se usa el cliente de base de datos.
+
 ```text
 aquabloom-sur/
 ├── apps/
-│   ├── api/                    # FastAPI, configuración y pruebas pytest
-│   │   ├── app/                # Rutas, servicios, permisos y acceso a datos
-│   │   ├── catalog/            # Esquemas de aplicación del catálogo
-│   │   ├── tests/              # Pruebas automatizadas del backend
-│   │   ├── requirements.txt    # Dependencias Python de ejecución
-│   │   └── Dockerfile
-│   └── web/                    # React, Vite y TypeScript
+│   ├── api/                    # Core Service & API Gateway
+│   │   ├── app/
+│   │   │   ├── core/           # Auth, Configuración y Base de datos
+│   │   │   ├── gateway/        # Enrutador principal de microservicios
+│   │   │   └── domains/        # Dominios del Core
+│   │   │       ├── catalog/    # Lagos y Estaciones
+│   │   │       ├── dataset/    # Versionado oficial y Manifiestos
+│   │   │       ├── identity/   # Organizaciones, Perfiles y Dashboard
+│   │   │       └── ingestion/  # Importación idempotente y Muestras
+│   ├── satellite/              # Satellite Service (Independiente)
+│   │   └── app/domains/
+│   │       ├── observations/   # Cálculos NDCI/NDWI y calidad
+│   │       └── scenes/         # Registro de metadatos Sentinel-2
+│   ├── scientific/             # Scientific Service (Independiente)
+│   │   └── app/domains/
+│   │       └── execution/      # Trabajos asíncronos y ML (Redis)
+│   └── web/                    # Frontend React / Vite
 │       ├── src/
-│       │   ├── components/     # Componentes compartidos
-│       │   ├── layouts/        # Estructuras públicas y privadas
-│       │   ├── pages/          # Vistas de la aplicación
-│       │   ├── services/       # Clientes de API y Supabase
-│       │   └── types/          # Tipos compartidos del frontend
-│       ├── package.json        # Scripts y dependencias de la web
-│       ├── pnpm-lock.yaml      # Versiones bloqueadas de pnpm
-│       └── Dockerfile
-├── database/
-│   ├── migrations/             # Migraciones SQL numeradas
-│   └── seeds/                  # Datos iniciales
-├── docs/                       # Documentación del proyecto
-├── .env.example                # Variables de ejemplo para Compose
-├── compose.yaml                # Servicios de Docker Compose
-└── README.md
+│       │   ├── components/     # Componentes de UI
+│       │   ├── pages/          # Vistas
+│       │   └── services/       # Cliente API
+├── database/migrations/        # Migraciones SQL estructuradas
+└── compose.yaml                # Orquestación Docker de todos los servicios
 ```
 
 ## Configuración de Datos y Supabase

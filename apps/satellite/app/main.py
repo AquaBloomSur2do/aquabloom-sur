@@ -9,12 +9,29 @@ from redis.exceptions import RedisError
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from app.config import settings
-from app.queueing import enqueue_measurement_summary, get_redis_client
+try:
+    from apps.satellite.app.core.config import settings
+    from apps.satellite.app.core.queueing import (
+        enqueue_measurement_summary,
+        get_redis_client,
+    )
+    from apps.satellite.app.domains.observations.controller_observations import (
+        router as observations_router,
+    )
+    from apps.satellite.app.domains.scenes.controller_scenes import (
+        router as scenes_router,
+    )
+except ModuleNotFoundError:
+    from apps.satellite.app.core.config import settings
+    from apps.satellite.app.core.queueing import enqueue_measurement_summary, get_redis_client
+    from apps.satellite.app.domains.observations.controller_observations import (
+        router as observations_router,
+    )
+    from apps.satellite.app.domains.scenes.controller_scenes import router as scenes_router
 
 app = FastAPI(
     title=settings.service_name,
-    description="Servicio Satellite para encolar trabajos científicos.",
+    description="Servicio Satellite para gestión de escenas, observaciones y encolamiento.",
     version="v1",
 )
 
@@ -40,6 +57,10 @@ class MeasurementSummaryRequest(BaseModel):
 class EnqueuedTaskResponse(BaseModel):
     task_id: str
     status: str
+
+
+app.include_router(scenes_router)
+app.include_router(observations_router)
 
 
 @app.get("/")
@@ -94,3 +115,4 @@ def enqueue_summary(
         ) from exc
 
     return EnqueuedTaskResponse(task_id=task_id, status="queued")
+
