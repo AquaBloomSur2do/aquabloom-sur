@@ -363,7 +363,7 @@ export function DatasetReview() {
             </section>
           )}
 
-          {selectedVersionState === 'PUBLISHED' && (
+          {selectedVersion && selectedVersionState === 'PUBLISHED' && (
             <section
               aria-label="Estado de publicación"
               className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900"
