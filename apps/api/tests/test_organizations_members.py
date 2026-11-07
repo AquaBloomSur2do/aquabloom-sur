@@ -4,9 +4,11 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from app.auth import verify_supabase_jwt
-from app.main import app
-from app.services import get_organization_members_for_user
+from apps.api.app.core.auth import verify_supabase_jwt
+from apps.api.app.domains.identity.service_identity import (
+    get_organization_members_for_user,
+)
+from apps.api.app.main import app
 
 client = TestClient(app)
 
@@ -24,7 +26,7 @@ def test_get_organization_members_requires_active_membership(monkeypatch):
         raise PermissionError("Usuario no pertenece a la organización")
 
     monkeypatch.setattr(
-        "app.organizations.get_organization_members_for_user",
+        "apps.api.app.domains.identity.controller_identity.get_organization_members_for_user",
         fake_get_organization_members_for_user,
     )
 
@@ -51,7 +53,7 @@ def test_get_organization_members_returns_not_found_for_missing_org(monkeypatch)
         raise LookupError("Organización no encontrada")
 
     monkeypatch.setattr(
-        "app.organizations.get_organization_members_for_user",
+        "apps.api.app.domains.identity.controller_identity.get_organization_members_for_user",
         fake_get_organization_members_for_user,
     )
 

@@ -40,12 +40,12 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
   useEffect(() => {
     return () => {
       // Limpieza segura de todos los temporizadores pendientes
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+       
       for (const timerId of timersRef.current) {
         clearTimeout(timerId);
       }
       // Vaciamos el arreglo para liberar memoria
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+       
       timersRef.current = []; 
     };
   }, []);

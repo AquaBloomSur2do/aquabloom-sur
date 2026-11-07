@@ -2,7 +2,9 @@ import logging
 
 import numpy as np
 
-from app.processing import apply_quality_mask
+from apps.satellite.app.domains.observations.domain_observations import (
+    apply_quality_mask,
+)
 
 
 def test_apply_quality_mask_excludes_pixels_and_records_reasons(caplog):

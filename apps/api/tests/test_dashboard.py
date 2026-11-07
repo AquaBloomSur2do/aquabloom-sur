@@ -7,8 +7,8 @@ os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-secret")
 
-from app.auth import verify_supabase_jwt
-from app.main import app
+from apps.api.app.core.auth import verify_supabase_jwt
+from apps.api.app.main import app
 
 
 class FakeCountQuery:
@@ -49,7 +49,7 @@ def test_dashboard_summary_returns_exact_counts_for_authenticated_admin(monkeypa
     fake_supabase = FakeCountClient({"lakes": 17, "stations": 42, "organizations": 5})
     payload = {"sub": "admin-user", "user_metadata": {"role": "administrador"}}
     app.dependency_overrides[verify_supabase_jwt] = lambda: payload
-    monkeypatch.setattr("app.dashboard.supabase", fake_supabase)
+    monkeypatch.setattr("apps.api.app.domains.identity.controller_identity.supabase", fake_supabase)
 
     try:
         response = TestClient(app).get("/api/v1/dashboard/summary")
@@ -81,7 +81,7 @@ def test_dashboard_summary_counts_only_user_visible_organizations(monkeypatch):
     fake_supabase = FakeCountClient({"lakes": 3, "stations": 8, "memberships": 2})
     payload = {"sub": "member-user", "user_metadata": {"role": "investigador"}}
     app.dependency_overrides[verify_supabase_jwt] = lambda: payload
-    monkeypatch.setattr("app.dashboard.supabase", fake_supabase)
+    monkeypatch.setattr("apps.api.app.domains.identity.controller_identity.supabase", fake_supabase)
 
     try:
         response = TestClient(app).get("/api/v1/dashboard/summary")
@@ -136,7 +136,7 @@ def test_dashboard_profiles_returns_profiles_list_for_authenticated_user(monkeyp
 
     payload = {"sub": "member-user", "user_metadata": {"role": "investigador"}}
     app.dependency_overrides[verify_supabase_jwt] = lambda: payload
-    monkeypatch.setattr("app.dashboard.supabase", FakeProfilesClient())
+    monkeypatch.setattr("apps.api.app.domains.identity.controller_identity.supabase", FakeProfilesClient())
 
     try:
         response = TestClient(app).get("/api/v1/dashboard/profiles")

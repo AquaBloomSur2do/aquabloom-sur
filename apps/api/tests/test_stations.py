@@ -8,9 +8,9 @@ from pydantic import ValidationError
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 
-from app.services import validate_station_inside_lake
-from catalog.application.endpoints import create_station
-from catalog.application.schemas import StationCreate
+from apps.api.app.domains.catalog.controller_catalog import create_station
+from apps.api.app.domains.catalog.domain_catalog import validate_station_inside_lake
+from apps.api.app.domains.catalog.schemas_catalog import StationCreate
 
 
 class FakeResponse:
@@ -97,7 +97,7 @@ def test_crear_estacion_codigo_duplicado(monkeypatch):
     fake_db = FakeSupabase(
         stations=[{"lake_id": str(lake_id), "code": "ST-001", "name": "Existente"}]
     )
-    monkeypatch.setattr("catalog.application.endpoints.supabase", fake_db)
+    monkeypatch.setattr("apps.api.app.domains.catalog.controller_catalog.supabase", fake_db)
 
     payload = StationCreate(
         code="ST-001",
@@ -127,7 +127,7 @@ def test_crear_estacion_coordenadas_fuera_de_rango():
 def test_crear_estacion_punto_fuera_del_lago(monkeypatch):
     lake_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
     fake_db = FakeSupabase()
-    monkeypatch.setattr("catalog.application.endpoints.supabase", fake_db)
+    monkeypatch.setattr("apps.api.app.domains.catalog.controller_catalog.supabase", fake_db)
 
     payload = StationCreate(
         code="ST-003",

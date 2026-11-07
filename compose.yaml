@@ -64,25 +64,6 @@
       - aquabloom-net
 
   # 4. Scientific Service (ML, Entrenamiento, Inferencia)
-  # =========================================================================
-        # TODO: DEUDA TÉCNICA (Sprint 2 - Tarea S2--008)
-        #
-        # MOTIVO DEL BYPASS (Validación Geoespacial Desactivada):
-        # La función 'validate_station_inside_lake' arrojaba falsos positivos 
-        # (HTTP 422 Unprocessable Entity) porque las librerías espaciales (Shapely) 
-        # operan por defecto bajo planos cartesianos X,Y (equivalente a Longitud, Latitud), 
-        # invirtiendo el estándar humano (Lat, Lon). Esto provocaba que estaciones 
-        # válidas quedaran ubicadas temporalmente fuera de los límites geométricos 
-        # del polígono del lago durante la creación/edición.
-        #
-        # ACCIÓN REQUERIDA:
-        # Depurar la librería Shapely para asegurar que el orden de los ejes se 
-        # alinee correctamente antes de la intersección. Una vez corregido, 
-        # se debe reactivar la validación de negocio bloqueando la persistencia de
-        # estaciones que estén fuera del lago.
-        # =========================================================================
-        if not update_data:
-            # ...
   scientific:
     build:
       context: ./apps/scientific
