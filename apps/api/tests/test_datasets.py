@@ -837,4 +837,5 @@ def test_manifest_includes_version_sources_checksums_and_synthetic_flag(monkeypa
     assert pilot_source["is_synthetic"] is True
     assert pilot_source["is_experimental"] is False
     assert pilot_source["checksum"] == "xyz789"
+
     
