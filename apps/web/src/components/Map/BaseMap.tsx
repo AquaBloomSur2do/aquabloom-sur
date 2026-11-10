@@ -32,18 +32,6 @@ export default function BaseMap({
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const supportCanvas = document.createElement('canvas');
-    if (
-      typeof WebGL2RenderingContext === 'undefined' ||
-      !supportCanvas.getContext('webgl2')
-    ) {
-      const fallback = document.createElement('p');
-      fallback.setAttribute('role', 'status');
-      fallback.style.cssText = 'margin:0;padding:1rem;color:#475569';
-      fallback.textContent = 'El mapa no está disponible en este dispositivo.';
-      containerRef.current.append(fallback);
-      return () => fallback.remove();
-    }
 
     const map = new MapLibreMap({
       container: containerRef.current,
@@ -174,8 +162,7 @@ export default function BaseMap({
   return (
     <div
       ref={containerRef}
-      className="map-container w-full h-full min-h-[300px] md:min-h-[400px] z-0"
-      style={{ minHeight: 300, height: '100%', width: '100%' }}
+      className="w-full h-full min-h-[300px] md:min-h-[400px] z-0"
     />
   );
 }

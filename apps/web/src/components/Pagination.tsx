@@ -26,10 +26,7 @@ export const Pagination: React.FC<PaginationProps> = ({
   };
 
   return (
-    <div
-      className="pagination-panel card flex items-center justify-center space-x-4 my-4"
-      style={{ gap: '1rem', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.75rem', background: '#fff' }}
-    >
+    <div className="flex items-center justify-center space-x-4 my-4">
       <button
         type="button"
         onClick={handlePrevious}
