@@ -1,11 +1,9 @@
 import hashlib
+import json
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
-
-from fastapi import HTTPException, status
-from httpx import HTTPError
-from storage3.utils import StorageException
 
 from apps.api.app.domains.dataset.domain_dataset import (
     APPROVAL_ROLES,
@@ -35,6 +33,9 @@ from apps.api.app.domains.dataset.schemas_dataset import (
     ManifestRule,
     VersionState,
 )
+from fastapi import HTTPException, status
+from httpx import HTTPError
+from storage3.utils import StorageException
 
 logger = logging.getLogger(__name__)
 
@@ -791,6 +792,43 @@ def download_and_verify_training_bytes(client, manifest: dict) -> bytes:
 def build_version_manifest_service(
     client, dataset_id: UUID, version_id: str
 ) -> DatasetManifest:
+    dataset_client = client.schema("dataset")
+    
+    try:
+        version_rows = fetch_rows(
+            dataset_client.table("versions")
+            .select("version_number")
+            .eq("id", str(version_id))
+            .limit(1)
+        )
+        if not version_rows:
+            raise ValueError("No rows returned")
+        version_number = str(version_rows[0]["version_number"])
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La versión solicitada no existe o no tiene un número asignado.",
+        ) from exc
+
+    base_dir = Path(__file__).resolve().parents[4]
+    metadata_path = base_dir / "satellite" / "data" / "metadata.json"
+    
+    pilot_provider = "Sentinel-2 L2A (Piloto)"
+    pilot_id = None
+    is_synthetic = False
+    raster_sha256 = None
+    
+    if metadata_path.exists():
+        try:
+            with metadata_path.open("r", encoding="utf-8") as f:
+                metadata = json.load(f)
+                pilot_id = metadata.get("id")
+                pilot_provider = metadata.get("provider", pilot_provider)
+                is_synthetic = metadata.get("is_synthetic", is_synthetic)
+                raster_sha256 = metadata.get("sha256", raster_sha256)
+        except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
+            logger.warning(f"No se pudo leer metadata.json en {metadata_path}: {e}")
+
     raw_sources = fetch_manifest_sources_with_fallback(client)
     raw_obs = fetch_manifest_observations_with_fallback(client)
     raw_records = fetch_manifest_samples_with_fallback(client)
@@ -800,23 +838,62 @@ def build_version_manifest_service(
         {"id": "rule-02", "description": "Validación de rango de clorofila-a [0-100]"},
     ]
 
-    sources = [
-        ManifestItem(
-            id=str(src["id"]), checksum=generate_deterministic_checksum(src)
+    sources = []
+    for idx, src in enumerate(raw_sources):
+        source_id = str(
+            src.get("id") or src.get("scene_external_id") or f"source-{idx + 1}"
         )
-        for src in raw_sources
-    ]
+        src_experimental = bool(src.get("is_experimental", False))
+        is_pilot_source = bool(
+            pilot_id
+            and (
+                source_id == str(pilot_id)
+                or source_id == "src-fallback"
+            )
+        )
+
+        if is_pilot_source:
+            src_checksum = raster_sha256 or generate_deterministic_checksum(src)
+            src_name = pilot_provider
+            src_synthetic = is_synthetic
+        else:
+            src_checksum = generate_deterministic_checksum(src)
+            src_name = (
+                src.get("provider")
+                or src.get("scene_identifier")
+                or src.get("name")
+                or src.get("scene_provider")
+                or f"Fuente Externa {idx + 1}"
+            )
+            src_synthetic = False
+
+        sources.append(
+            ManifestItem(
+                id=source_id,
+                source_name=src_name,
+                checksum=src_checksum,
+                is_synthetic=src_synthetic,
+                is_experimental=src_experimental,
+            )
+        )
+        
     observations = [
         ManifestItem(
-            id=str(obs["id"]), checksum=generate_deterministic_checksum(obs)
+            id=str(obs.get("id") or obs.get("scene_external_id") or f"obs-{idx + 1}"),
+            checksum=generate_deterministic_checksum(obs),
+            is_synthetic=False,
+            is_experimental=False,
         )
-        for obs in raw_obs
+        for idx, obs in enumerate(raw_obs)
     ]
     records = [
         ManifestItem(
-            id=str(rec["id"]), checksum=generate_deterministic_checksum(rec)
+            id=str(rec.get("id") or rec.get("scene_external_id") or f"rec-{idx + 1}"),
+            checksum=generate_deterministic_checksum(rec),
+            is_synthetic=False,
+            is_experimental=False,
         )
-        for rec in raw_records
+        for idx, rec in enumerate(raw_records)
     ]
     rules = [
         ManifestRule(
@@ -830,6 +907,7 @@ def build_version_manifest_service(
     manifest_payload = {
         "dataset_id": str(dataset_id),
         "version_id": version_id,
+        "version_number": version_number,
         "records": [r.model_dump() for r in records],
         "sources": [s.model_dump() for s in sources],
         "observations": [o.model_dump() for o in observations],
@@ -841,6 +919,7 @@ def build_version_manifest_service(
     return DatasetManifest(
         dataset_id=str(dataset_id),
         version_id=version_id,
+        version_number=version_number,
         records=records,
         sources=sources,
         observations=observations,

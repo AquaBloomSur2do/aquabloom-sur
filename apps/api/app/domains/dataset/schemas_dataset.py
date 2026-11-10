@@ -184,12 +184,15 @@ class TrainingManifestResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# --- Esquemas para el Manifiesto de Versión (S2-135) ---
+# --- Esquemas para el Manifiesto de Versión (S2-135 y S2-143) ---
 
 
 class ManifestItem(BaseModel):
     id: str
+    source_name: str | None = None
     checksum: str
+    is_synthetic: bool = False
+    is_experimental: bool = False
 
 
 class ManifestRule(BaseModel):
@@ -201,8 +204,10 @@ class ManifestRule(BaseModel):
 class DatasetManifest(BaseModel):
     dataset_id: str
     version_id: str
+    version_number: str
     records: list[ManifestItem]
     sources: list[ManifestItem]
     observations: list[ManifestItem]
     rules: list[ManifestRule]
     manifest_checksum: str
+    
