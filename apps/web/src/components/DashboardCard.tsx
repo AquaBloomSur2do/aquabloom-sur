@@ -8,7 +8,6 @@ interface DashboardCardProps {
   error: string | Error | null;
   linkTo: string;
   linkLabel: string;
-  icon?: string;
 }
 
 export const DashboardCard: React.FC<DashboardCardProps> = ({
@@ -18,25 +17,40 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
   error,
   linkTo,
   linkLabel,
-  icon = "📊",
 }) => {
   return (
-    <div className="dashboard-card">
-      <div className="dashboard-card-header">
-        <span aria-hidden="true" className="dashboard-card-icon">{icon}</span>
-        <h3 style={{ margin: 0 }}>{title}</h3>
-      </div>
+    <div
+      style={{
+        border: '1px solid #e5e7eb',
+        borderRadius: '8px',
+        padding: '24px',
+        backgroundColor: '#ffffff',
+        boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '16px',
+      }}
+    >
+      <h3
+        style={{
+          margin: 0,
+          fontSize: '1.25rem',
+          fontWeight: 600,
+          color: '#374151',
+        }}
+      >
+        {title}
+      </h3>
 
       <div style={{ flexGrow: 1 }}>
         {isLoading ? (
-          <div className="skeleton-loader" aria-hidden="false">
-            {/* Oculto visualmente para cumplir diseño, visible para Vitest */}
-            <span className="visually-hidden">Cargando datos... ⏳</span>
-          </div>
+          <span style={{ color: '#6b7280' }}>Cargando datos... ⏳</span>
         ) : error ? (
           <span style={{ color: '#ef4444' }}>⚠️ Error al cargar</span>
         ) : (
-          <span className="dashboard-card-value">
+          <span
+            style={{ fontSize: '2.5rem', fontWeight: 700, color: '#111827' }}
+          >
             {count !== null ? count : 0}
           </span>
         )}
@@ -44,7 +58,12 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
 
       <Link
         to={linkTo}
-        className="ghost-button"
+        style={{
+          color: '#2563eb',
+          textDecoration: 'none',
+          fontWeight: 500,
+          marginTop: 'auto',
+        }}
       >
         {linkLabel} ➔
       </Link>
