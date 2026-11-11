@@ -118,9 +118,6 @@ def create_execution_job_service(
     background_tasks: BackgroundTasks,
     idempotency_key: str | None,
 ) -> dict[str, Any]:
-    if payload.job_type == "training":
-        validate_training_version_service(client, payload.config)
-
     config = payload.config.model_dump(mode="json")
 
     if idempotency_key is not None:
@@ -134,6 +131,9 @@ def create_execution_job_service(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="La clave de idempotencia ya fue utilizada con un contenido diferente.",
             )
+
+    if payload.job_type == "training":
+        validate_training_version_service(client, payload.config)
 
     db_payload: dict[str, Any] = {
         "job_type": payload.job_type,
@@ -172,4 +172,3 @@ def create_execution_job_service(
         process_scientific_job, str(inserted_job["id"]), config
     )
     return build_job_accepted_response(inserted_job)
-
