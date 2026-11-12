@@ -1,3 +1,4 @@
+import { StartTrainingButton } from '../components/StartTrainingButton';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ApiError, apiClient } from '../services/apiClient';
@@ -363,12 +364,13 @@ export function DatasetReview() {
             </section>
           )}
 
-          {selectedVersionState === 'PUBLISHED' && (
+          {selectedVersionState === 'PUBLISHED' && selectedVersion && (
             <section
               aria-label="Estado de publicación"
-              className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900"
+              className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900"
             >
               <p className="font-semibold">Publicado oficialmente</p>
+              <StartTrainingButton datasetVersionId={selectedVersion.id} />
             </section>
           )}
 
