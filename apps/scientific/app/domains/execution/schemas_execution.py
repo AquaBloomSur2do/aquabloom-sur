@@ -88,3 +88,46 @@ class JobStatus(BaseModel):
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
+
+class ModelScopeSpec(BaseModel):
+    model_version_id: UUID
+    lake_id: UUID
+    target_variable: str = "chlorophyll_a"
+    unit: str = "ug/L"
+    required_index: str = "NDCI"
+    min_index_value: float = -1.0
+    max_index_value: float = 1.0
+    status: str = "ACTIVE"
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SpectralObservationInput(BaseModel):
+    observation_id: UUID
+    lake_id: UUID
+    scene_id: UUID
+    spectral_index: str
+    index_value: float
+    quality: str = "VALID"
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EstimationRequestInput(BaseModel):
+    lake_id: UUID
+    scene_id: UUID
+    target_variable: str = "chlorophyll_a"
+    unit: str = "ug/L"
+    required_index: str = "NDCI"
+    observations: list[SpectralObservationInput] = Field(min_length=1)
+
+
+class ValidatedEstimationInput(BaseModel):
+    model_version_id: UUID
+    lake_id: UUID
+    scene_id: UUID
+    target_variable: str
+    unit: str
+    required_index: str
+    valid_observation_count: int
+    warnings: list[str] = Field(default_factory=list)
