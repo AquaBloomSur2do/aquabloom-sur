@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from dataset.application.schemas import (
+from apps.api.app.domains.dataset.schemas_dataset import (
     CandidateValidationPayload,
     CandidateVariableMetadata,
     IncorporateCandidatesInput,

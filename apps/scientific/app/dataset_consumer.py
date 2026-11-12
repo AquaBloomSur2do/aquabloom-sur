@@ -6,9 +6,9 @@ from uuid import UUID
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.config import settings
+from app.core.config import settings
 
-MAX_TRAINING_FILE_SIZE = 1024 * 1024  # 1 MiB
+MAX_TRAINING_FILE_SIZE = 1024 * 1024  # Límite por contrato: 1 MiB
 
 
 class DatasetContractError(Exception):
@@ -97,7 +97,7 @@ def fetch_and_verify_training_dataset(
         csv_text = file_bytes.decode("utf-8")
         reader = csv.DictReader(io.StringIO(csv_text))
 
-        if reader.fieldnames != manifest.variables:
+        if not reader.fieldnames or reader.fieldnames != manifest.variables:
             raise DatasetContractError(
                 f"Las columnas del CSV ({reader.fieldnames}) no coinciden con las variables del manifiesto ({manifest.variables}).",
                 status_code=422,
@@ -127,3 +127,4 @@ def fetch_and_verify_training_dataset(
     finally:
         if should_close:
             http_client.close()
+            

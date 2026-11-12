@@ -390,3 +390,176 @@
     padding: 12px 10px;
   }
 }
+
+/* =========================================
+   S2-UI-02: Dashboard y Estados de Carga
+   ========================================= */
+
+.dashboard-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.dashboard-card {
+  background: var(--card-bg, #ffffff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.dashboard-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+  color: var(--text-muted, #555);
+}
+
+.dashboard-card-value {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--text-main, #111);
+  margin-bottom: 1.5rem;
+}
+
+.ghost-button {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--primary-color, #0056b3);
+  color: var(--primary-color, #0056b3);
+  background: transparent;
+  border-radius: 4px;
+  text-decoration: none;
+  text-align: center;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  margin-top: auto;
+}
+
+.ghost-button:hover {
+  background: var(--primary-color, #0056b3);
+  color: #fff;
+}
+
+.dashboard-summary-panel {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.state-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  text-align: center;
+  border-radius: 8px;
+}
+
+.state-empty {
+  border: 2px dashed var(--border-color, #ccc);
+  color: var(--text-muted, #666);
+}
+
+.state-error {
+  background: #fff3f3;
+  border: 1px solid #ffcdd2;
+  color: #d32f2f;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(0, 86, 179, 0.1);
+  border-radius: 50%;
+  border-top-color: var(--primary-color, #0056b3);
+  animation: spin 1s ease-in-out infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* =========================================
+   Correcciones PR: Esqueletos y Tabla
+   ========================================= */
+
+/* Ocultar texto para Vitest pero mantenerlo en el DOM */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+/* Animación tipo Skeleton */
+.skeleton-loader {
+  width: 100%;
+  max-width: 120px;
+  height: 40px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e2e8f0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Tabla de Perfiles */
+.profiles-section {
+  margin-top: 2rem;
+  background: #ffffff;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.profiles-table-wrap {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.profiles-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.profiles-table th {
+  background: #f4f8f8;
+  color: #526a72;
+  padding: 11px 12px;
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.profiles-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  color: #42565e;
+  font-size: 12px;
+}
+
+.profiles-table tbody tr:hover {
+  background: #fbfdfd;
+}

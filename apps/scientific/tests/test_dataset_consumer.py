@@ -5,10 +5,11 @@ from uuid import uuid4
 import httpx
 import pytest
 
+# Mockeamos las variables de entorno para que Settings() en config.py no lance error
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "dummy-secret-key")
 
-from app.dataset_consumer import (
+from app.dataset_consumer import (  # noqa: E402
     DatasetContractError,
     fetch_and_verify_training_dataset,
 )
@@ -146,3 +147,4 @@ def test_fetch_dataset_rejects_mismatched_csv_columns():
         )
 
     assert exc_info.value.status_code == 422
+    

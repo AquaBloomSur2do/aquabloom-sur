@@ -3,15 +3,21 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from app.auth import verify_supabase_jwt
-from app.datasets import APIError, validate_state_transition
-from app.main import app
-from app.schemas import DatasetVersionStateUpdate, VersionState
+from apps.api.app.core.auth import verify_supabase_jwt
+from apps.api.app.domains.dataset.controller_dataset import router as datasets_router
+from apps.api.app.domains.dataset.model_dataset import APIError
+from apps.api.app.domains.dataset.schemas_dataset import (
+    DatasetVersionStateUpdate,
+    VersionState,
+)
+from apps.api.app.domains.dataset.service_dataset import validate_state_transition
 
+app = FastAPI()
+app.include_router(datasets_router)
 client = TestClient(app)
 
 
@@ -52,7 +58,7 @@ def test_invalid_version_state_transitions_raise_400():
 
 
 # ==========================================
-# Pruebas S2-105 / S2-134: Endpoints y Supabase Mock
+# Pruebas S2-105 / S2-134 / S2-136: Endpoints y Supabase Mock
 # ==========================================
 
 class FakeQuery:
@@ -124,16 +130,35 @@ class FakeQuery:
 
         rows = self.database.dataset_rows.get(self.table_name, [])
         if self.inserted is not None:
+            # --- MOCK EXTENDIDO PARA SOPORTAR INSERCIONES DE LISTAS (S2-136) ---
             if isinstance(self.inserted, list):
-                self.database.dataset_rows.setdefault(self.table_name, []).extend(self.inserted)
-                return SimpleNamespace(data=self.inserted)
-            row = {
-                **self.inserted,
-                "id": "decision-new",
-                "decided_at": "2026-10-27T00:00:00+00:00",
-            }
-            self.database.dataset_rows.setdefault(self.table_name, []).append(row)
-            return SimpleNamespace(data=[row])
+                new_rows = []
+                for item in self.inserted:
+                    new_row = {
+                        **item,
+                        "id": str(uuid4()),
+                        "added_at": "2026-10-27T00:00:00+00:00"
+                    }
+                    self.database.dataset_rows.setdefault(self.table_name, []).append(new_row)
+                    new_rows.append(new_row)
+                return SimpleNamespace(data=new_rows)
+            else:
+                row = {
+                    **self.inserted,
+                    "id": "decision-new",
+                    "decided_at": "2026-10-27T00:00:00+00:00",
+                }
+                self.database.dataset_rows.setdefault(self.table_name, []).append(row)
+                return SimpleNamespace(data=[row])
+
+        if self.updated is not None:
+            updated_rows = []
+            for row in rows:
+                match = all(str(row.get(f)) == v for f, v in self.filters.items())
+                if match:
+                    row.update(self.updated)
+                    updated_rows.append(row.copy())
+            return SimpleNamespace(data=updated_rows)
 
         if self.updated is not None:
             updated_rows = []
@@ -171,10 +196,11 @@ class FakeSchema:
 
 class FakeSupabase:
     def __init__(self, user_id, organization_role):
-        self.dataset_id = "11111111-1111-1111-1111-111111111111"
-        self.dataset_id_2 = "22222222-2222-2222-2222-222222222222"
-        self.organization_id = "99999999-9999-9999-9999-999999999999"
-        self.version_id = "33333333-3333-3333-3333-333333333333"
+        # Usando UUIDs válidos para evitar HTTP 422 (Solución S2-136)
+        self.dataset_id = str(uuid4())
+        self.dataset_id_2 = str(uuid4())
+        self.organization_id = str(uuid4())
+        self.version_id = str(uuid4())
         self.membership_id = str(uuid4())
         self.user_id = str(user_id)
         self.database_error = None
@@ -211,6 +237,7 @@ class FakeSupabase:
                     "state": "DRAFT",
                     "status": "DRAFT",
                     "created_at": "2026-10-27T00:00:00+00:00",
+                    "published_at": None,
                 }
             ],
             "memberships": [
@@ -235,7 +262,7 @@ class FakeSupabase:
 def setup_request(monkeypatch, role):
     user_id = uuid4()
     database = FakeSupabase(user_id, role)
-    monkeypatch.setattr("app.datasets.supabase", database)
+    monkeypatch.setattr("apps.api.app.domains.dataset.controller_dataset.supabase", database)
     app.dependency_overrides[verify_supabase_jwt] = lambda: {"sub": str(user_id)}
     return database
 
@@ -281,7 +308,7 @@ def test_list_review_datasets_pagination_successive_pages(monkeypatch):
 
 def test_list_review_datasets_paginates_versions(monkeypatch):
     database = setup_request(monkeypatch, "investigador")
-    second_version_id = "44444444-4444-4444-4444-444444444444"
+    second_version_id = str(uuid4())
     database.dataset_rows["versions"].append(
         {
             "id": second_version_id,
@@ -404,7 +431,7 @@ def test_investigator_cannot_register_a_decision(monkeypatch):
 
 def test_admin_from_another_organization_cannot_register_a_decision(monkeypatch):
     database = setup_request(monkeypatch, "admin")
-    database.organization_memberships[0]["organization_id"] = "organization-other"
+    database.organization_memberships[0]["organization_id"] = str(uuid4())
     try:
         response = client.post(
             f"/api/v1/datasets/memberships/{database.membership_id}/decisions",
@@ -508,6 +535,43 @@ def test_update_version_state_persists_in_database(monkeypatch):
     assert database.dataset_rows["versions"][0]["status"] == "IN_REVIEW"
 
 
+def test_supervisor_publishes_version_and_receives_its_identifier(monkeypatch):
+    database = setup_request(monkeypatch, "supervisor")
+    try:
+        response = client.post(
+            f"/api/v1/datasets/versions/{database.version_id}/publish"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["id"] == database.version_id
+    assert response.json()["status"] == "published"
+    assert response.json()["published_at"] is not None
+    assert database.dataset_rows["versions"][0]["status"] == "published"
+
+
+def test_investigator_cannot_publish_version(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    try:
+        response = client.post(
+            f"/api/v1/datasets/versions/{database.version_id}/publish"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert database.dataset_rows["versions"][0]["status"] == "DRAFT"
+
+
+def test_publishing_version_requires_authentication():
+    response = client.post(
+        f"/api/v1/datasets/versions/{uuid4()}/publish"
+    )
+
+    assert response.status_code == 401
+
+
 def test_publishing_version_creates_small_versioned_training_file_and_manifest(monkeypatch):
     database = setup_request(monkeypatch, "admin")
     database.dataset_rows["versions"][0]["state"] = "APPROVED"
@@ -545,6 +609,7 @@ def test_publishing_version_creates_small_versioned_training_file_and_manifest(m
     assert manifest["version_id"] == database.version_id
     assert manifest["storage_path"] == uploaded["path"]
     assert manifest["checksum"] == hashlib.sha256(expected_content).hexdigest()
+
 
 def test_update_version_state_returns_404_for_missing_version(monkeypatch):
     setup_request(monkeypatch, "admin")
@@ -584,6 +649,7 @@ def test_update_version_state_returns_400_for_unknown_current_state(monkeypatch)
         app.dependency_overrides.clear()
 
     assert response.status_code == 400
+
 
 # --- Pruebas S2-137: Descarga Estricta de Archivo de Entrenamiento ---
 
@@ -656,7 +722,7 @@ def test_get_training_file_denied_if_not_published(monkeypatch):
 def test_get_training_file_denied_wrong_org(monkeypatch):
     database = setup_request(monkeypatch, "admin")
     database.dataset_rows["versions"][0]["state"] = "PUBLISHED"
-    database.organization_memberships[0]["organization_id"] = "organization-other"
+    database.organization_memberships[0]["organization_id"] = str(uuid4())
     try:
         res = client.get(f"/api/v1/datasets/versions/{database.version_id}/training-file")
     finally:
@@ -712,4 +778,3 @@ def test_training_file_download_rejects_checksum_mismatch(monkeypatch):
         app.dependency_overrides.clear()
 
     assert response.status_code == 502
-    

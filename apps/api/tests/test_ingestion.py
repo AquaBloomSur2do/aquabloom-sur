@@ -26,9 +26,9 @@ except (ImportError, ModuleNotFoundError):
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 
-from app import auth
-from app.main import app
-from ingestion.application import endpoints as ingestion_module
+from apps.api.app.core import auth
+from apps.api.app.domains.ingestion import controller_ingestion as ingestion_module
+from apps.api.app.main import app
 
 
 @pytest.fixture

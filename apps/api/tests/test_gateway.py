@@ -2,8 +2,8 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import gateway
-from app.main import app
+from apps.api.app.gateway import controller_gateway, service_gateway
+from apps.api.app.main import app
 
 client = TestClient(app)
 
@@ -38,9 +38,9 @@ def test_gateway_forwards_identity_and_correlation_id(
             )
             return httpx.Response(202, content=b"accepted")
 
-    monkeypatch.setattr(gateway.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(service_gateway.httpx, "AsyncClient", FakeAsyncClient)
     monkeypatch.setattr(
-        gateway.settings,
+        controller_gateway.settings,
         url_setting,
         f"https://{service}.example.test/base",
     )
@@ -80,7 +80,7 @@ def test_gateway_generates_correlation_id_when_missing(monkeypatch: pytest.Monke
             captured_headers.update(headers)
             return httpx.Response(200)
 
-    monkeypatch.setattr(gateway.httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(service_gateway.httpx, "AsyncClient", FakeAsyncClient)
 
     response = client.get("/api/v1/satellite/status")
 

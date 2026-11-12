@@ -15,78 +15,67 @@ jobs:
     steps:
       - name: Checkout del código
         uses: actions/checkout@v4
-        
       - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          
       - name: Instalar pnpm
         uses: pnpm/action-setup@v3
         with:
           version: 9
-          
       - name: Instalar dependencias
         run: pnpm install
-        
       - name: Ejecutar Linter
         run: pnpm run lint
-        
       - name: Compilar
         run: pnpm run build
 
   api-ci:
     name: Validar API
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./apps/api
+    env:
+      PYTHONPATH: .
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_KEY: test-key
     steps:
       - name: Checkout del código
         uses: actions/checkout@v4
-        
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          
       - name: Instalar dependencias
         run: |
-          pip install -r requirements.txt
-          pip install ruff
-          
+          pip install -r apps/api/requirements.txt
+          pip install -r apps/satellite/requirements.txt
+          pip install pytest ruff redis rasterio pyjwt httpx
       - name: Ejecutar Linter
-        run: ruff check .
-        
-      - name: Compilar
-        run: python -m compileall .
+        run: ruff check apps/api/
+      - name: Ejecutar pruebas
+        run: pytest apps/api/tests/ -v
 
   satellite-ci:
     name: Validar servicio Satellite
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./apps/satellite
+    env:
+      PYTHONPATH: .
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_KEY: test-key
     steps:
       - name: Checkout del código
         uses: actions/checkout@v4
-
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Instalar dependencias y herramientas
         run: |
-          pip install -r requirements.txt
-          pip install httpx2 pytest ruff
-
-      - name: Ejecutar pruebas
-        run: python -m pytest
-
+          pip install -r apps/satellite/requirements.txt
+          pip install -r apps/api/requirements.txt
+          pip install pytest ruff redis rasterio pyjwt httpx
       - name: Ejecutar linter
-        run: ruff check .
+        run: ruff check apps/satellite/
+      - name: Ejecutar pruebas
+        run: pytest apps/satellite/tests/ -v
 
-      - name: Compilar
-        run: python -m compileall .
-              
+        
