@@ -33,6 +33,10 @@ describe('LakeDetail', () => {
         );
       }
 
+      if (path.includes('/scenes')) {
+        return Promise.resolve([]);
+      }
+
       return Promise.resolve({
         id: 'lake-1',
         name: 'Lago Uno',
