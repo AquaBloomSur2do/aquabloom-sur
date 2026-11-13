@@ -58,43 +58,72 @@ export default function Profile() {
   }, []);
 
   if (isLoading) {
-    return <div className="p-6 text-center text-gray-600 font-medium">Cargando perfil...</div>;
+    return (
+      <section className="profile-state" role="status">
+        <span className="profile-spinner" aria-hidden="true" />
+        <span>Cargando perfil...</span>
+      </section>
+    );
   }
 
   if (error) {
-    return <div className="p-6 text-center text-red-500 font-medium">{error}</div>;
+    return (
+      <section className="profile-state profile-state--error" role="alert">
+        {error}
+      </section>
+    );
   }
 
   if (!profile) {
-    return <div className="p-6 text-center text-gray-500 font-medium">El perfil no existe o no fue encontrado.</div>;
+    return (
+      <section className="profile-state">
+        El perfil no existe o no fue encontrado.
+      </section>
+    );
   }
 
   return (
-    <div className="max-w-md mx-auto p-6 bg-white border rounded-lg shadow-md mt-10">
-      <h2 className="text-2xl font-semibold mb-4 text-gray-800">Perfil de Usuario</h2>
-      
-      <div className="flex flex-col gap-4">
-        <div>
-          <span className="block text-sm text-gray-500">Nombre</span>
-          <span className="text-gray-900 font-medium">{profile.name}</span>
+    <section className="profile-page">
+      <header className="profile-page-heading">
+        <p className="profile-eyebrow">Cuenta</p>
+        <h1>Perfil de Usuario</h1>
+        <p>Información asociada a tu cuenta en AquaBloom Sur.</p>
+      </header>
+      <article className="profile-card">
+        <div className="profile-card-heading">
+          <span className="profile-avatar" aria-hidden="true">
+            {profile.name.trim().charAt(0).toUpperCase()}
+          </span>
+          <div>
+            <h2>{profile.name}</h2>
+            <p>{profile.organization}</p>
+          </div>
+          <span className="profile-status">{profile.status}</span>
         </div>
-        <div>
-          <span className="block text-sm text-gray-500">Correo electrónico</span>
-          <span className="text-gray-900 font-medium">{profile.email}</span>
-        </div>
-        <div>
-          <span className="block text-sm text-gray-500">Organización activa</span>
-          <span className="text-gray-900 font-medium">{profile.organization}</span>
-        </div>
-        <div>
-          <span className="block text-sm text-gray-500">Rol</span>
-          <span className="text-gray-900 font-medium">{profile.role}</span>
-        </div>
-        <div>
-          <span className="block text-sm text-gray-500">Estado</span>
-          <span className="text-gray-900 font-medium capitalize">{profile.status}</span>
-        </div>
-      </div>
-    </div>
+
+        <dl className="profile-details">
+          <div>
+            <dt>Nombre</dt>
+            <dd>{profile.name}</dd>
+          </div>
+          <div>
+            <dt>Correo electrónico</dt>
+            <dd>{profile.email}</dd>
+          </div>
+          <div>
+            <dt>Organización activa</dt>
+            <dd>{profile.organization}</dd>
+          </div>
+          <div>
+            <dt>Rol</dt>
+            <dd>{profile.role}</dd>
+          </div>
+          <div>
+            <dt>Estado</dt>
+            <dd className="profile-status-text">{profile.status}</dd>
+          </div>
+        </dl>
+      </article>
+    </section>
   );
 }
