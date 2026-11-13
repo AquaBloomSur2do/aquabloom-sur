@@ -6,7 +6,8 @@ import type {
   DatasetDecisionInput,
   DatasetDecisionValue,
   ReviewDataset,
-  DatasetCandidate // <--- Nuevo tipo importado
+  DatasetCandidate,
+  DatasetManifest
 } from '../types/dataset';
 
 const decisionLabels: Record<DatasetDecisionValue, string> = {
@@ -41,9 +42,12 @@ export function DatasetReview() {
     null
   );
 
-  // --- Estados de Tarea S2-139 (Candidatos) ---
   const [candidates, setCandidates] = useState<DatasetCandidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
+
+  const [manifest, setManifest] = useState<DatasetManifest | null>(null);
+  const [manifestLoading, setManifestLoading] = useState(false);
+  const [manifestError, setManifestError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -80,34 +84,28 @@ export function DatasetReview() {
     };
   }, []);
 
-  // --- Carga de Candidatos (S2-139) ---
-  // --- Carga de Candidatos (S2-139) ---
   useEffect(() => {
     if (!datasetId) return;
 
     let mounted = true;
-    const controller = new AbortController(); // FIX 1: Instancia del controlador de red
+    const controller = new AbortController();
 
     const loadCandidates = async () => {
       setLoadingCandidates(true);
       try {
-        // En una API real, esto sería un GET a /api/v1/datasets/candidates?lake_id=...
         const response = await apiClient.get<DatasetCandidate[]>(
           `datasets/candidates?dataset_id=${datasetId}`,
-          { signal: controller.signal } // Se enlaza la señal de cancelación
+          { signal: controller.signal }
         );
         if (mounted) setCandidates(response);
       } catch (error) {
-        // Ignorar el error silencioso si la petición fue cancelada intencionalmente
         if (error instanceof Error && error.name === 'AbortError') return;
 
-        // Mock de datos para evidenciar la S2-139 si el backend no expone GET candidatos.
         if (mounted) {
-          // TODO (Deuda Técnica): Eliminar este mock y consumir el endpoint real de Ingesta en el Sprint 3
           setCandidates([
             {
               id: 'c-1',
-              lake_id: 'lago-villarrica-uuid-mock', // FIX 3: Desacoplado semánticamente de datasetId
+              lake_id: 'lago-villarrica-uuid-mock',
               data_uri: 's3://ingest/batch-1.csv',
               status: 'REJECTED',
               submitted_at: new Date().toISOString(),
@@ -116,7 +114,7 @@ export function DatasetReview() {
             },
             {
               id: 'c-2',
-              lake_id: 'lago-villarrica-uuid-mock', // FIX 3: Desacoplado semánticamente de datasetId
+              lake_id: 'lago-villarrica-uuid-mock',
               data_uri: 's3://ingest/batch-2.csv',
               status: 'PENDING',
               submitted_at: new Date().toISOString(),
@@ -132,12 +130,50 @@ export function DatasetReview() {
     
     void loadCandidates();
     
-    // Función de limpieza al desmontar
     return () => { 
       mounted = false; 
-      controller.abort(); // FIX 1: Cancela la petición HTTP en vuelo
+      controller.abort();
     };
-  }, [datasetId]); // FIX 2: Dependencia declarada explícitamente sin dependencias circulares ocultas
+  }, [datasetId]);
+
+  useEffect(() => {
+    if (!datasetId || !versionId) {
+      return;
+    }
+
+    let mounted = true;
+    const controller = new AbortController();
+
+    const loadManifest = async () => {
+      setManifestLoading(true);
+      setManifestError(null);
+      try {
+        const response = await apiClient.get<DatasetManifest>(
+          `datasets/${datasetId}/versions/${versionId}/manifest`,
+          { signal: controller.signal }
+        );
+        if (mounted) setManifest(response);
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') return;
+        if (mounted) {
+          setManifestError(
+            error instanceof Error
+              ? error.message
+              : 'No se pudo cargar el manifiesto de la versión.'
+          );
+        }
+      } finally {
+        if (mounted) setManifestLoading(false);
+      }
+    };
+
+    void loadManifest();
+
+    return () => {
+      mounted = false;
+      controller.abort();
+    };
+  }, [datasetId, versionId]);
 
   const selectedDataset = datasets.find((dataset) => dataset.id === datasetId);
   const versions = selectedDataset?.versions ?? [];
@@ -151,13 +187,13 @@ export function DatasetReview() {
     );
     setDatasetId(nextDatasetId);
     setVersionId(nextDataset?.versions[0]?.id ?? '');
+    setManifest(null);
   };
 
   const submitDecision = async (
     event: FormEvent<HTMLFormElement>,
     membershipId: string
   ) => {
-    // ... Código original de tus compañeros para submitDecision ...
     event.preventDefault();
     const body: DatasetDecisionInput = {
       decision: decisions[membershipId] ?? 'accepted',
@@ -307,7 +343,10 @@ export function DatasetReview() {
               <select
                 className="mt-1 block w-full rounded-md border border-gray-300 p-2"
                 value={versionId}
-                onChange={(event) => setVersionId(event.target.value)}
+                onChange={(event) => {
+                  setVersionId(event.target.value);
+                  setManifest(null);
+                }}
                 disabled={versions.length === 0}
               >
                 {versions.map((version) => (
@@ -372,6 +411,69 @@ export function DatasetReview() {
             </section>
           )}
 
+          {selectedVersion && (
+            <section aria-label="Manifiesto de la versión" className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Manifiesto y Trazabilidad</h2>
+              
+              {manifestLoading ? (
+                <p className="text-sm text-gray-500">Cargando manifiesto...</p>
+              ) : manifestError ? (
+                <p className="text-sm text-red-600" role="alert">{manifestError}</p>
+              ) : manifest ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Identificación</p>
+                      <p className="text-sm text-gray-900 font-semibold">Versión: {manifest.version_number} ({manifest.version_id})</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Checksum Global</p>
+                      <p className="text-xs text-gray-900 font-mono break-all">{manifest.global_checksum || manifest.manifest_checksum}</p>
+                    </div>
+                  </div>
+
+                  {manifest.sources && manifest.sources.length > 0 && (
+                    <div className="mt-4 border-t border-gray-100 pt-4">
+                      <h3 className="text-sm font-bold text-gray-900 mb-3">Fuentes de Datos</h3>
+                      <ul className="space-y-3">
+                        {manifest.sources.map((source) => (
+                          <li key={source.id} className="rounded border border-gray-200 bg-gray-50 p-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">{source.source_name || 'Fuente Desconocida'}</p>
+                                <p className="text-xs text-gray-500 font-mono mt-1">ID: {source.id}</p>
+                                <p className="text-xs text-gray-500 font-mono">SHA-256: {source.checksum}</p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {source.is_synthetic && (
+                                  <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-800 border border-purple-200" title="Advertencia: Datos de prueba sintéticos">
+                                    <span aria-hidden="true">🧪</span> Sintético
+                                  </span>
+                                )}
+                                {source.is_experimental && (
+                                  <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-800 border border-orange-200" title="Advertencia: Datos experimentales no calibrados">
+                                    <span aria-hidden="true">⚠️</span> Experimental
+                                  </span>
+                                )}
+                                {!source.is_synthetic && !source.is_experimental && (
+                                  <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-800 border border-gray-200" title="Condición de la fuente no informada">
+                                    <span aria-hidden="true">❔</span> Condición no informada
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">El manifiesto no está disponible para esta versión.</p>
+              )}
+            </section>
+          )}
+
           {!selectedVersion || selectedVersion.memberships.length === 0 ? (
             <p className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-600">
               Esta versión todavía no contiene escenas para revisar.
@@ -380,7 +482,6 @@ export function DatasetReview() {
             <section aria-label="Escenas de la versión" className="space-y-4">
                <h2 className="text-xl font-bold text-gray-900 mb-2">Escenas Incluidas (Memberships)</h2>
               {selectedVersion.memberships.map((membership) => {
-                 // ... Código original del map intacto ...
                  const latestDecision = membership.decisions[0];
                  const isSaving = savingMembershipId === membership.id;
                  return (
@@ -471,7 +572,6 @@ export function DatasetReview() {
             </section>
           )}
 
-          {/* NUEVA SECCIÓN TAREA S2-139: VISTA DE CANDIDATOS */}
           <section className="mt-10 border-t border-gray-200 pt-8" aria-label="Candidatos en cuarentena">
              <div className="mb-4">
                 <h2 className="text-xl font-bold text-gray-900">Bandeja de Entrada: Candidatos de Ingesta</h2>
@@ -508,7 +608,7 @@ export function DatasetReview() {
                               candidate.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
                               'bg-yellow-100 text-yellow-800'
                            }`}>
-                             {candidate.status}
+                              {candidate.status}
                            </span>
                          </td>
                          <td className="p-3 text-gray-600">{candidate.exclusion_reason || '-'}</td>

@@ -87,7 +87,7 @@ def fetch_manifest_sources_with_fallback(client) -> list[dict]:
     try:
         scenes_res = (
             client.table("scenes")
-            .select("id, provider, capture_date")
+            .select("id, scene_identifier, acquisition_date, is_experimental")
             .limit(50)
             .execute()
         )
