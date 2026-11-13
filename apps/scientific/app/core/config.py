@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     environment: str = "development"
     cors_origins: str = "http://localhost:5173"
-    internal_service_token: SecretStr | None = None
+    core_api_url: str = "http://localhost:8000"
 
     # Variables obligatorias (sin valor por defecto)
     supabase_url: str
