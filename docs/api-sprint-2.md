@@ -313,3 +313,14 @@ GET /api/v1/lakes/11111111-1111-1111-1111-111111111111/scenes?start_date=2026-03
 ```
 
 La respuesta usa el formato paginado `items`, `page`, `page_size` y `total`. Cada escena incluye su identificador, lago, identificador de escena, fecha de adquisición y fecha de registro. Para crear la tabla de registros, aplica `database/migrations/013_create_scenes_table.sql`.
+
+### Control de Idempotencia en Trabajos Científicos (S2-149)
+
+Aplica exclusivamente al endpoint `POST /api/v1/executions/`. Soporta la prevención de solicitudes duplicadas mediante la cabecera `X-Idempotency-Key`.
+
+* **Misma clave y mismo `job_type`/configuración:** Devuelve el mismo `job_id` del trabajo original.
+* **Misma clave con contenido distinto:** Responde con código de error `409 Conflict`.
+* **Sin clave de idempotencia:** Crea un trabajo científico nuevo por cada solicitud.
+
+**Alcance de la clave:**
+La clave de idempotencia tiene un alcance global entre todos los trabajos científicos. Queda asociada permanentemente mientras exista el registro en la base de datos (no está limitada por usuario ni tiene vencimiento automático).

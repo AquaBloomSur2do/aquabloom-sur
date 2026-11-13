@@ -7,6 +7,7 @@ import type {
   DatasetDecisionValue,
   ReviewDataset,
   DatasetCandidate,
+  DatasetManifest,
 } from '../types/dataset';
 
 const decisionLabels: Record<DatasetDecisionValue, string> = {
@@ -41,9 +42,12 @@ export function DatasetReview() {
     null
   );
 
-  // --- Estados de Tarea S2-139 (Candidatos) ---
   const [candidates, setCandidates] = useState<DatasetCandidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
+
+  const [manifest, setManifest] = useState<DatasetManifest | null>(null);
+  const [manifestLoading, setManifestLoading] = useState(false);
+  const [manifestError, setManifestError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -99,7 +103,6 @@ export function DatasetReview() {
         if (error instanceof Error && error.name === 'AbortError') return;
 
         if (mounted) {
-          // TODO (Deuda Técnica): Eliminar este mock y consumir el endpoint real de Ingesta en el Sprint 3
           setCandidates([
             {
               id: 'c-1',
@@ -134,6 +137,45 @@ export function DatasetReview() {
     };
   }, [datasetId]);
 
+  useEffect(() => {
+    if (!datasetId || !versionId) {
+      return;
+    }
+
+    let mounted = true;
+    const controller = new AbortController();
+
+    const loadManifest = async () => {
+      setManifestLoading(true);
+      setManifestError(null);
+      try {
+        const response = await apiClient.get<DatasetManifest>(
+          `datasets/${datasetId}/versions/${versionId}/manifest`,
+          { signal: controller.signal }
+        );
+        if (mounted) setManifest(response);
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') return;
+        if (mounted) {
+          setManifestError(
+            error instanceof Error
+              ? error.message
+              : 'No se pudo cargar el manifiesto de la versión.'
+          );
+        }
+      } finally {
+        if (mounted) setManifestLoading(false);
+      }
+    };
+
+    void loadManifest();
+
+    return () => {
+      mounted = false;
+      controller.abort();
+    };
+  }, [datasetId, versionId]);
+
   const selectedDataset = datasets.find((dataset) => dataset.id === datasetId);
   const versions = selectedDataset?.versions ?? [];
   const selectedVersion = versions.find((version) => version.id === versionId);
@@ -146,6 +188,7 @@ export function DatasetReview() {
     );
     setDatasetId(nextDatasetId);
     setVersionId(nextDataset?.versions[0]?.id ?? '');
+    setManifest(null);
   };
 
   const submitDecision = async (
@@ -388,7 +431,10 @@ export function DatasetReview() {
                 <select
                   className="control"
                   value={versionId}
-                  onChange={(event) => setVersionId(event.target.value)}
+                  onChange={(event) => {
+                    setVersionId(event.target.value);
+                    setManifest(null);
+                  }}
                   disabled={versions.length === 0}
                 >
                   {versions.map((version) => (
@@ -430,6 +476,119 @@ export function DatasetReview() {
                 </p>
               </div>
               <span className="badge validated">Oficial · Inmutable</span>
+            </section>
+          )}
+
+          {selectedVersion && (
+            <section aria-label="Manifiesto de la versión" className="card">
+              <div className="card-head">
+                <div>
+                  <h2>Manifiesto y Trazabilidad</h2>
+                  <div className="card-note">
+                    Integridad criptográfica y declaración de procedencia de las fuentes de la versión.
+                  </div>
+                </div>
+              </div>
+
+              <div className="card-body">
+                {manifestLoading ? (
+                  <p className="subtitle">Cargando manifiesto...</p>
+                ) : manifestError ? (
+                  <p className="status-banner danger" role="alert">
+                    {manifestError}
+                  </p>
+                ) : manifest ? (
+                  <div style={{ display: 'grid', gap: '16px' }}>
+                    <div className="grid grid-2">
+                      <div>
+                        <p className="card-note">Identificación</p>
+                        <p style={{ fontWeight: 600, fontSize: '14px' }}>
+                          Versión: {manifest.version_number} ({manifest.version_id})
+                        </p>
+                      </div>
+                      <div>
+                        <p className="card-note">Checksum Global</p>
+                        <p
+                          className="code-pill"
+                          style={{ wordBreak: 'break-all', display: 'inline-block' }}
+                        >
+                          {manifest.global_checksum || manifest.manifest_checksum}
+                        </p>
+                      </div>
+                    </div>
+
+                    {manifest.sources && manifest.sources.length > 0 && (
+                      <div
+                        style={{
+                          borderTop: '1px solid var(--border, #e2e8f0)',
+                          paddingTop: '14px',
+                        }}
+                      >
+                        <h3 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '10px' }}>
+                          Fuentes de Datos
+                        </h3>
+                        <ul style={{ display: 'grid', gap: '10px', listStyle: 'none', padding: 0, margin: 0 }}>
+                          {manifest.sources.map((source) => (
+                            <li key={source.id} className="queue-card">
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'flex-start',
+                                  gap: '12px',
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <div>
+                                  <p style={{ fontWeight: 600, fontSize: '14px' }}>
+                                    {source.source_name || 'Fuente Desconocida'}
+                                  </p>
+                                  <p className="card-note" style={{ fontFamily: 'monospace', marginTop: '4px' }}>
+                                    ID: {source.id}
+                                  </p>
+                                  <p className="card-note" style={{ fontFamily: 'monospace' }}>
+                                    SHA-256: {source.checksum}
+                                  </p>
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                  {source.is_synthetic && (
+                                    <span
+                                      className="badge review"
+                                      title="Advertencia: Datos de prueba sintéticos"
+                                    >
+                                      <span aria-hidden="true">🧪</span> Sintético
+                                    </span>
+                                  )}
+                                  {source.is_experimental && (
+                                    <span
+                                      className="badge reported"
+                                      title="Advertencia: Datos experimentales no calibrados"
+                                    >
+                                      <span aria-hidden="true">⚠️</span> Experimental
+                                    </span>
+                                  )}
+                                  {!source.is_synthetic && !source.is_experimental && (
+                                    <span
+                                      className="badge draft"
+                                      title="Condición de la fuente no informada"
+                                    >
+                                      <span aria-hidden="true">❔</span> Condición no informada
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="subtitle">
+                    El manifiesto no está disponible para esta versión.
+                  </p>
+                )}
+              </div>
             </section>
           )}
 
@@ -666,4 +825,3 @@ export function DatasetReview() {
     </main>
   );
 }
-
