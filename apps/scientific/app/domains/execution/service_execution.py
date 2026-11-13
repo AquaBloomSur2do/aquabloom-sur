@@ -47,7 +47,9 @@ def validate_training_version_service(client, config: TrainingConfig) -> None:
         )
 
 
-async def process_scientific_job(job_id: str, config: dict[str, Any]) -> None:
+async def process_scientific_job(
+    job_id: str, job_type: str, config: dict[str, Any]
+) -> None:
     """Trabajo asíncrono con control estricto de timeout, fallos y persistencia (S2-150)."""
     if supabase is None:
         return
@@ -63,7 +65,7 @@ async def process_scientific_job(job_id: str, config: dict[str, Any]) -> None:
         )
 
         result = await asyncio.wait_for(
-            run_scientific_algorithm(config), timeout=JOB_TIMEOUT_SECONDS
+            run_scientific_algorithm(job_type, config), timeout=JOB_TIMEOUT_SECONDS
         )
 
         update_scientific_job_in_db(
@@ -169,6 +171,9 @@ def create_execution_job_service(
         )
 
     background_tasks.add_task(
-        process_scientific_job, str(inserted_job["id"]), config
+        process_scientific_job,
+        str(inserted_job["id"]),
+        payload.job_type,
+        config,
     )
     return build_job_accepted_response(inserted_job)

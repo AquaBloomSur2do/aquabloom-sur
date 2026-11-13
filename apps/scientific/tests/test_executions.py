@@ -1,9 +1,12 @@
+import hashlib
 import os
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from postgrest.exceptions import APIError
 from pydantic import SecretStr
@@ -12,6 +15,8 @@ os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 
 from apps.scientific.app.core.config import settings
+from apps.scientific.app.domains.execution.baseline_execution import calculate_baseline
+from apps.scientific.app.domains.execution.data_execution import fetch_training_data
 from apps.scientific.app.main import app
 
 settings.internal_service_token = SecretStr("test-secret-token")
@@ -264,39 +269,6 @@ def test_empty_idempotency_key_is_rejected(fake_database):
 
 
 # =========================================================
-# PRUEBAS S2-150: FALLOS, TIMEOUTS Y PERSISTENCIA (MATHIAS)
-# =========================================================
-
-def test_execution_job_handles_internal_exception(fake_database):
-    """Verifica que si el procesamiento falla, el estado persiste como FAILED (S2-150)."""
-    payload = estimation_payload(scene_id="scene_fail")
-    
-    post_response = client.post("/api/v1/executions/", json=payload, headers=HEADERS)
-    job_id = post_response.json()["job_id"]
-    
-    db_record = next((row for row in fake_database.rows if row["id"] == job_id), None)
-    
-    assert db_record is not None
-    assert db_record["status"] == "failed"
-    assert db_record["error_message"] == "Excepción interna: Fallo al procesar los tensores de la escena."
-
-
-def test_execution_job_handles_timeout_exceeded(monkeypatch, fake_database):
-    """Verifica que el timeout aborte el trabajo y persista FAILED (S2-150)."""
-    monkeypatch.setattr("apps.scientific.app.domains.execution.service_execution.JOB_TIMEOUT_SECONDS", 0.1)
-    
-    payload = estimation_payload(scene_id="scene_timeout")
-    post_response = client.post("/api/v1/executions/", json=payload, headers=HEADERS)
-    job_id = post_response.json()["job_id"]
-    
-    db_record = next((row for row in fake_database.rows if row["id"] == job_id), None)
-    
-    assert db_record is not None
-    assert db_record["status"] == "failed"
-    assert "Timeout de 0.1s" in db_record["error_message"]
-
-
-# =========================================================
 # PRUEBAS S2-147: VALIDACION DE TRAINING (BARBARA)
 # =========================================================
 
@@ -337,18 +309,90 @@ def test_training_requires_version_to_belong_to_dataset(fake_database):
     assert fake_database.rows == []
 
 
-def test_training_is_persisted_as_queued_and_returns_202(fake_database):
+# =========================================================
+# PRUEBAS S2-155 / S2-150: BASELINE Y FLUJOS CON MOCKS
+# =========================================================
+
+def mock_supabase_for_training(monkeypatch, csv_content: bytes, valid_checksum: bool = True):
+    mock_supabase = MagicMock()
+    mock_response = MagicMock()
+    checksum = hashlib.sha256(csv_content).hexdigest() if valid_checksum else "0" * 64
+    mock_response.data = [{
+        "storage_path": f"versions/{VERSION_ID}/training.csv",
+        "checksum": checksum,
+        "variables": ["temperatura", "clorofila_a", "turbidez", "ph"],
+    }]
+    mock_supabase.schema.return_value.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value = mock_response
+    mock_supabase.storage.from_().download.return_value = csv_content
+    monkeypatch.setattr("apps.scientific.app.domains.execution.data_execution.supabase", mock_supabase)
+    return mock_supabase
+
+
+def test_execution_job_handles_internal_exception(fake_database, monkeypatch):
+    """Verifica que si el procesamiento falla, el estado persiste como FAILED (S2-150)."""
+    async def mock_run_fail(*args, **kwargs):
+        raise ValueError("Error interno simulado")
+    monkeypatch.setattr("apps.scientific.app.domains.execution.service_execution.run_scientific_algorithm", mock_run_fail)
+    post_response = client.post("/api/v1/executions/", json=estimation_payload(scene_id="scene_fail"), headers=HEADERS)
+    db_record = next((row for row in fake_database.rows if row["id"] == post_response.json()["job_id"]), None)
+    assert db_record["status"] == "failed"
+    assert "Error interno simulado" in db_record["error_message"]
+
+
+def test_execution_job_handles_timeout_exceeded(monkeypatch, fake_database):
+    """Verifica que el timeout aborte el trabajo y persista FAILED (S2-150)."""
+    monkeypatch.setattr("apps.scientific.app.domains.execution.service_execution.JOB_TIMEOUT_SECONDS", 0.1)
+    payload = estimation_payload(scene_id="scene_timeout")
+    post_response = client.post("/api/v1/executions/", json=payload, headers=HEADERS)
+    job_id = post_response.json()["job_id"]
+    db_record = next((row for row in fake_database.rows if row["id"] == job_id), None)
+    assert db_record is not None
+    assert db_record["status"] == "failed"
+    assert "Timeout de 0.1s" in db_record["error_message"]
+
+
+def test_training_is_persisted_as_queued_and_returns_202(fake_database, monkeypatch):
+    csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
+    mock_supabase = mock_supabase_for_training(monkeypatch, csv_data)
     response = client.post("/api/v1/executions/", json=training_payload(), headers=HEADERS)
     assert response.status_code == 202
-    data = response.json()
-    assert data["status"] == "queued"
-    assert data["status_url"] == f"/api/v1/executions/{data['job_id']}"
-    assert len(fake_database.rows) == 1
-    
-    # En FastAPI TestClient, las BackgroundTasks se ejecutan sincrónicamente
-    # por lo que el objeto en base de datos ya transitó a "completed".
     assert fake_database.rows[0]["status"] == "completed"
-    assert fake_database.rows[0]["job_type"] == "training"
+    result = fake_database.rows[0]["result"]
+    assert result["prediction_value"] == 15.0
+    assert result["predictions"] == [15.0]
+    assert result["metrics"] == {"mae": 15.0, "rmse": 15.0}
+    mock_supabase.storage.from_.assert_any_call("training_files")
+    mock_supabase.storage.from_.return_value.download.assert_called_once_with(
+        f"versions/{VERSION_ID}/training.csv"
+    )
 
 
+def test_data_execution_rechaza_checksum_invalido(monkeypatch):
+    mock_supabase_for_training(monkeypatch, b"clorofila_a\n10.0\n", valid_checksum=False)
+    with pytest.raises(HTTPException) as exc:
+        fetch_training_data("dataset_1", "v1")
+    assert exc.value.status_code == 422
+    assert "Checksum" in exc.value.detail
 
+
+def test_data_execution_rechaza_valores_invalidos(monkeypatch):
+    mock_supabase_for_training(monkeypatch, b"clorofila_a\n10.0\nNA\n30.0\n")
+    with pytest.raises(HTTPException) as exc:
+        fetch_training_data("dataset_1", "v1")
+    assert "no num" in exc.value.detail or "inv" in exc.value.detail
+
+
+def test_baseline_evaluacion_no_modifica_media():
+    train_data = [{"clorofila_a": 10.0}, {"clorofila_a": 20.0}]
+    val_data = [{"clorofila_a": 100.0}, {"clorofila_a": 200.0}]
+    result = calculate_baseline(train_data, val_data)
+    assert result["prediction_value"] == 15.0
+    assert result["predictions"] == [15.0, 15.0]
+    assert result["metrics"]["mae"] == 135.0
+
+
+def test_baseline_falla_con_particiones_vacias():
+    with pytest.raises(ValueError, match="entrenamiento vacío"):
+        calculate_baseline([], [{"clorofila_a": 10.0}])
+    with pytest.raises(ValueError, match="evaluación vacío"):
+        calculate_baseline([{"clorofila_a": 10.0}], [])
