@@ -39,3 +39,10 @@ $$NDCI = \frac{B05 - B04}{B05 + B04}$$
 - **Máscara de Agua:** Los píxeles fuera del cuerpo de agua (`water_mask = False` / `0`) son descartados y evaluados como `NaN`.
 - **División por Cero:** Píxeles donde $B05 + B04 = 0$ son devueltos como `NaN` para mantener la estabilidad numérica.
 
+### Implementación del Baseline (S2-155)
+
+El modelo "baseline" implementado para la predicción de **clorofila_a** funciona mediante un promedio histórico simple bajo estrictas validaciones:
+1. **Validación de Datos:** Se recupera el manifiesto y se descarga el archivo `training.csv` desde `training_files` validando su checksum. Se rechazan archivos sin la columna `clorofila_a`, vacíos o con valores no numéricos.
+2. **Partición de Datos:** Se requieren al menos 2 observaciones para separar secuencialmente en entrenamiento (80%) y evaluación (20%), garantizando que ambas particiones tengan datos.
+3. **Cálculo del Promedio:** Se calcula la media de clorofila_a utilizando *exclusivamente* la partición de entrenamiento.
+4. **Predicción y Métricas:** Este promedio constante se aplica a la partición de evaluación para calcular el Error Absoluto Medio (MAE) y la Raíz del Error Cuadrático Medio (RMSE), fallando explícitamente si alguna partición queda vacía.
