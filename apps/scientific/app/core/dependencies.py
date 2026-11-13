@@ -2,13 +2,36 @@ import secrets
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
-
-from apps.api.app.core.auth import verify_supabase_jwt
+from apps.api.app.core.auth import (
+    AuthException as SupabaseAuthException,
+)
+from apps.api.app.core.auth import (
+    security,
+    verify_supabase_jwt,
+)
 from apps.api.app.core.config import settings
 from apps.api.app.core.permissions import has_permission
+from fastapi import Depends, Header, HTTPException, Security, status
+from fastapi.security import HTTPAuthorizationCredentials
 
-__all__ = ["mock_get_current_user", "require_internal_service", "require_permission"]
+__all__ = [
+    "mock_get_current_user",
+    "require_authenticated_user",
+    "require_internal_service",
+    "require_permission",
+]
+
+
+def require_authenticated_user(
+    credentials: HTTPAuthorizationCredentials = Security(security),  # noqa: B008
+) -> dict:
+    try:
+        return verify_supabase_jwt(credentials)
+    except SupabaseAuthException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=exc.message,
+        ) from exc
 
 
 def mock_get_current_user(
