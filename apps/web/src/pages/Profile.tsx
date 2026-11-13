@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { ApiError } from '../services/apiClient';
 import { apiClient } from '../services/apiClient';
+import { useAuth } from '../contexts/useAuth';
 
 interface UserProfile {
   name: string;
@@ -9,7 +11,23 @@ interface UserProfile {
   status: string;
 }
 
+interface CurrentUserResponse {
+  id: string;
+  email: string | null;
+  memberships: Array<{
+    id: string;
+    role: string;
+    status: string;
+    organization: {
+      id: string;
+      name: string;
+      status: string;
+    };
+  }>;
+}
+
 export default function Profile() {
+  const { user } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -21,25 +39,32 @@ export default function Profile() {
       try {
         if (isMounted) setIsLoading(true);
         if (isMounted) setError('');
-        
-        // Llamada directa sin desestructurar para cumplir con la interfaz
-        const data = await apiClient.get<UserProfile>('/profile');
-        
+
+        const data = await apiClient.get<CurrentUserResponse>('auth/me');
+        const membership = data.memberships[0];
+        const metadataName =
+          user?.user_metadata?.full_name ?? user?.user_metadata?.name;
+        const email = data.email ?? user?.email ?? '';
+
         if (isMounted) {
           setProfile({
-            name: data.name || 'Usuario Desconocido',
-            email: data.email || 'Sin correo',
-            organization: data.organization || 'Sin organización',
-            role: data.role || 'Sin rol',
-            status: data.status || 'inactivo'
+            name:
+              (typeof metadataName === 'string' && metadataName.trim()) ||
+              email.split('@')[0] ||
+              'Usuario',
+            email: email || 'Sin correo',
+            organization: membership?.organization.name || 'Sin organización',
+            role:
+              membership?.role ||
+              (typeof user?.user_metadata?.role === 'string'
+                ? user.user_metadata.role
+                : 'Sin rol'),
+            status: membership?.status || 'Activo',
           });
         }
       } catch (err: unknown) {
         if (isMounted) {
-          // Moldeamos el error desconocido a la estructura segura esperada
-          const apiError = err as { response?: { status?: number } };
-          
-          if (apiError?.response?.status === 404) {
+          if (err instanceof ApiError && err.status === 404) {
             setProfile(null);
           } else {
             setError('No se pudo cargar la información del perfil.');
@@ -55,7 +80,7 @@ export default function Profile() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [user]);
 
   if (isLoading) {
     return (
