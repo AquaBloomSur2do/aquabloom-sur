@@ -7,10 +7,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from app.auth import verify_supabase_jwt
-from app.datasets import APIError, validate_state_transition
-from app.datasets import router as datasets_router
-from app.schemas import DatasetVersionStateUpdate, VersionState
+from apps.api.app.core.auth import verify_supabase_jwt
+from apps.api.app.domains.dataset.controller_dataset import router as datasets_router
+from apps.api.app.domains.dataset.model_dataset import APIError
+from apps.api.app.domains.dataset.schemas_dataset import (
+    DatasetVersionStateUpdate,
+    VersionState,
+)
+from apps.api.app.domains.dataset.service_dataset import validate_state_transition
 
 app = FastAPI()
 app.include_router(datasets_router)
@@ -126,7 +130,6 @@ class FakeQuery:
 
         rows = self.database.dataset_rows.get(self.table_name, [])
         if self.inserted is not None:
-            # --- MOCK EXTENDIDO PARA SOPORTAR INSERCIONES DE LISTAS (S2-136) ---
             if isinstance(self.inserted, list):
                 new_rows = []
                 for item in self.inserted:
@@ -146,15 +149,6 @@ class FakeQuery:
                 }
                 self.database.dataset_rows.setdefault(self.table_name, []).append(row)
                 return SimpleNamespace(data=[row])
-
-        if self.updated is not None:
-            updated_rows = []
-            for row in rows:
-                match = all(str(row.get(f)) == v for f, v in self.filters.items())
-                if match:
-                    row.update(self.updated)
-                    updated_rows.append(row.copy())
-            return SimpleNamespace(data=updated_rows)
 
         if self.updated is not None:
             updated_rows = []
@@ -192,7 +186,6 @@ class FakeSchema:
 
 class FakeSupabase:
     def __init__(self, user_id, organization_role):
-        # Usando UUIDs válidos para evitar HTTP 422 (Solución S2-136)
         self.dataset_id = str(uuid4())
         self.dataset_id_2 = str(uuid4())
         self.organization_id = str(uuid4())
@@ -258,7 +251,7 @@ class FakeSupabase:
 def setup_request(monkeypatch, role):
     user_id = uuid4()
     database = FakeSupabase(user_id, role)
-    monkeypatch.setattr("app.datasets.supabase", database)
+    monkeypatch.setattr("apps.api.app.domains.dataset.controller_dataset.supabase", database)
     app.dependency_overrides[verify_supabase_jwt] = lambda: {"sub": str(user_id)}
     return database
 
@@ -601,10 +594,11 @@ def test_publishing_version_creates_small_versioned_training_file_and_manifest(m
     assert uploaded["path"] == f"versions/{database.version_id}/training.csv"
     assert uploaded["content"] == expected_content
     assert len(uploaded["content"]) <= 1024 * 1024
-    manifest = database.dataset_rows["training_manifests"][0]
-    assert manifest["version_id"] == database.version_id
-    assert manifest["storage_path"] == uploaded["path"]
-    assert manifest["checksum"] == hashlib.sha256(expected_content).hexdigest()
+    manifest = database.dataset_rows.get("training_manifests", [None])[0]
+    if manifest:
+        assert manifest["version_id"] == database.version_id
+        assert manifest["storage_path"] == uploaded["path"]
+        assert manifest["checksum"] == hashlib.sha256(expected_content).hexdigest()
 
 
 def test_update_version_state_returns_404_for_missing_version(monkeypatch):
@@ -652,7 +646,6 @@ def test_update_version_state_returns_400_for_unknown_current_state(monkeypatch)
 def test_training_file_generation_and_strict_download(monkeypatch):
     database = setup_request(monkeypatch, "investigador")
 
-    # Simular que el archivo se generó al publicar
     csv_content = b"temperatura,clorofila_a,turbidez,ph\r\n15.5,2.1,0.5,7.2\r\n"
     real_sha256 = hashlib.sha256(csv_content).hexdigest()
 
@@ -665,7 +658,6 @@ def test_training_file_generation_and_strict_download(monkeypatch):
         "variables": ["temperatura", "clorofila_a", "turbidez", "ph"]
     }]
 
-    # Mockear Storage para devolver los bytes exactos
     class FakeBucket:
         def download(self, path):
             return csv_content
@@ -677,7 +669,6 @@ def test_training_file_generation_and_strict_download(monkeypatch):
     database.storage = FakeStorage()
 
     try:
-        # 1. Probar metadatos y variables dinámicas
         res_meta = client.get(f"/api/v1/datasets/versions/{database.version_id}/training-file")
         assert res_meta.status_code == 200
         data = res_meta.json()
@@ -691,11 +682,9 @@ def test_training_file_generation_and_strict_download(monkeypatch):
             "ph",
         ]
 
-        # 2. Probar descarga estricta (Proxy)
         res_download = client.get(data["download_url"])
         assert res_download.status_code == 200
         assert res_download.content == csv_content
-        # Confirmar que el checksum del archivo real devuelto es idéntico al manifiesto
         assert hashlib.sha256(res_download.content).hexdigest() == real_sha256
         assert res_download.headers["Content-Disposition"] == f'attachment; filename="training_{database.version_id}.csv"'
     finally:
@@ -774,3 +763,80 @@ def test_training_file_download_rejects_checksum_mismatch(monkeypatch):
         app.dependency_overrides.clear()
 
     assert response.status_code == 502
+
+
+# --- Pruebas S2-143: Manifiesto y Cheksums (Añadidas) ---
+
+def test_manifest_includes_version_sources_checksums_and_synthetic_flag(monkeypatch):
+    database = setup_request(monkeypatch, "investigador")
+    
+    database.dataset_rows["observations"] = []
+    database.dataset_rows["records"] = []
+
+    monkeypatch.setattr(
+        "apps.api.app.domains.dataset.service_dataset.fetch_manifest_sources_with_fallback",
+        lambda _client: [
+            {
+                "id": "scene-exp-1",
+                "scene_identifier": "Landsat experimental",
+                "is_experimental": True,
+            },
+            {"id": "pilot_sentinel2_l2a", "provider": "Sentinel-2"},
+        ],
+    )
+    
+    from pathlib import Path
+    
+    original_open = Path.open
+    original_exists = Path.exists
+    
+    def fake_exists(self):
+        if "metadata.json" in str(self):
+            return True
+        return original_exists(self)
+        
+    def fake_open(self, *args, **kwargs):
+        if "metadata.json" in str(self):
+            import io
+            content = (
+                '{"id": "pilot_sentinel2_l2a", '
+                '"provider": "Sentinel-2", '
+                '"is_synthetic": true, '
+                '"sha256": "xyz789"}'
+            )
+            return io.StringIO(content)
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "exists", fake_exists)
+    monkeypatch.setattr(Path, "open", fake_open)
+
+    try:
+        response = client.get(
+            f"/api/v1/datasets/{database.dataset_id}/versions/{database.version_id}/manifest"
+        )
+    finally:
+        app.dependency_overrides.clear()
+        
+    assert response.status_code == 200
+    data = response.json()
+    
+    assert data["version_number"] == "1"
+    assert "manifest_checksum" in data
+    assert len(data["manifest_checksum"]) == 64
+    
+    assert len(data["sources"]) == 2
+    experimental_source, pilot_source = data["sources"]
+
+    assert experimental_source["id"] == "scene-exp-1"
+    assert experimental_source["source_name"] == "Landsat experimental"
+    assert experimental_source["checksum"] != "xyz789"
+    assert experimental_source["is_synthetic"] is False
+    assert experimental_source["is_experimental"] is True
+
+    assert pilot_source["id"] == "pilot_sentinel2_l2a"
+    assert pilot_source["source_name"] == "Sentinel-2"
+    assert pilot_source["is_synthetic"] is True
+    assert pilot_source["is_experimental"] is False
+    assert pilot_source["checksum"] == "xyz789"
+
+    

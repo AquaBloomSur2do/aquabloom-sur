@@ -1,10 +1,24 @@
-import { useEffect, useState, useRef, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Pagination } from './Pagination';
 import { ApiError, apiClient } from '../services/apiClient';
 import type { PaginatedScenes, Scene } from '../types/scene';
 
+interface MockScene {
+  id: string;
+  date: string;
+  satellite: string;
+}
+
 interface SceneSelectorProps {
-  lakeId: string;
+  lakeId?: string;
+  onSceneSelect?: (scene: Scene | null) => void;
+  desde?: string;
+  hasta?: string;
+  onDesdeChange?: (value: string) => void;
+  onHastaChange?: (value: string) => void;
+  scenes?: MockScene[];
+  selectedSceneId?: string | null;
+  onSelectScene?: (id: string) => void;
 }
 
 interface DateRange {
@@ -12,54 +26,62 @@ interface DateRange {
   endDate: string;
 }
 
+interface DisplayScene {
+  id: string;
+  identifier: string;
+  date: string;
+  satellite: string;
+  registeredScene?: Scene;
+}
+
 const PAGE_SIZE = 20;
 
-export function SceneSelector({ lakeId }: SceneSelectorProps) {
-  // Estados para listar y filtrar
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+export function SceneSelector({
+  lakeId,
+  onSceneSelect,
+  desde,
+  hasta,
+  onDesdeChange,
+  onHastaChange,
+  scenes: mockScenes = [],
+  selectedSceneId = null,
+  onSelectScene,
+}: SceneSelectorProps) {
+  const isSandbox = lakeId === undefined;
+  const [startDate, setStartDate] = useState(desde ?? '');
+  const [endDate, setEndDate] = useState(hasta ?? '');
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [rangeError, setRangeError] = useState<string | null>(null);
-  const [scenes, setScenes] = useState<Scene[]>([]);
+  const [apiScenes, setApiScenes] = useState<Scene[]>([]);
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-
-  // Estados para simular el registro (Opción 1)
   const [newSceneId, setNewSceneId] = useState('');
   const [newSceneDate, setNewSceneDate] = useState('');
   const [isSimulatingPost, setIsSimulatingPost] = useState(false);
-  const [registrationSuccess, setRegistrationSuccess] = useState<string | null>(null);
-
-  // FIX 1: Referencia para evitar fugas de memoria (Memory Leaks)
+  const [registrationSuccess, setRegistrationSuccess] = useState<string | null>(
+    null
+  );
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
     return () => {
-      // Limpieza segura de todos los temporizadores pendientes
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      for (const timerId of timersRef.current) {
-        clearTimeout(timerId);
-      }
-      // Vaciamos el arreglo para liberar memoria
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      timersRef.current = []; 
+      timersRef.current.forEach(clearTimeout);
+      timersRef.current = [];
     };
   }, []);
 
-
   useEffect(() => {
-    if (!dateRange) return;
+    if (!lakeId || !dateRange) return;
 
     const controller = new AbortController();
     let active = true;
 
     const loadScenes = async () => {
       setIsLoading(true);
-      // FIX 2: Mantenemos el reseteo de error aislado para evitar ciclos si alguna herramienta de linting fuerza dependencias
       setError(null);
       const params = new URLSearchParams({
         start_date: dateRange.startDate,
@@ -74,7 +96,7 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
           { signal: controller.signal }
         );
         if (active) {
-          setScenes(Array.isArray(response.items) ? response.items : []);
+          setApiScenes(Array.isArray(response.items) ? response.items : []);
           setTotal(response.total);
         }
       } catch (requestError) {
@@ -90,7 +112,6 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
     };
 
     void loadScenes();
-
     return () => {
       active = false;
       controller.abort();
@@ -100,11 +121,15 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
   const handleSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (startDate > endDate) {
-      setRangeError('La fecha inicial debe ser anterior o igual a la fecha final.');
+      setRangeError(
+        'La fecha inicial debe ser anterior o igual a la fecha final.'
+      );
       return;
     }
 
     setRangeError(null);
+    setSelectedScene(null);
+    onSceneSelect?.(null);
     setCurrentPage(1);
     setDateRange({ startDate, endDate });
   };
@@ -114,278 +139,288 @@ export function SceneSelector({ lakeId }: SceneSelectorProps) {
     setIsSimulatingPost(true);
     setRegistrationSuccess(null);
 
-    // TODO (Deuda Técnica): Reemplazar simulación con llamada real apiClient.post('/lakes/{lakeId}/scenes', ...) en el Sprint 3
-    const t1 = setTimeout(() => {
+    const registrationTimer = setTimeout(() => {
       setIsSimulatingPost(false);
-      setRegistrationSuccess(`Escena ${newSceneId} simulada y "registrada" exitosamente en staging (API pendiente).`);
-      
+      setRegistrationSuccess(
+        `Escena ${newSceneId} simulada y "registrada" exitosamente en staging (API pendiente).`
+      );
       setNewSceneId('');
       setNewSceneDate('');
-      
-      const t2 = setTimeout(() => {
+
+      const successTimer = setTimeout(() => {
         setRegistrationSuccess(null);
       }, 4000);
-      timersRef.current.push(t2);
+      timersRef.current.push(successTimer);
     }, 1000);
-    
-    timersRef.current.push(t1);
+    timersRef.current.push(registrationTimer);
   };
 
-  // FIX 3: Cálculo correcto de paginación para estados vacíos
+  const scenesToDisplay: DisplayScene[] = isSandbox
+    ? mockScenes.map((scene) => ({
+        id: scene.id,
+        identifier: scene.id,
+        date: scene.date,
+        satellite: scene.satellite,
+      }))
+    : apiScenes.map((scene) => ({
+        id: scene.id,
+        identifier: scene.scene_identifier,
+        date: scene.acquisition_date,
+        satellite: scene.provider ?? 'No disponible',
+        registeredScene: scene,
+      }));
   const totalPages = total > 0 ? Math.ceil(total / PAGE_SIZE) : 0;
+  const hasSearchResults = isSandbox || dateRange !== null;
 
   return (
-    <div className="space-y-6">
-      {/* SECCIÓN 1: Formulario Simulado de Registro (S2-120) */}
-      <section className="bg-white p-5 md:p-6 rounded-xl shadow-sm border border-gray-200">
-        <div className="mb-4 border-b border-gray-100 pb-3">
-          <h2 className="text-lg font-bold text-gray-800">
-            Registrar nueva escena (Demostración Staging)
+    <div className="grid">
+      {!isSandbox && (
+        <section className="card">
+          <div className="card-head">
+            <h2>Registrar nueva escena (Demostración Staging)</h2>
+          </div>
+          <div className="card-body">
+            <p className="lake-meta">
+              Simulación de registro de insumo Sentinel-2 L2A (el endpoint POST
+              en Satellite está en desarrollo).
+            </p>
+            {registrationSuccess && (
+              <p className="card-note" role="status">{registrationSuccess}</p>
+            )}
+            <form className="grid grid-2" onSubmit={handleSimulatedRegister}>
+              <div className="field">
+                <label htmlFor="sim-scene-id" className="label">
+                  Identificador Sentinel-2 L2A
+                </label>
+                <input
+                  id="sim-scene-id"
+                  className="control"
+                  type="text"
+                  required
+                  placeholder="Ej: S2A_MSIL2A_20261028..."
+                  value={newSceneId}
+                  onChange={(event) => setNewSceneId(event.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="sim-scene-date" className="label">
+                  Fecha de Captura
+                </label>
+                <input
+                  id="sim-scene-date"
+                  className="control"
+                  type="date"
+                  required
+                  value={newSceneDate}
+                  onChange={(event) => setNewSceneDate(event.target.value)}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isSimulatingPost}
+                className="btn btn-primary"
+              >
+                {isSimulatingPost ? 'Registrando...' : 'Simular Registro'}
+              </button>
+            </form>
+          </div>
+        </section>
+      )}
+
+      <section className="card" aria-labelledby="scene-selector-title">
+        <div className="card-head">
+          <h2 id="scene-selector-title">
+            {isSandbox ? 'Selección de Escena' : 'Escenas registradas'}
           </h2>
-          <p className="mt-1 text-sm text-gray-600">
-            Simulación de registro de insumo Sentinel-2 L2A (El endpoint POST en Satellite está en desarrollo).
-          </p>
         </div>
-
-        {registrationSuccess && (
-          <div className="mb-4 p-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md" role="alert">
-            {registrationSuccess}
-          </div>
-        )}
-
-        <form onSubmit={handleSimulatedRegister} className="flex flex-col md:flex-row md:items-end gap-3">
-          <div className="flex-1">
-            <label htmlFor="sim-scene-id" className="block text-sm font-medium text-gray-700 mb-1">
-              Identificador Sentinel-2 L2A
-            </label>
-            <input
-              id="sim-scene-id"
-              type="text"
-              required
-              placeholder="Ej: S2A_MSIL2A_20261028..."
-              value={newSceneId}
-              onChange={(e) => setNewSceneId(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            />
-          </div>
-          <div className="flex-1">
-            <label htmlFor="sim-scene-date" className="block text-sm font-medium text-gray-700 mb-1">
-              Fecha de Captura
-            </label>
-            <input
-              id="sim-scene-date"
-              type="date"
-              required
-              value={newSceneDate}
-              onChange={(e) => setNewSceneDate(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            />
-          </div>
-          <button 
-            type="submit" 
-            disabled={isSimulatingPost}
-            className="btn btn-primary disabled:opacity-50"
-          >
-            {isSimulatingPost ? 'Registrando...' : 'Simular Registro'}
-          </button>
-        </form>
-      </section>
-
-      {/* SECCIÓN 2: Listado y Búsqueda de Escenas Existentes */}
-      <section
-        className="bg-white p-5 md:p-6 rounded-xl shadow-sm border border-gray-200"
-        aria-labelledby="scene-selector-title"
-      >
-        <div className="mb-4 border-b border-gray-100 pb-3">
-          <h2 id="scene-selector-title" className="text-lg font-bold text-gray-800">
-            Escenas registradas
-          </h2>
-          <p className="mt-1 text-sm text-gray-600">
-            Consulta las escenas disponibles para este lago y selecciona una.
-            Este listado no busca escenas en Copernicus.
-          </p>
-        </div>
-
-        <aside
-          className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
-          role="note"
-          aria-label="Advertencia sobre uso científico"
-        >
-          Advertencia: Este insumo muestra procedencia pero no se presenta como un
-          dato científico validado.
-        </aside>
-
-        <form
-          className="mb-4 flex flex-col md:flex-row md:items-end gap-3"
-          onSubmit={handleSearch}
-        >
-          <div className="flex-1">
-            <label
-              htmlFor="scene-start-date"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Desde
-            </label>
-            <input
-              id="scene-start-date"
-              type="date"
-              required
-              value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            />
-          </div>
-          <div className="flex-1">
-            <label
-              htmlFor="scene-end-date"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Hasta
-            </label>
-            <input
-              id="scene-end-date"
-              type="date"
-              required
-              value={endDate}
-              onChange={(event) => setEndDate(event.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            />
-          </div>
-          <button type="submit" className="btn btn-primary">
-            Buscar escenas
-          </button>
-        </form>
-
-        {rangeError && (
-          <p className="state-panel state-panel--error mb-4" role="alert">
-            {rangeError}
-          </p>
-        )}
-
-        {!dateRange ? (
-          <p className="state-panel state-panel--empty">
-            Selecciona un rango de fechas para consultar las escenas registradas.
-          </p>
-        ) : isLoading ? (
-          <p className="state-panel state-panel--loading" role="status">
-            Cargando escenas...
-          </p>
-        ) : error ? (
-          <div className="state-panel state-panel--error" role="alert">
-            <p>{error}</p>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => setRetryCount((count) => count + 1)}
-            >
-              Reintentar
-            </button>
-          </div>
-        ) : scenes.length === 0 ? (
-          <p className="state-panel state-panel--empty">
-            No hay escenas registradas para este lago en el rango seleccionado.
-          </p>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm min-w-[420px]">
-                <thead>
-                  <tr className="text-gray-500 bg-gray-50">
-                    <th scope="col" className="p-3 font-semibold">
-                      Seleccionar
-                    </th>
-                    <th scope="col" className="p-3 font-semibold">
-                      Identificador de escena
-                    </th>
-                    <th scope="col" className="p-3 font-semibold">
-                      Fecha de adquisición
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scenes.map((scene) => (
-                    <tr
-                      key={scene.id}
-                      className="border-t border-gray-100 hover:bg-gray-50"
-                    >
-                      <td className="p-3">
-                        <input
-                          type="radio"
-                          name="selected-scene"
-                          value={scene.id}
-                          checked={selectedScene?.id === scene.id}
-                          onChange={() => setSelectedScene(scene)}
-                          aria-label={`Seleccionar escena ${scene.scene_identifier}`}
-                          className="h-4 w-4 accent-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                        />
-                      </td>
-                      <td className="p-3 font-mono text-xs text-gray-700">
-                        {scene.scene_identifier}
-                      </td>
-                      <td className="p-3 text-gray-700">
-                        {scene.acquisition_date}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <div className="card-body">
+          <form className="grid grid-2" onSubmit={handleSearch}>
+            <div className="field">
+              <label htmlFor={isSandbox ? 'desde' : 'scene-start-date'} className="label">
+                Desde
+              </label>
+              <input
+                id={isSandbox ? 'desde' : 'scene-start-date'}
+                type="date"
+                className="control"
+                required={!isSandbox}
+                value={isSandbox ? desde ?? startDate : startDate}
+                onChange={(event) => {
+                  setStartDate(event.target.value);
+                  onDesdeChange?.(event.target.value);
+                }}
+              />
             </div>
+            <div className="field">
+              <label htmlFor={isSandbox ? 'hasta' : 'scene-end-date'} className="label">
+                Hasta
+              </label>
+              <input
+                id={isSandbox ? 'hasta' : 'scene-end-date'}
+                type="date"
+                className="control"
+                required={!isSandbox}
+                value={isSandbox ? hasta ?? endDate : endDate}
+                onChange={(event) => {
+                  setEndDate(event.target.value);
+                  onHastaChange?.(event.target.value);
+                }}
+              />
+            </div>
+            {!isSandbox && (
+              <button type="submit" className="btn btn-primary">
+                Buscar escenas
+              </button>
+            )}
+          </form>
 
-            {selectedScene && (
-              <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
-                <p className="text-sm font-semibold text-blue-900" role="status">
-                  Escena seleccionada: {selectedScene.scene_identifier} (
-                  {selectedScene.acquisition_date})
-                </p>
-                <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-                  <div>
-                    <dt className="font-medium text-gray-700">Procedencia</dt>
-                    <dd className="text-gray-600">
-                      {selectedScene.provider || 'No disponible'}
-                    </dd>
+          <aside
+            className="security-note"
+            role="note"
+            aria-label="Advertencia sobre uso científico"
+            style={{
+              borderColor: '#f5c070',
+              background: 'var(--warning-soft)',
+              color: '#8c5910',
+              margin: '20px 0',
+            }}
+          >
+            <strong style={{ color: 'var(--warning)' }}>
+              Advertencia Científica
+            </strong>
+            {isSandbox ? (
+              <>
+                La selección de una escena y el índice satelital asociado son
+                estimaciones ópticas. <b>No equivalen a toxicidad confirmada</b> y
+                deben complementarse con muestras limnológicas.
+              </>
+            ) : (
+              <>
+                Advertencia: Este insumo muestra procedencia pero no se presenta
+                como un dato científico validado.
+              </>
+            )}
+          </aside>
+
+          {rangeError && (
+            <p className="card-note" role="alert">{rangeError}</p>
+          )}
+
+          {!hasSearchResults ? (
+            <p className="card-note">
+              Selecciona un rango de fechas para consultar las escenas registradas.
+            </p>
+          ) : isLoading ? (
+            <p className="card-note" role="status">Cargando escenas...</p>
+          ) : error ? (
+            <div role="alert">
+              <p className="card-note">{error}</p>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setRetryCount((count) => count + 1)}
+              >
+                Reintentar
+              </button>
+            </div>
+          ) : scenesToDisplay.length === 0 ? (
+            <p className="card-note">
+              {isSandbox
+                ? 'No hay escenas disponibles en este rango de fechas.'
+                : 'No hay escenas registradas para este lago en el rango seleccionado.'}
+            </p>
+          ) : (
+            <div className="grid">
+              {scenesToDisplay.map((scene) => {
+                const isSelected = isSandbox
+                  ? selectedSceneId === scene.id
+                  : selectedScene?.id === scene.id;
+
+                return (
+                  <label
+                    key={scene.id}
+                    className="lake-row"
+                    style={{
+                      cursor: 'pointer',
+                      borderColor: isSelected ? 'var(--teal)' : 'var(--line)',
+                      background: isSelected ? 'var(--teal-soft)' : 'transparent',
+                    }}
+                  >
+                    <span className="lake-symbol">
+                      <input
+                        type="radio"
+                        name={isSandbox ? 'scene_selector' : 'selected-scene'}
+                        value={scene.id}
+                        checked={isSelected}
+                        aria-label={`Seleccionar escena ${scene.identifier}`}
+                        onChange={() => {
+                          if (isSandbox) {
+                            onSelectScene?.(scene.id);
+                          } else if (scene.registeredScene) {
+                            setSelectedScene(scene.registeredScene);
+                            onSceneSelect?.(scene.registeredScene);
+                          }
+                        }}
+                      />
+                    </span>
+                    <span>
+                    <span className="lake-name">
+                      {isSandbox ? `Escena ${scene.identifier}` : scene.identifier}
+                    </span>
+                    <span className="lake-meta">
+                      {isSandbox ? `Satélite: ${scene.satellite}` : `Registro ${scene.id}`}
+                    </span>
+                    </span>
+                    <span className="metric-mini">
+                      <strong>{scene.date}</strong>
+                      <span>Fecha de captura</span>
+                    </span>
+                  </label>
+                );
+              })}
+
+              {!isSandbox && selectedScene && (
+                <div className="detail-grid">
+                  <div className="detail">
+                    <span>Escena seleccionada</span>
+                    <b role="status">
+                      Escena seleccionada: {selectedScene.scene_identifier} (
+                      {selectedScene.acquisition_date})
+                    </b>
                   </div>
-                  <div>
-                    <dt className="font-medium text-gray-700">
-                      Identificador externo
-                    </dt>
-                    <dd className="break-all font-mono text-gray-600">
-                      {selectedScene.external_id || 'No disponible'}
-                    </dd>
+                  <div className="detail">
+                    <span>Procedencia</span>
+                    <b>{selectedScene.provider || 'No disponible'}</b>
                   </div>
-                  <div>
-                    <dt className="font-medium text-gray-700">
-                      Cobertura de nubes
-                    </dt>
-                    <dd className="text-gray-600">
+                  <div className="detail">
+                    <span>Identificador externo</span>
+                    <b>{selectedScene.external_id || 'No disponible'}</b>
+                  </div>
+                  <div className="detail">
+                    <span>Cobertura de nubes</span>
+                    <b>
                       {selectedScene.cloud_cover != null
                         ? `${selectedScene.cloud_cover}%`
                         : 'No disponible'}
-                    </dd>
+                    </b>
                   </div>
-                  <div>
-                    <dt className="font-medium text-gray-700">
-                      Estado de la escena
-                    </dt>
-                    <dd className="text-gray-600">
-                      {selectedScene.status || 'No disponible'}
-                    </dd>
+                  <div className="detail">
+                    <span>Estado de la escena</span>
+                    <b>{selectedScene.status || 'No disponible'}</b>
                   </div>
-                </dl>
-              </div>
-            )}
-            
-            {/* Solo mostramos la paginación si hay páginas */}
-            {totalPages > 0 && (
-              <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={setCurrentPage}
-              />
-            )}
-          </>
-        )}
+                </div>
+              )}
+              {!isSandbox && totalPages > 0 && (
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setCurrentPage}
+                />
+              )}
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );
 }
-

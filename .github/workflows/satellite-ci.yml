@@ -9,28 +9,24 @@ jobs:
   satellite-ci:
     name: Validar cola y worker Satellite
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./apps/satellite
+    env:
+      PYTHONPATH: .
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_KEY: test-key
     steps:
       - name: Checkout del código
         uses: actions/checkout@v4
-
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Instalar dependencias
         run: |
-          pip install -r requirements.txt
-          pip install httpx2 pytest ruff
-
-      - name: Ejecutar pruebas
-        run: python -m pytest -q
-
+          pip install -r apps/satellite/requirements.txt
+          pip install -r apps/api/requirements.txt
+          pip install pytest ruff redis rasterio pyjwt httpx
       - name: Ejecutar linter
-        run: ruff check .
+        run: ruff check apps/satellite/
+      - name: Ejecutar pruebas
+        run: pytest apps/satellite/tests/ -q
 
-      - name: Compilar
-        run: python -m compileall app tests

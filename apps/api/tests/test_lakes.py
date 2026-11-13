@@ -7,11 +7,11 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 
-from app import auth
-from app import lakes as lakes_module
-from app import repositories as repositories_module
-from app.main import app
-from app.repositories import get_active_lakes
+from apps.api.app.core import auth
+from apps.api.app.domains.catalog import controller_catalog as lakes_module
+from apps.api.app.domains.catalog import model_catalog as repositories_module
+from apps.api.app.domains.catalog.model_catalog import get_active_lakes
+from apps.api.app.main import app
 
 
 class FakeResponse:

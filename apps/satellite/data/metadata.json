@@ -1,0 +1,6 @@
+{
+  "id": "pilot_sentinel2_l2a",
+  "provider": "Sentinel-2",
+  "is_synthetic": true,
+  "sha256": "fc59e33f0f627dd5232b73e86efd62bd54690b78a0539f7c76e38602ad062967"
+}

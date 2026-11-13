@@ -61,3 +61,29 @@ export interface DatasetCandidate {
   exclusion_reason?: string; // Motivo de exclusión si aplica
   source_provider?: string;  // Procedencia
 }
+
+export interface ManifestItem {
+  id: string;
+  source_name?: string | null;
+  checksum: string;
+  is_synthetic?: boolean;
+  is_experimental?: boolean;
+}
+
+export interface ManifestRule {
+  id: string;
+  description: string;
+  checksum: string;
+}
+
+export interface DatasetManifest {
+  dataset_id: string;
+  version_id: string;
+  version_number: string;
+  records: ManifestItem[];
+  sources: ManifestItem[];
+  observations: ManifestItem[];
+  rules: ManifestRule[];
+  manifest_checksum: string;
+  global_checksum?: string;
+}

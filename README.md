@@ -195,32 +195,42 @@ Los comandos deben ejecutarse desde el directorio de la aplicación correspondie
 
 ## Estructura del Proyecto
 
+## Estructura del Proyecto y Arquitectura Limpia (DDD)
+
+El backend está dividido en tres microservicios independientes (`api`, `satellite`, `scientific`). Cada microservicio organiza su código aplicando los principios de Clean Architecture y Diseño Orientado a Dominios (DDD), garantizando una separación estricta de responsabilidades a través de 5 capas:
+
+1. **`controller_*.py` (Presentación):** Define los endpoints de FastAPI (`@router`), inyecta dependencias HTTP y maneja los códigos de estado. **Prohibido:** Lógica de negocio o consultas a la base de datos.
+2. **`schemas_*.py` (Contratos):** Define los modelos Pydantic V2 (`model_config`) para la validación de entrada/salida y la generación de OpenAPI.
+3. **`service_*.py` (Aplicación):** Orquesta los casos de uso. Recibe datos del controlador, aplica validaciones de negocio, orquesta las llamadas a la base de datos y maneja las excepciones HTTP.
+4. **`domain_*.py` (Dominio):** Contiene la lógica pura del negocio (cálculos matemáticos, reglas espaciales con Shapely, validaciones de fechas). **Prohibido:** Dependencias de FastAPI, Supabase o infraestructura externa.
+5. **`model_*.py` (Infraestructura/Datos):** Centraliza de forma exclusiva las consultas y escrituras a PostgreSQL/Supabase. Es la única capa autorizada para interactuar con la base de datos.
+
 ```text
 aquabloom-sur/
 ├── apps/
-│   ├── api/                    # FastAPI, configuración y pruebas pytest
-│   │   ├── app/                # Rutas, servicios, permisos y acceso a datos
-│   │   ├── catalog/            # Esquemas de aplicación del catálogo
-│   │   ├── tests/              # Pruebas automatizadas del backend
-│   │   ├── requirements.txt    # Dependencias Python de ejecución
-│   │   └── Dockerfile
-│   └── web/                    # React, Vite y TypeScript
+│   ├── api/                    # Core Service & API Gateway
+│   │   ├── app/
+│   │   │   ├── core/           # Auth, Configuración y Conexión BD (aislado)
+│   │   │   ├── gateway/        # Enrutador de peticiones a microservicios
+│   │   │   └── domains/        # Dominios del negocio
+│   │   │       ├── catalog/    # Lagos, Estaciones y validación geoespacial
+│   │   │       ├── dataset/    # Versionado oficial y manifiestos
+│   │   │       ├── identity/   # Organizaciones, perfiles y dashboard
+│   │   │       └── ingestion/  # Importación idempotente y muestras
+│   ├── satellite/              # Microservicio Satelital (Autónomo)
+│   │   └── app/domains/
+│   │       ├── observations/   # Índices espectrales (NDCI, NDWI) y calidad
+│   │       └── scenes/         # Metadatos de Sentinel-2
+│   ├── scientific/             # Microservicio Científico (Autónomo)
+│   │   └── app/domains/
+│   │       └── execution/      # Trabajos asíncronos y ML
+│   └── web/                    # Frontend React / Vite / TypeScript
 │       ├── src/
-│       │   ├── components/     # Componentes compartidos
-│       │   ├── layouts/        # Estructuras públicas y privadas
-│       │   ├── pages/          # Vistas de la aplicación
-│       │   ├── services/       # Clientes de API y Supabase
-│       │   └── types/          # Tipos compartidos del frontend
-│       ├── package.json        # Scripts y dependencias de la web
-│       ├── pnpm-lock.yaml      # Versiones bloqueadas de pnpm
-│       └── Dockerfile
-├── database/
-│   ├── migrations/             # Migraciones SQL numeradas
-│   └── seeds/                  # Datos iniciales
-├── docs/                       # Documentación del proyecto
-├── .env.example                # Variables de ejemplo para Compose
-├── compose.yaml                # Servicios de Docker Compose
-└── README.md
+│       │   ├── components/     # UI Compartida
+│       │   ├── pages/          # Vistas (Dashboard, Catálogo, Review)
+│       │   └── services/       # Cliente API
+├── database/migrations/        # Migraciones SQL estructuradas
+└── compose.yaml                # Orquestación Docker de la infraestructura
 ```
 
 ## Configuración de Datos y Supabase
@@ -266,6 +276,14 @@ El archivo `compose.yaml` define servicios de API, web y PostGIS. Su configuraci
 
 5. Abre un Pull Request hacia `main`. Describe el objetivo y los cambios, enlaza el ticket, indica las pruebas ejecutadas y anota cualquier configuración, migración o variable de entorno nueva. Para cambios visuales, añade capturas cuando ayuden a revisar el resultado. Atiende los comentarios de revisión y espera las aprobaciones y verificaciones requeridas antes de integrar.
 
+```markdown
+### 🛡️ Reglas Arquitectónicas Inquebrantables (Auditoría de Code Review)
+Para mantener la integridad del sistema, **los revisores deben rechazar (Request Changes)** cualquier Pull Request que viole estas directrices, incluso si la aplicación funciona visualmente:
+- **Cero SQL en Controladores/Servicios:** Ningún archivo `controller_` o `service_` puede importar Supabase ni ejecutar comandos `.table()`. Todo acceso a datos va en `model_`.
+- **Cero HTTP en Dominio/Modelos:** Los archivos `domain_` y `model_` no pueden importar `HTTPException` ni leer tokens/headers. Devuelven errores estándar (ej. `ValueError`, `LookupError`) que el `service_` captura y traduce a HTTP.
+- **Aislamiento de Microservicios:** Un archivo de `apps/satellite/` no puede importar absolutamente nada de `apps/api/` (ni viceversa). Cada servicio debe ser capaz de compilar y testearse en su propio contenedor sin conocer el código del otro.
+- **Contratos Strictos:** Uso exclusivo de Pydantic V2 (`model_config`). No se permite sintaxis de Pydantic V1 (`class Config:`).
+
 ## Configuración y Ejecución del Entorno Docker (S2-089)
 
 Para levantar el entorno de desarrollo local con Docker Compose y evitar errores de validación o dependencias faltantes (`shapely`, módulos del backend), sigue estos pasos:
@@ -295,3 +313,5 @@ docker compose up --build satellite
 ```
 
 Compose publica el servicio en `http://localhost:8001` por defecto. El puerto del host se puede cambiar con `SATELLITE_PORT`; `SATELLITE_SERVICE_NAME` y `SATELLITE_ENVIRONMENT` también se pueden configurar externamente. El endpoint `GET /health` informa el estado del servicio y es utilizado por el healthcheck del contenedor.
+
+
