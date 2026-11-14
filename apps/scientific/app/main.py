@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -7,6 +8,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from apps.scientific.app.core.config import settings
 from apps.scientific.app.domains.execution.controller_execution import (
     router as execution_router,
+)
+from apps.scientific.app.domains.model_scope.controller_model_scope import (
+    router as model_scope_router,
 )
 
 tags_metadata = [
@@ -42,12 +46,13 @@ async def validation_exception_handler(request, exc):
         content={
             "error": "Validation Error",
             "message": "Parámetros de entrada inválidos",
-            "details": exc.errors(),
+            "details": jsonable_encoder(exc.errors()),
         },
     )
 
 
 app.include_router(execution_router)
+app.include_router(model_scope_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -77,4 +82,3 @@ def health_check():
         "version": "v1",
         "status": "ok",
     }
-
