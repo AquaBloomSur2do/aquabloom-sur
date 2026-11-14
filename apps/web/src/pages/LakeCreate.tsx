@@ -156,7 +156,7 @@ export default function LakeCreate() {
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto w-full">
-      <div className="page-head flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
         <h1 className="text-2xl md:text-3xl font-bold text-gray-800">
           {isEditMode ? 'Editar Lago' : 'Registrar Nuevo Lago'}
         </h1>
@@ -171,8 +171,7 @@ export default function LakeCreate() {
       <form
         onSubmit={handleSubmit}
         noValidate
-        className="card bg-white p-4 md:p-8 rounded-xl shadow-sm border border-gray-200"
-        style={{ borderRadius: '0.75rem', boxShadow: '0 4px 16px rgba(15, 23, 42, 0.06)' }}
+        className="bg-white p-4 md:p-8 rounded-xl shadow-sm border border-gray-200"
       >
         {error && (
           <div role="alert" className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 font-medium text-sm rounded-r-lg">
@@ -266,7 +265,7 @@ export default function LakeCreate() {
             aria-invalid={Boolean(fieldErrors.geometry)}
             aria-describedby={fieldErrors.geometry ? 'lake-geojson-error' : undefined}
             required
-            className="code-block w-full p-4 focus:ring-0 outline-none h-48 md:h-64 font-mono text-xs md:text-sm bg-gray-50 text-gray-800 resize-y focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            className="w-full p-4 focus:ring-0 outline-none h-48 md:h-64 font-mono text-xs md:text-sm bg-gray-50 text-gray-800 resize-y focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             placeholder='{"type": "Polygon", "coordinates": [[[...]]]}'
             disabled={isSubmitting}
           />
@@ -294,3 +293,4 @@ export default function LakeCreate() {
     </div>
   );
 }
+
