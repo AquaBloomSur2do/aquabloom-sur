@@ -1,5 +1,6 @@
 import asyncio
 import math
+from collections.abc import Hashable, Iterable
 from typing import Any
 from uuid import UUID
 
@@ -9,6 +10,19 @@ from apps.scientific.app.domains.execution.schemas_execution import (
 )
 
 JOB_TIMEOUT_SECONDS = 10.0
+
+
+def validate_group_partition_disjointness(
+    training_groups: Iterable[Hashable],
+    evaluation_groups: Iterable[Hashable],
+) -> None:
+    """Rechaza particiones que compartan grupos entre entrenamiento y evaluación."""
+    overlap = set(training_groups).intersection(evaluation_groups)
+    if overlap:
+        groups = ", ".join(sorted(map(repr, overlap)))
+        raise ValueError(
+            f"Fuga de datos: grupos compartidos entre entrenamiento y evaluación: {groups}."
+        )
 
 
 def job_matches_request(
@@ -92,4 +106,3 @@ def calculate_pilot_metrics(y_true: list[float], y_pred: list[float]) -> PilotMe
         r2=r2_val,
         limitations=limitations,
     )
-
