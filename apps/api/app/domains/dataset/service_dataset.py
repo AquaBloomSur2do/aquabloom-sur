@@ -35,6 +35,7 @@ from apps.api.app.domains.dataset.schemas_dataset import (
     IncorporateCandidatesInput,
     ManifestItem,
     ManifestRule,
+    PilotFixtureMetadata,
     VersionState,
 )
 
@@ -813,12 +814,13 @@ def build_version_manifest_service(
 
     base_dir = Path(__file__).resolve().parents[4]
     metadata_path = base_dir / "satellite" / "data" / "metadata.json"
-    
+
     pilot_provider = "Sentinel-2 L2A (Piloto)"
     pilot_id = None
     is_synthetic = False
     raster_sha256 = None
-    
+    pilot_fixture = None
+
     if metadata_path.exists():
         try:
             with metadata_path.open("r", encoding="utf-8") as f:
@@ -827,6 +829,10 @@ def build_version_manifest_service(
                 pilot_provider = metadata.get("provider", pilot_provider)
                 is_synthetic = metadata.get("is_synthetic", is_synthetic)
                 raster_sha256 = metadata.get("sha256", raster_sha256)
+                if "pilot_fixture" in metadata:
+                    pilot_fixture = PilotFixtureMetadata.model_validate(
+                        metadata["pilot_fixture"]
+                    )
         except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
             logger.warning(f"No se pudo leer metadata.json en {metadata_path}: {e}")
 
@@ -914,6 +920,8 @@ def build_version_manifest_service(
         "observations": [o.model_dump() for o in observations],
         "rules": [r.model_dump() for r in rules],
     }
+    if pilot_fixture is not None:
+        manifest_payload["pilot_fixture"] = pilot_fixture.model_dump()
 
     global_checksum = generate_deterministic_checksum(manifest_payload)
 
@@ -926,4 +934,5 @@ def build_version_manifest_service(
         observations=observations,
         rules=rules,
         manifest_checksum=global_checksum,
+        pilot_fixture=pilot_fixture,
     )

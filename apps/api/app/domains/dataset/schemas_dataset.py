@@ -7,6 +7,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StringConstraints,
     field_validator,
     model_validator,
@@ -201,6 +202,26 @@ class ManifestRule(BaseModel):
     checksum: str
 
 
+class PilotFixtureInput(BaseModel):
+    name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+    ]
+    is_synthetic: StrictBool
+
+
+class PilotFixtureMetadata(BaseModel):
+    dataset_version: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+    ]
+    dataset_is_synthetic: StrictBool
+    scene_identifier: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
+    ]
+    scene_is_synthetic: StrictBool
+    random_seed: int = Field(ge=0, strict=True)
+    inputs: list[PilotFixtureInput] = Field(min_length=1, max_length=50)
+
+
 class DatasetManifest(BaseModel):
     dataset_id: str
     version_id: str
@@ -210,4 +231,4 @@ class DatasetManifest(BaseModel):
     observations: list[ManifestItem]
     rules: list[ManifestRule]
     manifest_checksum: str
-    
+    pilot_fixture: PilotFixtureMetadata | None = None
