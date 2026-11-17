@@ -15,10 +15,3 @@ export interface EstimationConfig {
   model_id: string;
   scene_id: string;
 }
-
-export interface JobResponse {
-  job_id: string;
-  status: string;
-  status_url: string;
-  message: string;
-}
