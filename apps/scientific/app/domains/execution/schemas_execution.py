@@ -89,6 +89,7 @@ class JobStatus(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
+
 class ModelScopeSpec(BaseModel):
     model_version_id: UUID
     lake_id: UUID
@@ -131,3 +132,13 @@ class ValidatedEstimationInput(BaseModel):
     required_index: str
     valid_observation_count: int
     warnings: list[str] = Field(default_factory=list)
+
+class PilotMetricsResult(BaseModel):
+    sample_count: int = Field(ge=1)
+    mae: float = Field(ge=0.0)
+    rmse: float = Field(ge=0.0)
+    bias: float
+    r2_computable: bool
+    r2: float | None = None
+    limitations: list[str] = Field(default_factory=list)
+

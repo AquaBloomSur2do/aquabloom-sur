@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../services/apiClient';
 import { DatasetReview } from './DatasetReview';
@@ -62,10 +62,48 @@ const reviewDatasets = [
   },
 ];
 
+const mockManifest = {
+  version_number: '1',
+  version_id: 'version-1',
+  global_checksum: 'abc123def456',
+  sources: [
+    {
+      id: 'source-1',
+      source_name: 'Fuente Sintética',
+      checksum: 'xyz789',
+      is_synthetic: true,
+      is_experimental: false,
+    },
+    {
+      id: 'source-2',
+      source_name: 'Fuente Real',
+      checksum: 'abc999',
+      is_synthetic: false,
+      is_experimental: false,
+    },
+    {
+      id: 'source-3',
+      source_name: 'Fuente Experimental',
+      checksum: 'exp123',
+      is_synthetic: false,
+      is_experimental: true,
+    },
+  ],
+  records: [],
+  observations: [],
+  rules: [],
+  manifest_checksum: 'global-hash-123',
+};
+
 describe('DatasetReview', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGet.mockResolvedValue(reviewDatasets);
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('manifest')) {
+        return Promise.resolve(mockManifest);
+      }
+      return Promise.resolve(reviewDatasets);
+    });
   });
 
   afterEach(() => {
@@ -155,21 +193,26 @@ describe('DatasetReview', () => {
     ).toBeDisabled();
   });
 
-  it('muestra los errores de API al publicar una versión', async () => {
-    mockPublishVersion.mockRejectedValue(
-      new ApiError({
-        message: 'No se pudo publicar la versión.',
-        status: 500,
-      })
-    );
-
+  it('consulta y muestra los datos del manifiesto incluyendo advertencias y estados no informados', async () => {
     render(<DatasetReview />);
+    
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith(
+        expect.stringContaining('datasets/dataset-1/versions/version-1/manifest'),
+        expect.any(Object)
+      );
+    });
 
-    await screen.findByText('scene-pilot');
-    fireEvent.click(screen.getByRole('button', { name: 'Publicar versión' }));
+    expect(await screen.findByText(/Versión: 1/i)).toBeInTheDocument();
+    
+    expect(screen.getByText(/abc123def456/i)).toBeInTheDocument();
+    
+    expect(screen.getByText(/Fuente Sintética/i)).toBeInTheDocument();
+    expect(screen.getByText(/xyz789/i)).toBeInTheDocument();
+    expect(screen.getByText(/Sintético/i)).toBeInTheDocument();
+    expect(screen.getByText(/Fuente Experimental/i)).toBeInTheDocument();
+    expect(screen.getByText('Experimental', { exact: true })).toBeInTheDocument();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'No se pudo publicar la versión.'
-    );
+    expect(screen.getByText(/Condición no informada/i)).toBeInTheDocument();
   });
 });
