@@ -8,7 +8,7 @@ import type {
   DatasetDecisionValue,
   ReviewDataset,
   DatasetCandidate,
-  DatasetManifest
+  DatasetManifest,
 } from '../types/dataset';
 
 const decisionLabels: Record<DatasetDecisionValue, string> = {
@@ -111,7 +111,7 @@ export function DatasetReview() {
               status: 'REJECTED',
               submitted_at: new Date().toISOString(),
               exclusion_reason: 'Falla regla S2-121: 85% de nubosidad.',
-              source_provider: 'Sentinel-2 L2A'
+              source_provider: 'Sentinel-2 L2A',
             },
             {
               id: 'c-2',
@@ -120,19 +120,19 @@ export function DatasetReview() {
               status: 'PENDING',
               submitted_at: new Date().toISOString(),
               exclusion_reason: 'Evaluación de calidad geoespacial pendiente.',
-              source_provider: 'Estación Fija (Terreno)'
-            }
+              source_provider: 'Estación Fija (Terreno)',
+            },
           ]);
         }
       } finally {
         if (mounted) setLoadingCandidates(false);
       }
     };
-    
+
     void loadCandidates();
-    
-    return () => { 
-      mounted = false; 
+
+    return () => {
+      mounted = false;
       controller.abort();
     };
   }, [datasetId]);
@@ -406,62 +406,107 @@ export function DatasetReview() {
           {selectedVersionState === 'PUBLISHED' && selectedVersion && (
             <section
               aria-label="Estado de publicación"
-              className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900"
+              className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900"
             >
-              <p className="font-semibold">Publicado oficialmente</p>
-              <StartTrainingButton datasetVersionId={selectedVersion.id} />
+              <div>
+                <p className="font-semibold">Publicado oficialmente</p>
+                <p className="mt-1 text-xs text-green-800">
+                  Versión congelada e inmutable para entrenamiento y validación de modelos.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="badge validated">Oficial · Inmutable</span>
+                <StartTrainingButton datasetVersionId={selectedVersion.id} />
+              </div>
             </section>
           )}
 
           {selectedVersion && (
-            <section aria-label="Manifiesto de la versión" className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Manifiesto y Trazabilidad</h2>
-              
+            <section
+              aria-label="Manifiesto de la versión"
+              className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm"
+            >
+              <h2 className="mb-4 text-xl font-bold text-gray-900">
+                Manifiesto y Trazabilidad
+              </h2>
+
               {manifestLoading ? (
                 <p className="text-sm text-gray-500">Cargando manifiesto...</p>
               ) : manifestError ? (
-                <p className="text-sm text-red-600" role="alert">{manifestError}</p>
+                <p className="text-sm text-red-600" role="alert">
+                  {manifestError}
+                </p>
               ) : manifest ? (
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Identificación</p>
-                      <p className="text-sm text-gray-900 font-semibold">Versión: {manifest.version_number} ({manifest.version_id})</p>
+                      <p className="text-sm font-medium text-gray-500">
+                        Identificación
+                      </p>
+                      <p className="text-sm font-semibold text-gray-900">
+                        Versión: {manifest.version_number} ({manifest.version_id})
+                      </p>
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Checksum Global</p>
-                      <p className="text-xs text-gray-900 font-mono break-all">{manifest.global_checksum || manifest.manifest_checksum}</p>
+                      <p className="text-sm font-medium text-gray-500">
+                        Checksum Global
+                      </p>
+                      <p className="break-all font-mono text-xs text-gray-900">
+                        {manifest.global_checksum || manifest.manifest_checksum}
+                      </p>
                     </div>
                   </div>
 
                   {manifest.sources && manifest.sources.length > 0 && (
                     <div className="mt-4 border-t border-gray-100 pt-4">
-                      <h3 className="text-sm font-bold text-gray-900 mb-3">Fuentes de Datos</h3>
+                      <h3 className="mb-3 text-sm font-bold text-gray-900">
+                        Fuentes de Datos
+                      </h3>
                       <ul className="space-y-3">
                         {manifest.sources.map((source) => (
-                          <li key={source.id} className="rounded border border-gray-200 bg-gray-50 p-3">
-                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                          <li
+                            key={source.id}
+                            className="rounded border border-gray-200 bg-gray-50 p-3"
+                          >
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                               <div>
-                                <p className="text-sm font-medium text-gray-900">{source.source_name || 'Fuente Desconocida'}</p>
-                                <p className="text-xs text-gray-500 font-mono mt-1">ID: {source.id}</p>
-                                <p className="text-xs text-gray-500 font-mono">SHA-256: {source.checksum}</p>
+                                <p className="text-sm font-medium text-gray-900">
+                                  {source.source_name || 'Fuente Desconocida'}
+                                </p>
+                                <p className="mt-1 font-mono text-xs text-gray-500">
+                                  ID: {source.id}
+                                </p>
+                                <p className="font-mono text-xs text-gray-500">
+                                  SHA-256: {source.checksum}
+                                </p>
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 {source.is_synthetic && (
-                                  <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-800 border border-purple-200" title="Advertencia: Datos de prueba sintéticos">
+                                  <span
+                                    className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-800"
+                                    title="Advertencia: Datos de prueba sintéticos"
+                                  >
                                     <span aria-hidden="true">🧪</span> Sintético
                                   </span>
                                 )}
                                 {source.is_experimental && (
-                                  <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-800 border border-orange-200" title="Advertencia: Datos experimentales no calibrados">
+                                  <span
+                                    className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-800"
+                                    title="Advertencia: Datos experimentales no calibrados"
+                                  >
                                     <span aria-hidden="true">⚠️</span> Experimental
                                   </span>
                                 )}
-                                {!source.is_synthetic && !source.is_experimental && (
-                                  <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-800 border border-gray-200" title="Condición de la fuente no informada">
-                                    <span aria-hidden="true">❔</span> Condición no informada
-                                  </span>
-                                )}
+                                {!source.is_synthetic &&
+                                  !source.is_experimental && (
+                                    <span
+                                      className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-800"
+                                      title="Condición de la fuente no informada"
+                                    >
+                                      <span aria-hidden="true">❔</span> Condición
+                                      no informada
+                                    </span>
+                                  )}
                               </div>
                             </div>
                           </li>
@@ -471,7 +516,9 @@ export function DatasetReview() {
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">El manifiesto no está disponible para esta versión.</p>
+                <p className="text-sm text-gray-500">
+                  El manifiesto no está disponible para esta versión.
+                </p>
               )}
             </section>
           )}
@@ -482,12 +529,17 @@ export function DatasetReview() {
             </p>
           ) : (
             <section aria-label="Escenas de la versión" className="space-y-4">
-               <h2 className="text-xl font-bold text-gray-900 mb-2">Escenas Incluidas (Memberships)</h2>
+              <h2 className="mb-2 text-xl font-bold text-gray-900">
+                Escenas Incluidas (Memberships)
+              </h2>
               {selectedVersion.memberships.map((membership) => {
-                 const latestDecision = membership.decisions[0];
-                 const isSaving = savingMembershipId === membership.id;
-                 return (
-                  <article key={membership.id} className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                const latestDecision = membership.decisions[0];
+                const isSaving = savingMembershipId === membership.id;
+                return (
+                  <article
+                    key={membership.id}
+                    className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm"
+                  >
                     <div className="mb-4">
                       <h2 className="font-semibold text-gray-900">
                         {membership.scene_external_id}
@@ -574,52 +626,76 @@ export function DatasetReview() {
             </section>
           )}
 
-          <section className="mt-10 border-t border-gray-200 pt-8" aria-label="Candidatos en cuarentena">
-             <div className="mb-4">
-                <h2 className="text-xl font-bold text-gray-900">Bandeja de Entrada: Candidatos de Ingesta</h2>
-                <p className="mt-1 text-sm text-gray-600">
-                  Muestras y observaciones crudas esperando ser evaluadas o ya descartadas automáticamente (S2-139).
-                </p>
-             </div>
+          <section
+            className="mt-10 border-t border-gray-200 pt-8"
+            aria-label="Candidatos en cuarentena"
+          >
+            <div className="mb-4">
+              <h2 className="text-xl font-bold text-gray-900">
+                Bandeja de Entrada: Candidatos de Ingesta
+              </h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Muestras y observaciones crudas esperando ser evaluadas o ya
+                descartadas automáticamente (S2-139).
+              </p>
+            </div>
 
-             {loadingCandidates ? (
-               <p className="text-sm text-gray-500">Cargando candidatos...</p>
-             ) : candidates.length === 0 ? (
-               <p className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-sm text-gray-600">
-                 No hay candidatos pendientes de Ingesta para este dataset.
-               </p>
-             ) : (
-               <div className="overflow-x-auto rounded-lg border border-gray-200">
-                 <table className="w-full text-left text-sm">
-                   <thead className="bg-gray-100">
-                     <tr>
-                       <th className="p-3 font-semibold text-gray-700">ID / Archivo</th>
-                       <th className="p-3 font-semibold text-gray-700">Procedencia</th>
-                       <th className="p-3 font-semibold text-gray-700">Estado</th>
-                       <th className="p-3 font-semibold text-gray-700">Motivo de Exclusión / Nota</th>
-                     </tr>
-                   </thead>
-                   <tbody className="divide-y divide-gray-200 bg-white">
-                     {candidates.map(candidate => (
-                       <tr key={candidate.id} className="hover:bg-gray-50">
-                         <td className="p-3 font-mono text-xs">{candidate.data_uri}</td>
-                         <td className="p-3">{candidate.source_provider || 'Desconocido'}</td>
-                         <td className="p-3">
-                           <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                              candidate.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
-                              candidate.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
-                              'bg-yellow-100 text-yellow-800'
-                           }`}>
-                              {candidate.status}
-                           </span>
-                         </td>
-                         <td className="p-3 text-gray-600">{candidate.exclusion_reason || '-'}</td>
-                       </tr>
-                     ))}
-                   </tbody>
-                 </table>
-               </div>
-             )}
+            {loadingCandidates ? (
+              <p className="text-sm text-gray-500">Cargando candidatos...</p>
+            ) : candidates.length === 0 ? (
+              <p className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-sm text-gray-600">
+                No hay candidatos pendientes de Ingesta para este dataset.
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="p-3 font-semibold text-gray-700">
+                        ID / Archivo
+                      </th>
+                      <th className="p-3 font-semibold text-gray-700">
+                        Procedencia
+                      </th>
+                      <th className="p-3 font-semibold text-gray-700">
+                        Estado
+                      </th>
+                      <th className="p-3 font-semibold text-gray-700">
+                        Motivo de Exclusión / Nota
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {candidates.map((candidate) => (
+                      <tr key={candidate.id} className="hover:bg-gray-50">
+                        <td className="p-3 font-mono text-xs">
+                          {candidate.data_uri}
+                        </td>
+                        <td className="p-3">
+                          {candidate.source_provider || 'Desconocido'}
+                        </td>
+                        <td className="p-3">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                              candidate.status === 'REJECTED'
+                                ? 'bg-red-100 text-red-800'
+                                : candidate.status === 'APPROVED'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-yellow-100 text-yellow-800'
+                            }`}
+                          >
+                            {candidate.status}
+                          </span>
+                        </td>
+                        <td className="p-3 text-gray-600">
+                          {candidate.exclusion_reason || '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         </>
       )}
