@@ -108,6 +108,9 @@ def get_job_status_service(client, job_id: UUID) -> dict[str, Any]:
         )
     if "id" in job:
         job["job_id"] = job.pop("id")
+    result = job.get("result")
+    if isinstance(result, dict):
+        job["traceability_evidence"] = result.get("traceability_evidence")
     return job
 
 
