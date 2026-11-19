@@ -4,13 +4,16 @@ export default function Error401() {
   const navigate = useNavigate();
 
   return (
-    <div style={{ textAlign: 'center', padding: '50px', color: '#fff', background: '#111', minHeight: '100vh' }}>
-      <h1>AquaBloom Sur</h1>
-      <h2>401 - Acceso No Autorizado</h2>
-      <p>Tu sesión ha expirado o no estás autenticado.</p>
-      <button onClick={() => navigate('/login')} style={{ padding: '10px 20px', cursor: 'pointer' }}>
+    <main className="access-error-page">
+      <section className="access-error-card">
+        <span className="access-error-icon" aria-hidden="true">!</span>
+        <p className="access-error-code">401</p>
+        <h1>Acceso No Autorizado</h1>
+        <p>Tu sesión ha expirado o no estás autenticado.</p>
+        <button className="access-error-action" onClick={() => navigate('/login')}>
         Volver al Login
-      </button>
-    </div>
+        </button>
+      </section>
+    </main>
   );
 }
