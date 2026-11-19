@@ -2,6 +2,24 @@ from typing import Any
 from uuid import UUID
 
 
+def has_active_organization_membership(
+    client, user_id: UUID, organization_id: UUID
+) -> bool:
+    rows = (
+        client.table("memberships")
+        .select("organization_id, organizations!inner(id, status)")
+        .eq("user_id", str(user_id))
+        .eq("organization_id", str(organization_id))
+        .eq("status", "active")
+        .eq("organizations.status", "active")
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    return bool(rows)
+
+
 def get_dataset_version_for_training(
     client, version_id: UUID | str
 ) -> dict[str, Any] | None:
@@ -19,9 +37,17 @@ def get_dataset_version_for_training(
 
 
 def find_scientific_job_in_db(
-    client, *, job_id: str | None = None, idempotency_key: str | None = None
+    client,
+    *,
+    organization_id: UUID | str,
+    job_id: str | None = None,
+    idempotency_key: str | None = None,
 ) -> dict[str, Any] | None:
-    query = client.table("scientific_jobs").select("*")
+    query = (
+        client.table("scientific_jobs")
+        .select("*")
+        .eq("organization_id", str(organization_id))
+    )
     if job_id is not None:
         query = query.eq("id", job_id)
     elif idempotency_key is not None:
@@ -48,4 +74,3 @@ def update_scientific_job_in_db(
     client, job_id: str, update_payload: dict[str, Any]
 ) -> None:
     client.table("scientific_jobs").update(update_payload).eq("id", job_id).execute()
-
