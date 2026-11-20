@@ -32,3 +32,49 @@ Se establecen los siguientes límites de despliegue y propiedad de datos:
 ## Consecuencias
 - Los microservicios no compartirán tablas de base de datos directamente (a excepción de las claves lógicas como UUIDs).
 - La comunicación entre el Core y los servicios científicos se hará mediante contratos OpenAPI estrictos a través del Gateway o vía asincronía.
+
+## Evidencia de trazabilidad de resultados científicos (S3-20)
+
+La respuesta de un trabajo puede incluir `traceability_evidence`, validada por el
+modelo Pydantic `TraceabilityEvidence` en
+`apps/scientific/app/domains/execution/schemas_execution.py`. Para conservar
+compatibilidad con trabajos históricos, el campo es opcional; al persistirlo,
+se almacena como `result.traceability_evidence` en el JSONB del resultado de
+`public.scientific_jobs`. El endpoint de estado lo proyecta como
+`traceability_evidence` en la respuesta.
+
+Los cinco identificadores se interpretan así:
+
+| Campo | Identidad que referencia | Contrato |
+| --- | --- | --- |
+| `job_id` | Trabajo científico (`public.scientific_jobs.id`) | UUID del trabajo aceptado por `/api/v1/executions/`. |
+| `scene_id` | Escena catalogada (`satellite.scenes.id`) | UUID de la escena, no su `scene_identifier` externo. Dataset memberships aún usan proveedor + identificador externo; el servicio debe resolverlos a este UUID. |
+| `dataset_version_id` | Versión inmutable (`dataset.versions.id`) | UUID de la versión realmente usada, equivalente a `TrainingConfig.version_id`. |
+| `model_id` | Modelo/versión exacta usada | Identificador no vacío; se conserva como texto porque `EstimationConfig.model_id` es texto y no hay aún una tabla de modelos con FK. Debe identificar una versión inmutable, no un alias mutable. |
+| `processing_id` | Intento individual de procesamiento | UUID distinto del trabajo; permite distinguir reintentos del mismo `job_id`. No existe hoy una tabla de intentos, por lo que queda registrado dentro de la evidencia JSONB. |
+
+Ejemplo de `result` almacenado y de la evidencia devuelta en el estado del
+trabajo:
+
+```json
+{
+  "accuracy": 0.98,
+  "processed_pixels": 102400,
+  "traceability_evidence": {
+    "job_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "scene_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "dataset_version_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    "model_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    "processing_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+  }
+}
+```
+
+La API ya valida y expone la evidencia persistida. El proceso científico actual
+no genera todavía estos cinco valores: en particular, `EstimationConfig.scene_id`
+es hoy texto libre, no exige `dataset_version_id`, y no se persiste un UUID por
+intento. Por tanto, los productores solo deben adjuntar evidencia cuando hayan
+resuelto la escena y utilizado efectivamente la versión/modelo identificados;
+el siguiente paso de integración es crear esos identificadores durante el
+procesamiento y persistirlos junto al resultado. No se infieren identificadores
+ni se presenta evidencia ficticia para resultados existentes.
