@@ -1,6 +1,6 @@
-import { StartTrainingButton } from '../components/StartTrainingButton';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { StartTrainingButton } from '../components/StartTrainingButton';
 import { ApiError, apiClient } from '../services/apiClient';
 import type {
   DatasetDecision,
@@ -85,6 +85,7 @@ export function DatasetReview() {
     };
   }, []);
 
+  // --- Carga de Candidatos (S2-139) ---
   useEffect(() => {
     if (!datasetId) return;
 
@@ -290,131 +291,205 @@ export function DatasetReview() {
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-gray-500" role="status">
-        Cargando datasets...
+      <div className="content-container">
+        <div className="card card-body" role="status">
+          Cargando datasets...
+        </div>
       </div>
     );
   }
 
   if (loadError) {
     return (
-      <section className="state-panel state-panel--error" role="alert">
-        <h1 className="font-bold">No se pudieron cargar los datasets</h1>
-        <p>{loadError}</p>
-      </section>
+      <div className="content-container">
+        <section className="status-banner danger" role="alert">
+          <div>
+            <h1>No se pudieron cargar los datasets</h1>
+            <p>{loadError}</p>
+          </div>
+        </section>
+      </div>
     );
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold text-gray-900">
-          Revisión de datasets
-        </h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Revisa las escenas de una versión y registra su decisión de inclusión
-          con el motivo correspondiente.
-        </p>
+    <main className="content-container" style={{ display: 'grid', gap: '18px' }}>
+      <header className="page-head">
+        <div>
+          <div className="eyebrow">
+            Gobernanza científica · Núcleo de modelamiento
+          </div>
+          <h1>Revisión de datasets</h1>
+          <p className="subtitle">
+            Revisa las escenas de una versión y registra su decisión de inclusión
+            con el motivo correspondiente.
+          </p>
+        </div>
+        {selectedVersion && (
+          <div className="head-actions">
+            <span
+              className={`badge ${
+                selectedVersionState === 'PUBLISHED' ||
+                selectedVersion.status === 'published'
+                  ? 'validated'
+                  : selectedVersionState === 'APPROVED'
+                    ? 'review'
+                    : 'draft'
+              }`}
+            >
+              Versión v{selectedVersion.version_number} ·{' '}
+              {selectedVersionState ?? selectedVersion.status}
+            </span>
+            <button
+              type="button"
+              onClick={() => void publishVersion()}
+              disabled={
+                selectedVersion.status === 'published' ||
+                publishingVersionId !== null
+              }
+              className="btn btn-primary"
+            >
+              {publishingVersionId === selectedVersion.id
+                ? 'Publicando...'
+                : selectedVersion.status === 'published'
+                  ? 'Versión publicada'
+                  : 'Publicar versión'}
+            </button>
+          </div>
+        )}
       </header>
 
-      {datasets.length === 0 ? (
-        <p className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-600">
-          No hay datasets disponibles para tu organización.
+      {publicationError && (
+        <p className="status-banner danger" role="alert">
+          {publicationError}
         </p>
+      )}
+      {publicationSuccess && (
+        <p className="status-banner success" role="status">
+          {publicationSuccess}
+        </p>
+      )}
+
+      {datasets.length === 0 ? (
+        <div className="card card-body">
+          <p className="subtitle">
+            No hay datasets disponibles para tu organización.
+          </p>
+        </div>
       ) : (
         <>
-          <section className="grid gap-4 rounded-lg border border-gray-200 bg-white p-5 md:grid-cols-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Dataset
-              <select
-                className="mt-1 block w-full rounded-md border border-gray-300 p-2"
-                value={datasetId}
-                onChange={(event) => handleDatasetChange(event.target.value)}
-              >
-                {datasets.map((dataset) => (
-                  <option key={dataset.id} value={dataset.id}>
-                    {dataset.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="block text-sm font-medium text-gray-700">
-              Versión
-              <select
-                className="mt-1 block w-full rounded-md border border-gray-300 p-2"
-                value={versionId}
-                onChange={(event) => {
-                  setVersionId(event.target.value);
-                  setManifest(null);
-                }}
-                disabled={versions.length === 0}
-              >
-                {versions.map((version) => (
-                  <option key={version.id} value={version.id}>
-                    Versión {version.version_number} ({version.status})
-                  </option>
-                ))}
-              </select>
-            </label>
+          <section className="grid grid-3">
+            <article className="card kpi">
+              <div className="kpi-icon">DS</div>
+              <div>
+                <div className="kpi-value">{datasets.length}</div>
+                <div className="kpi-label">Datasets en revisión</div>
+              </div>
+            </article>
+            <article className="card kpi">
+              <div className="kpi-icon blue">S2</div>
+              <div>
+                <div className="kpi-value">
+                  {selectedVersion?.memberships.length ?? 0}
+                </div>
+                <div className="kpi-label">Escenas vinculadas a la versión</div>
+              </div>
+            </article>
+            <article className="card kpi">
+              <div className="kpi-icon amber">IN</div>
+              <div>
+                <div className="kpi-value">{candidates.length}</div>
+                <div className="kpi-label">
+                  Candidatos en bandeja de ingesta
+                </div>
+              </div>
+            </article>
           </section>
 
-          {selectedVersion && (
-            <section className="rounded-lg border border-gray-200 bg-white p-5">
-              <button
-                type="button"
-                onClick={() => void publishVersion()}
-                disabled={
-                  selectedVersion.status === 'published' ||
-                  publishingVersionId !== null
-                }
-                className="rounded-md bg-blue-700 px-4 py-2 font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {publishingVersionId === selectedVersion.id
-                  ? 'Publicando...'
-                  : selectedVersion.status === 'published'
-                    ? 'Versión publicada'
-                    : 'Publicar versión'}
-              </button>
-              {publicationError && (
-                <p className="mt-3 text-sm text-red-700" role="alert">
-                  {publicationError}
-                </p>
-              )}
-              {publicationSuccess && (
-                <p className="mt-3 text-sm text-green-700" role="status">
-                  {publicationSuccess}
-                </p>
-              )}
-            </section>
-          )}
+          <section className="card">
+            <div className="card-head">
+              <div>
+                <h2>Selección de Dataset Oficial y Versión</h2>
+                <div className="card-note">
+                  Cada versión conserva procedencia, decisiones de curaduría y
+                  trazabilidad inmutable.
+                </div>
+              </div>
+            </div>
+            <div className="card-body grid grid-2">
+              <label className="label">
+                Dataset
+                <select
+                  className="control"
+                  value={datasetId}
+                  onChange={(event) => handleDatasetChange(event.target.value)}
+                >
+                  {datasets.map((dataset) => (
+                    <option key={dataset.id} value={dataset.id}>
+                      {dataset.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="label">
+                Versión
+                <select
+                  className="control"
+                  value={versionId}
+                  onChange={(event) => {
+                    setVersionId(event.target.value);
+                    setManifest(null);
+                  }}
+                  disabled={versions.length === 0}
+                >
+                  {versions.map((version) => (
+                    <option key={version.id} value={version.id}>
+                      Versión {version.version_number} ({version.status})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </section>
 
           {selectedVersionState === 'APPROVED' && (
             <section
               aria-label="Estado de publicación"
-              className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+              className="status-banner warning"
             >
-              <p className="font-semibold">
-                Aprobado en revisión técnica (No publicado)
-              </p>
-              <p className="mt-1">
-                No publicado (pendiente de publicación)
-              </p>
+              <div>
+                <p style={{ fontWeight: 750 }}>
+                  Aprobado en revisión técnica (No publicado)
+                </p>
+                <p style={{ fontSize: '12px', marginTop: '2px' }}>
+                  No publicado (pendiente de publicación)
+                </p>
+              </div>
+              <span className="badge review">Revisión técnica aprobada</span>
             </section>
           )}
 
           {selectedVersionState === 'PUBLISHED' && selectedVersion && (
             <section
               aria-label="Estado de publicación"
-              className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900"
+              className="status-banner success"
             >
               <div>
-                <p className="font-semibold">Publicado oficialmente</p>
-                <p className="mt-1 text-xs text-green-800">
-                  Versión congelada e inmutable para entrenamiento y validación de modelos.
+                <p style={{ fontWeight: 750 }}>Publicado oficialmente</p>
+                <p style={{ fontSize: '12px', marginTop: '2px' }}>
+                  Versión congelada e inmutable para entrenamiento y validación
+                  de modelos.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  gap: '12px',
+                }}
+              >
                 <span className="badge validated">Oficial · Inmutable</span>
                 <StartTrainingButton datasetVersionId={selectedVersion.id} />
               </div>
@@ -422,133 +497,237 @@ export function DatasetReview() {
           )}
 
           {selectedVersion && (
-            <section
-              aria-label="Manifiesto de la versión"
-              className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm"
-            >
-              <h2 className="mb-4 text-xl font-bold text-gray-900">
-                Manifiesto y Trazabilidad
-              </h2>
-
-              {manifestLoading ? (
-                <p className="text-sm text-gray-500">Cargando manifiesto...</p>
-              ) : manifestError ? (
-                <p className="text-sm text-red-600" role="alert">
-                  {manifestError}
-                </p>
-              ) : manifest ? (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <p className="text-sm font-medium text-gray-500">
-                        Identificación
-                      </p>
-                      <p className="text-sm font-semibold text-gray-900">
-                        Versión: {manifest.version_number} ({manifest.version_id})
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-500">
-                        Checksum Global
-                      </p>
-                      <p className="break-all font-mono text-xs text-gray-900">
-                        {manifest.global_checksum || manifest.manifest_checksum}
-                      </p>
-                    </div>
+            <section aria-label="Manifiesto de la versión" className="card">
+              <div className="card-head">
+                <div>
+                  <h2>Manifiesto y Trazabilidad</h2>
+                  <div className="card-note">
+                    Integridad criptográfica y declaración de procedencia de las
+                    fuentes de la versión.
                   </div>
+                </div>
+              </div>
 
-                  {manifest.sources && manifest.sources.length > 0 && (
-                    <div className="mt-4 border-t border-gray-100 pt-4">
-                      <h3 className="mb-3 text-sm font-bold text-gray-900">
-                        Fuentes de Datos
-                      </h3>
-                      <ul className="space-y-3">
-                        {manifest.sources.map((source) => (
-                          <li
-                            key={source.id}
-                            className="rounded border border-gray-200 bg-gray-50 p-3"
-                          >
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                              <div>
-                                <p className="text-sm font-medium text-gray-900">
-                                  {source.source_name || 'Fuente Desconocida'}
-                                </p>
-                                <p className="mt-1 font-mono text-xs text-gray-500">
-                                  ID: {source.id}
-                                </p>
-                                <p className="font-mono text-xs text-gray-500">
-                                  SHA-256: {source.checksum}
-                                </p>
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                {source.is_synthetic && (
-                                  <span
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-800"
-                                    title="Advertencia: Datos de prueba sintéticos"
+              <div className="card-body">
+                {manifestLoading ? (
+                  <p className="subtitle">Cargando manifiesto...</p>
+                ) : manifestError ? (
+                  <p className="status-banner danger" role="alert">
+                    {manifestError}
+                  </p>
+                ) : manifest ? (
+                  <div style={{ display: 'grid', gap: '16px' }}>
+                    <div className="grid grid-2">
+                      <div>
+                        <p className="card-note">Identificación</p>
+                        <p style={{ fontWeight: 600, fontSize: '14px' }}>
+                          Versión: {manifest.version_number} (
+                          {manifest.version_id})
+                        </p>
+                      </div>
+                      <div>
+                        <p className="card-note">Checksum Global</p>
+                        <p
+                          className="code-pill"
+                          style={{
+                            wordBreak: 'break-all',
+                            display: 'inline-block',
+                          }}
+                        >
+                          {manifest.global_checksum ||
+                            manifest.manifest_checksum}
+                        </p>
+                      </div>
+                    </div>
+
+                    {manifest.sources && manifest.sources.length > 0 && (
+                      <div
+                        style={{
+                          borderTop: '1px solid var(--border, #e2e8f0)',
+                          paddingTop: '14px',
+                        }}
+                      >
+                        <h3
+                          style={{
+                            fontSize: '14px',
+                            fontWeight: 700,
+                            marginBottom: '10px',
+                          }}
+                        >
+                          Fuentes de Datos
+                        </h3>
+                        <ul
+                          style={{
+                            display: 'grid',
+                            gap: '10px',
+                            listStyle: 'none',
+                            padding: 0,
+                            margin: 0,
+                          }}
+                        >
+                          {manifest.sources.map((source) => (
+                            <li key={source.id} className="queue-card">
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'flex-start',
+                                  gap: '12px',
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <div>
+                                  <p
+                                    style={{
+                                      fontWeight: 600,
+                                      fontSize: '14px',
+                                    }}
                                   >
-                                    <span aria-hidden="true">🧪</span> Sintético
-                                  </span>
-                                )}
-                                {source.is_experimental && (
-                                  <span
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-800"
-                                    title="Advertencia: Datos experimentales no calibrados"
+                                    {source.source_name || 'Fuente Desconocida'}
+                                  </p>
+                                  <p
+                                    className="card-note"
+                                    style={{
+                                      fontFamily: 'monospace',
+                                      marginTop: '4px',
+                                    }}
                                   >
-                                    <span aria-hidden="true">⚠️</span> Experimental
-                                  </span>
-                                )}
-                                {!source.is_synthetic &&
-                                  !source.is_experimental && (
+                                    ID: {source.id}
+                                  </p>
+                                  <p
+                                    className="card-note"
+                                    style={{ fontFamily: 'monospace' }}
+                                  >
+                                    SHA-256: {source.checksum}
+                                  </p>
+                                </div>
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    gap: '8px',
+                                    flexWrap: 'wrap',
+                                  }}
+                                >
+                                  {source.is_synthetic && (
                                     <span
-                                      className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-800"
-                                      title="Condición de la fuente no informada"
+                                      className="badge review"
+                                      title="Advertencia: Datos de prueba sintéticos"
                                     >
-                                      <span aria-hidden="true">❔</span> Condición
-                                      no informada
+                                      <span aria-hidden="true">🧪</span>{' '}
+                                      Sintético
                                     </span>
                                   )}
+                                  {source.is_experimental && (
+                                    <span
+                                      className="badge reported"
+                                      title="Advertencia: Datos experimentales no calibrados"
+                                    >
+                                      <span aria-hidden="true">⚠️</span>{' '}
+                                      Experimental
+                                    </span>
+                                  )}
+                                  {!source.is_synthetic &&
+                                    !source.is_experimental && (
+                                      <span
+                                        className="badge draft"
+                                        title="Condición de la fuente no informada"
+                                      >
+                                        <span aria-hidden="true">❔</span>{' '}
+                                        Condición no informada
+                                      </span>
+                                    )}
+                                </div>
                               </div>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">
-                  El manifiesto no está disponible para esta versión.
-                </p>
-              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="subtitle">
+                    El manifiesto no está disponible para esta versión.
+                  </p>
+                )}
+              </div>
             </section>
           )}
 
           {!selectedVersion || selectedVersion.memberships.length === 0 ? (
-            <p className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-600">
-              Esta versión todavía no contiene escenas para revisar.
-            </p>
+            <div className="card card-body">
+              <p className="subtitle">
+                Esta versión todavía no contiene escenas para revisar.
+              </p>
+            </div>
           ) : (
-            <section aria-label="Escenas de la versión" className="space-y-4">
-              <h2 className="mb-2 text-xl font-bold text-gray-900">
-                Escenas Incluidas (Memberships)
-              </h2>
-              {selectedVersion.memberships.map((membership) => {
-                const latestDecision = membership.decisions[0];
-                const isSaving = savingMembershipId === membership.id;
-                return (
-                  <article
-                    key={membership.id}
-                    className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm"
-                  >
-                    <div className="mb-4">
-                      <h2 className="font-semibold text-gray-900">
-                        {membership.scene_external_id}
-                      </h2>
-                      <p className="text-sm text-gray-600">
-                        Proveedor: {membership.scene_provider}
-                      </p>
+            <section aria-label="Escenas de la versión" className="card">
+              <div className="card-head">
+                <div>
+                  <h2>Escenas Incluidas (Memberships)</h2>
+                  <div className="card-note">
+                    Verifica calidad, nubosidad y procedencia antes de emitir el
+                    veredicto de inclusión.
+                  </div>
+                </div>
+                <span className="badge restricted">
+                  {selectedVersion.memberships.length} escena(s) en cola
+                </span>
+              </div>
+
+              <div
+                className="card-body"
+                style={{ display: 'grid', gap: '14px' }}
+              >
+                {selectedVersion.memberships.map((membership) => {
+                  const latestDecision = membership.decisions[0];
+                  const isSaving = savingMembershipId === membership.id;
+                  return (
+                    <article key={membership.id} className="queue-card">
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          gap: '12px',
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <div>
+                          <h2 style={{ fontSize: '15px' }}>
+                            {membership.scene_external_id}
+                          </h2>
+                          <p className="card-note">
+                            Proveedor:{' '}
+                            <strong>{membership.scene_provider}</strong>
+                          </p>
+                        </div>
+                        {latestDecision ? (
+                          <span
+                            className={`badge ${
+                              latestDecision.decision === 'accepted'
+                                ? 'validated'
+                                : 'reported'
+                            }`}
+                          >
+                            {decisionLabels[latestDecision.decision]}
+                          </span>
+                        ) : (
+                          <span className="badge review">
+                            Pendiente de decisión
+                          </span>
+                        )}
+                      </div>
+
                       {latestDecision && (
-                        <p className="mt-2 text-sm text-gray-700">
+                        <p
+                          style={{
+                            marginTop: '10px',
+                            padding: '8px 12px',
+                            background: 'var(--ice)',
+                            borderRadius: '8px',
+                            fontSize: '12px',
+                          }}
+                        >
                           Decisión anterior:{' '}
                           {decisionLabels[latestDecision.decision]}
                           {latestDecision.reason
@@ -556,140 +735,151 @@ export function DatasetReview() {
                             : ''}
                         </p>
                       )}
-                    </div>
 
-                    <form
-                      className="grid gap-3 md:grid-cols-[1fr_2fr_auto] md:items-end"
-                      onSubmit={(event) =>
-                        void submitDecision(event, membership.id)
-                      }
-                    >
-                      <label className="block text-sm font-medium text-gray-700">
-                        Decisión
-                        <select
-                          className="mt-1 block w-full rounded-md border border-gray-300 p-2"
-                          aria-label={`Decisión para ${membership.scene_external_id}`}
-                          value={decisions[membership.id] ?? 'accepted'}
-                          onChange={(event) =>
-                            setDecisions((current) => ({
-                              ...current,
-                              [membership.id]: event.target
-                                .value as DatasetDecisionValue,
-                            }))
-                          }
-                        >
-                          <option value="accepted">Incluir</option>
-                          <option value="rejected">Excluir</option>
-                        </select>
-                      </label>
-
-                      <label className="block text-sm font-medium text-gray-700">
-                        Motivo
-                        <textarea
-                          className="mt-1 block w-full rounded-md border border-gray-300 p-2"
-                          aria-label={`Motivo para ${membership.scene_external_id}`}
-                          value={reasons[membership.id] ?? ''}
-                          onChange={(event) =>
-                            setReasons((current) => ({
-                              ...current,
-                              [membership.id]: event.target.value,
-                            }))
-                          }
-                          maxLength={2000}
-                          required
-                          rows={2}
-                        />
-                      </label>
-
-                      <button
-                        type="submit"
-                        disabled={isSaving}
-                        className="rounded-md bg-blue-700 px-4 py-2 font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      <form
+                        className="decision-form-grid"
+                        onSubmit={(event) =>
+                          void submitDecision(event, membership.id)
+                        }
                       >
-                        {isSaving ? 'Guardando...' : 'Guardar decisión'}
-                      </button>
-                    </form>
+                        <label className="label">
+                          Decisión
+                          <select
+                            className="control"
+                            aria-label={`Decisión para ${membership.scene_external_id}`}
+                            value={decisions[membership.id] ?? 'accepted'}
+                            onChange={(event) =>
+                              setDecisions((current) => ({
+                                ...current,
+                                [membership.id]: event.target
+                                  .value as DatasetDecisionValue,
+                              }))
+                            }
+                          >
+                            <option value="accepted">Incluir</option>
+                            <option value="rejected">Excluir</option>
+                          </select>
+                        </label>
 
-                    {errors[membership.id] && (
-                      <p className="mt-3 text-sm text-red-700" role="alert">
-                        {errors[membership.id]}
-                      </p>
-                    )}
-                    {successes[membership.id] && (
-                      <p className="mt-3 text-sm text-green-700" role="status">
-                        {successes[membership.id]}
-                      </p>
-                    )}
-                  </article>
-                );
-              })}
+                        <label className="label">
+                          Motivo
+                          <textarea
+                            className="control"
+                            aria-label={`Motivo para ${membership.scene_external_id}`}
+                            placeholder="Describe el fundamento técnico o científico de la decisión..."
+                            value={reasons[membership.id] ?? ''}
+                            onChange={(event) =>
+                              setReasons((current) => ({
+                                ...current,
+                                [membership.id]: event.target.value,
+                              }))
+                            }
+                            maxLength={2000}
+                            required
+                            rows={2}
+                          />
+                        </label>
+
+                        <button
+                          type="submit"
+                          disabled={isSaving}
+                          className="btn btn-primary"
+                        >
+                          {isSaving ? 'Guardando...' : 'Guardar decisión'}
+                        </button>
+                      </form>
+
+                      {errors[membership.id] && (
+                        <p
+                          className="status-banner danger"
+                          style={{ marginTop: '12px' }}
+                          role="alert"
+                        >
+                          {errors[membership.id]}
+                        </p>
+                      )}
+                      {successes[membership.id] && (
+                        <p
+                          className="status-banner success"
+                          style={{ marginTop: '12px' }}
+                          role="status"
+                        >
+                          {successes[membership.id]}
+                        </p>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
             </section>
           )}
 
-          <section
-            className="mt-10 border-t border-gray-200 pt-8"
-            aria-label="Candidatos en cuarentena"
-          >
-            <div className="mb-4">
-              <h2 className="text-xl font-bold text-gray-900">
-                Bandeja de Entrada: Candidatos de Ingesta
-              </h2>
-              <p className="mt-1 text-sm text-gray-600">
-                Muestras y observaciones crudas esperando ser evaluadas o ya
-                descartadas automáticamente (S2-139).
-              </p>
+          {/* SECCIÓN TAREA S2-139: VISTA DE CANDIDATOS */}
+          <section className="card" aria-label="Candidatos en cuarentena">
+            <div className="card-head">
+              <div>
+                <h2>Bandeja de Entrada: Candidatos de Ingesta</h2>
+                <p className="card-note">
+                  Muestras y observaciones crudas esperando ser evaluadas o ya
+                  descartadas automáticamente (S2-139).
+                </p>
+              </div>
+              <span className="badge draft">Pre-curaduría</span>
             </div>
 
             {loadingCandidates ? (
-              <p className="text-sm text-gray-500">Cargando candidatos...</p>
+              <div className="card-body">
+                <p className="subtitle">Cargando candidatos...</p>
+              </div>
             ) : candidates.length === 0 ? (
-              <p className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-sm text-gray-600">
-                No hay candidatos pendientes de Ingesta para este dataset.
-              </p>
+              <div className="card-body">
+                <p className="subtitle">
+                  No hay candidatos pendientes de Ingesta para este dataset.
+                </p>
+              </div>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-100">
+              <div className="table-wrap">
+                <table>
+                  <thead>
                     <tr>
-                      <th className="p-3 font-semibold text-gray-700">
-                        ID / Archivo
-                      </th>
-                      <th className="p-3 font-semibold text-gray-700">
-                        Procedencia
-                      </th>
-                      <th className="p-3 font-semibold text-gray-700">
-                        Estado
-                      </th>
-                      <th className="p-3 font-semibold text-gray-700">
-                        Motivo de Exclusión / Nota
-                      </th>
+                      <th>ID / Archivo</th>
+                      <th>Procedencia</th>
+                      <th>Estado</th>
+                      <th>Motivo de Exclusión / Nota</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200 bg-white">
+                  <tbody>
                     {candidates.map((candidate) => (
-                      <tr key={candidate.id} className="hover:bg-gray-50">
-                        <td className="p-3 font-mono text-xs">
-                          {candidate.data_uri}
+                      <tr
+                        key={candidate.id}
+                        className={
+                          candidate.status === 'REJECTED'
+                            ? 'row-quarantine'
+                            : ''
+                        }
+                      >
+                        <td>
+                          <span className="code-pill">
+                            {candidate.data_uri}
+                          </span>
                         </td>
-                        <td className="p-3">
+                        <td className="cell-title">
                           {candidate.source_provider || 'Desconocido'}
                         </td>
-                        <td className="p-3">
+                        <td>
                           <span
-                            className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                            className={`badge ${
                               candidate.status === 'REJECTED'
-                                ? 'bg-red-100 text-red-800'
+                                ? 'reported'
                                 : candidate.status === 'APPROVED'
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-yellow-100 text-yellow-800'
+                                  ? 'validated'
+                                  : 'review'
                             }`}
                           >
                             {candidate.status}
                           </span>
                         </td>
-                        <td className="p-3 text-gray-600">
-                          {candidate.exclusion_reason || '-'}
-                        </td>
+                        <td>{candidate.exclusion_reason || '-'}</td>
                       </tr>
                     ))}
                   </tbody>

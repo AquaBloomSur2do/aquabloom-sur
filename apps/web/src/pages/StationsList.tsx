@@ -26,6 +26,22 @@ interface LakeStation {
   station: StationSummary;
 }
 
+function renderStationStatus(status: string) {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === 'active') {
+    return (
+      <span className="badge validated">
+        <span aria-hidden="true">✓</span> Activa
+      </span>
+    );
+  }
+  return (
+    <span className="badge draft">
+      <span aria-hidden="true">○</span> Inactiva
+    </span>
+  );
+}
+
 export function StationsList() {
   const [stations, setStations] = useState<LakeStation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -80,26 +96,47 @@ export function StationsList() {
       emptyMessage="No hay estaciones activas registradas."
       onRetry={() => void fetchStations(true)}
     >
-        <div className="lakes-table-wrapper">
-          <table className="lakes-table">
+      <section className="card" aria-label="Listado de estaciones activas">
+        <div className="card-head">
+          <div>
+            <h2>Red de Estaciones Monitoreadas</h2>
+            <p className="card-note">
+              Estaciones activas asociadas a los lagos habilitados en tu organización.
+            </p>
+          </div>
+          <span className="badge restricted">
+            <span aria-hidden="true">📍</span> {stations.length}{' '}
+            {stations.length === 1 ? 'estación activa' : 'estaciones activas'}
+          </span>
+        </div>
+
+        <div className="table-wrap">
+          <table>
             <thead>
               <tr>
                 <th>Estación</th>
                 <th>Código</th>
                 <th>Lago</th>
                 <th>Región</th>
+                <th>Estado</th>
                 <th>Acción</th>
               </tr>
             </thead>
             <tbody>
               {stations.map(({ lake, station }) => (
                 <tr key={station.id}>
-                  <td>{station.name}</td>
-                  <td>{station.code}</td>
+                  <td className="cell-title">{station.name}</td>
+                  <td>
+                    <span className="code-pill">{station.code}</span>
+                  </td>
                   <td>{lake.name}</td>
                   <td>{lake.region}</td>
+                  <td>{renderStationStatus(station.status)}</td>
                   <td>
-                    <Link className="btn btn-secondary" to={`/lakes/${lake.id}`}>
+                    <Link
+                      className="btn btn-secondary btn-sm"
+                      to={`/lakes/${lake.id}`}
+                    >
                       Ver lago
                     </Link>
                   </td>
@@ -108,6 +145,9 @@ export function StationsList() {
             </tbody>
           </table>
         </div>
+      </section>
     </ListPageState>
   );
 }
+
+
