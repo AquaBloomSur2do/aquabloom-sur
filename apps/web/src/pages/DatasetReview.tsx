@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { StartTrainingButton } from '../components/StartTrainingButton';
 import { ApiError, apiClient } from '../services/apiClient';
 import type {
   DatasetDecision,
@@ -315,7 +316,9 @@ export function DatasetReview() {
     <main className="content-container" style={{ display: 'grid', gap: '18px' }}>
       <header className="page-head">
         <div>
-          <div className="eyebrow">Gobernanza científica · Núcleo de modelamiento</div>
+          <div className="eyebrow">
+            Gobernanza científica · Núcleo de modelamiento
+          </div>
           <h1>Revisión de datasets</h1>
           <p className="subtitle">
             Revisa las escenas de una versión y registra su decisión de inclusión
@@ -396,7 +399,9 @@ export function DatasetReview() {
               <div className="kpi-icon amber">IN</div>
               <div>
                 <div className="kpi-value">{candidates.length}</div>
-                <div className="kpi-label">Candidatos en bandeja de ingesta</div>
+                <div className="kpi-label">
+                  Candidatos en bandeja de ingesta
+                </div>
               </div>
             </article>
           </section>
@@ -406,7 +411,8 @@ export function DatasetReview() {
               <div>
                 <h2>Selección de Dataset Oficial y Versión</h2>
                 <div className="card-note">
-                  Cada versión conserva procedencia, decisiones de curaduría y trazabilidad inmutable.
+                  Cada versión conserva procedencia, decisiones de curaduría y
+                  trazabilidad inmutable.
                 </div>
               </div>
             </div>
@@ -464,7 +470,7 @@ export function DatasetReview() {
             </section>
           )}
 
-          {selectedVersionState === 'PUBLISHED' && (
+          {selectedVersionState === 'PUBLISHED' && selectedVersion && (
             <section
               aria-label="Estado de publicación"
               className="status-banner success"
@@ -472,10 +478,21 @@ export function DatasetReview() {
               <div>
                 <p style={{ fontWeight: 750 }}>Publicado oficialmente</p>
                 <p style={{ fontSize: '12px', marginTop: '2px' }}>
-                  Versión congelada e inmutable para entrenamiento y validación de modelos.
+                  Versión congelada e inmutable para entrenamiento y validación
+                  de modelos.
                 </p>
               </div>
-              <span className="badge validated">Oficial · Inmutable</span>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  gap: '12px',
+                }}
+              >
+                <span className="badge validated">Oficial · Inmutable</span>
+                <StartTrainingButton datasetVersionId={selectedVersion.id} />
+              </div>
             </section>
           )}
 
@@ -485,7 +502,8 @@ export function DatasetReview() {
                 <div>
                   <h2>Manifiesto y Trazabilidad</h2>
                   <div className="card-note">
-                    Integridad criptográfica y declaración de procedencia de las fuentes de la versión.
+                    Integridad criptográfica y declaración de procedencia de las
+                    fuentes de la versión.
                   </div>
                 </div>
               </div>
@@ -503,16 +521,21 @@ export function DatasetReview() {
                       <div>
                         <p className="card-note">Identificación</p>
                         <p style={{ fontWeight: 600, fontSize: '14px' }}>
-                          Versión: {manifest.version_number} ({manifest.version_id})
+                          Versión: {manifest.version_number} (
+                          {manifest.version_id})
                         </p>
                       </div>
                       <div>
                         <p className="card-note">Checksum Global</p>
                         <p
                           className="code-pill"
-                          style={{ wordBreak: 'break-all', display: 'inline-block' }}
+                          style={{
+                            wordBreak: 'break-all',
+                            display: 'inline-block',
+                          }}
                         >
-                          {manifest.global_checksum || manifest.manifest_checksum}
+                          {manifest.global_checksum ||
+                            manifest.manifest_checksum}
                         </p>
                       </div>
                     </div>
@@ -524,10 +547,24 @@ export function DatasetReview() {
                           paddingTop: '14px',
                         }}
                       >
-                        <h3 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '10px' }}>
+                        <h3
+                          style={{
+                            fontSize: '14px',
+                            fontWeight: 700,
+                            marginBottom: '10px',
+                          }}
+                        >
                           Fuentes de Datos
                         </h3>
-                        <ul style={{ display: 'grid', gap: '10px', listStyle: 'none', padding: 0, margin: 0 }}>
+                        <ul
+                          style={{
+                            display: 'grid',
+                            gap: '10px',
+                            listStyle: 'none',
+                            padding: 0,
+                            margin: 0,
+                          }}
+                        >
                           {manifest.sources.map((source) => (
                             <li key={source.id} className="queue-card">
                               <div
@@ -540,23 +577,44 @@ export function DatasetReview() {
                                 }}
                               >
                                 <div>
-                                  <p style={{ fontWeight: 600, fontSize: '14px' }}>
+                                  <p
+                                    style={{
+                                      fontWeight: 600,
+                                      fontSize: '14px',
+                                    }}
+                                  >
                                     {source.source_name || 'Fuente Desconocida'}
                                   </p>
-                                  <p className="card-note" style={{ fontFamily: 'monospace', marginTop: '4px' }}>
+                                  <p
+                                    className="card-note"
+                                    style={{
+                                      fontFamily: 'monospace',
+                                      marginTop: '4px',
+                                    }}
+                                  >
                                     ID: {source.id}
                                   </p>
-                                  <p className="card-note" style={{ fontFamily: 'monospace' }}>
+                                  <p
+                                    className="card-note"
+                                    style={{ fontFamily: 'monospace' }}
+                                  >
                                     SHA-256: {source.checksum}
                                   </p>
                                 </div>
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    gap: '8px',
+                                    flexWrap: 'wrap',
+                                  }}
+                                >
                                   {source.is_synthetic && (
                                     <span
                                       className="badge review"
                                       title="Advertencia: Datos de prueba sintéticos"
                                     >
-                                      <span aria-hidden="true">🧪</span> Sintético
+                                      <span aria-hidden="true">🧪</span>{' '}
+                                      Sintético
                                     </span>
                                   )}
                                   {source.is_experimental && (
@@ -564,17 +622,20 @@ export function DatasetReview() {
                                       className="badge reported"
                                       title="Advertencia: Datos experimentales no calibrados"
                                     >
-                                      <span aria-hidden="true">⚠️</span> Experimental
+                                      <span aria-hidden="true">⚠️</span>{' '}
+                                      Experimental
                                     </span>
                                   )}
-                                  {!source.is_synthetic && !source.is_experimental && (
-                                    <span
-                                      className="badge draft"
-                                      title="Condición de la fuente no informada"
-                                    >
-                                      <span aria-hidden="true">❔</span> Condición no informada
-                                    </span>
-                                  )}
+                                  {!source.is_synthetic &&
+                                    !source.is_experimental && (
+                                      <span
+                                        className="badge draft"
+                                        title="Condición de la fuente no informada"
+                                      >
+                                        <span aria-hidden="true">❔</span>{' '}
+                                        Condición no informada
+                                      </span>
+                                    )}
                                 </div>
                               </div>
                             </li>
@@ -599,15 +660,13 @@ export function DatasetReview() {
               </p>
             </div>
           ) : (
-            <section
-              aria-label="Escenas de la versión"
-              className="card"
-            >
+            <section aria-label="Escenas de la versión" className="card">
               <div className="card-head">
                 <div>
                   <h2>Escenas Incluidas (Memberships)</h2>
                   <div className="card-note">
-                    Verifica calidad, nubosidad y procedencia antes de emitir el veredicto de inclusión.
+                    Verifica calidad, nubosidad y procedencia antes de emitir el
+                    veredicto de inclusión.
                   </div>
                 </div>
                 <span className="badge restricted">
@@ -615,7 +674,10 @@ export function DatasetReview() {
                 </span>
               </div>
 
-              <div className="card-body" style={{ display: 'grid', gap: '14px' }}>
+              <div
+                className="card-body"
+                style={{ display: 'grid', gap: '14px' }}
+              >
                 {selectedVersion.memberships.map((membership) => {
                   const latestDecision = membership.decisions[0];
                   const isSaving = savingMembershipId === membership.id;
@@ -635,7 +697,8 @@ export function DatasetReview() {
                             {membership.scene_external_id}
                           </h2>
                           <p className="card-note">
-                            Proveedor: <strong>{membership.scene_provider}</strong>
+                            Proveedor:{' '}
+                            <strong>{membership.scene_provider}</strong>
                           </p>
                         </div>
                         {latestDecision ? (
@@ -649,7 +712,9 @@ export function DatasetReview() {
                             {decisionLabels[latestDecision.decision]}
                           </span>
                         ) : (
-                          <span className="badge review">Pendiente de decisión</span>
+                          <span className="badge review">
+                            Pendiente de decisión
+                          </span>
                         )}
                       </div>
 
@@ -750,15 +815,13 @@ export function DatasetReview() {
           )}
 
           {/* SECCIÓN TAREA S2-139: VISTA DE CANDIDATOS */}
-          <section
-            className="card"
-            aria-label="Candidatos en cuarentena"
-          >
+          <section className="card" aria-label="Candidatos en cuarentena">
             <div className="card-head">
               <div>
                 <h2>Bandeja de Entrada: Candidatos de Ingesta</h2>
                 <p className="card-note">
-                  Muestras y observaciones crudas esperando ser evaluadas o ya descartadas automáticamente (S2-139).
+                  Muestras y observaciones crudas esperando ser evaluadas o ya
+                  descartadas automáticamente (S2-139).
                 </p>
               </div>
               <span className="badge draft">Pre-curaduría</span>
@@ -790,11 +853,15 @@ export function DatasetReview() {
                       <tr
                         key={candidate.id}
                         className={
-                          candidate.status === 'REJECTED' ? 'row-quarantine' : ''
+                          candidate.status === 'REJECTED'
+                            ? 'row-quarantine'
+                            : ''
                         }
                       >
                         <td>
-                          <span className="code-pill">{candidate.data_uri}</span>
+                          <span className="code-pill">
+                            {candidate.data_uri}
+                          </span>
                         </td>
                         <td className="cell-title">
                           {candidate.source_provider || 'Desconocido'}
