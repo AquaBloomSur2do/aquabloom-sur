@@ -9,22 +9,19 @@ import pytest
 from fastapi import Header, HTTPException, status
 from fastapi.testclient import TestClient
 from postgrest.exceptions import APIError
-from pydantic import SecretStr
 
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
+os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test-secret-token")
 
-from apps.scientific.app.core.config import settings
-from apps.scientific.app.domains.execution.baseline_execution import calculate_baseline
-from apps.scientific.app.domains.execution.data_execution import fetch_training_data
-from apps.scientific.app.main import app
-
-settings.internal_service_token = SecretStr("test-secret-token")
-from apps.api.app.core.config import settings as api_settings
 from apps.scientific.app.core.dependencies import require_authenticated_user
+from apps.scientific.app.domains.execution.domain_execution import (
+    calculate_baseline,
+    parse_training_csv,
+)
+from apps.scientific.app.domains.execution.model_execution import fetch_training_file
 from apps.scientific.app.main import app
 
-api_settings.internal_service_token = SecretStr("test-secret-token")
 client = TestClient(app)
 
 USER_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
@@ -440,19 +437,42 @@ def test_training_requires_version_to_belong_to_dataset(fake_database):
 # PRUEBAS S2-155 / S2-150: BASELINE Y FLUJOS CON MOCKS
 # =========================================================
 
-def mock_supabase_for_training(monkeypatch, csv_content: bytes, valid_checksum: bool = True):
-    mock_supabase = MagicMock()
-    mock_response = MagicMock()
+def mock_training_file(monkeypatch, csv_content: bytes, valid_checksum: bool = True):
     checksum = hashlib.sha256(csv_content).hexdigest() if valid_checksum else "0" * 64
-    mock_response.data = [{
-        "storage_path": f"versions/{VERSION_ID}/training.csv",
-        "checksum": checksum,
-        "variables": ["temperatura", "clorofila_a", "turbidez", "ph"],
-    }]
-    mock_supabase.schema.return_value.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value = mock_response
-    mock_supabase.storage.from_().download.return_value = csv_content
-    monkeypatch.setattr("apps.scientific.app.domains.execution.data_execution.supabase", mock_supabase)
-    return mock_supabase
+    fetch_file = MagicMock(return_value=(csv_content, checksum))
+    monkeypatch.setattr(
+        "apps.scientific.app.domains.execution.service_execution.fetch_training_file",
+        fetch_file,
+    )
+    return fetch_file
+
+
+def test_model_fetches_training_file_for_version():
+    mock_client = MagicMock()
+    expected_checksum = "a" * 64
+    csv_content = b"clorofila_a\n10.0\n"
+    (
+        mock_client.schema.return_value.table.return_value.select.return_value.eq.return_value
+        .limit.return_value.execute.return_value.data
+    ) = [
+        {
+            "storage_path": f"versions/{VERSION_ID}/training.csv",
+            "checksum": expected_checksum,
+        }
+    ]
+    mock_client.storage.from_.return_value.download.return_value = csv_content
+
+    assert fetch_training_file(mock_client, VERSION_ID) == (
+        csv_content,
+        expected_checksum,
+    )
+    mock_client.schema.return_value.table.return_value.select.return_value.eq.assert_called_once_with(
+        "version_id", VERSION_ID
+    )
+    mock_client.storage.from_.assert_called_once_with("training_files")
+    mock_client.storage.from_.return_value.download.assert_called_once_with(
+        f"versions/{VERSION_ID}/training.csv"
+    )
 
 
 def test_execution_job_handles_internal_exception(fake_database, monkeypatch):
@@ -480,7 +500,7 @@ def test_execution_job_handles_timeout_exceeded(monkeypatch, fake_database):
 
 def test_training_is_persisted_as_queued_and_returns_202(fake_database, monkeypatch):
     csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
-    mock_supabase = mock_supabase_for_training(monkeypatch, csv_data)
+    fetch_file = mock_training_file(monkeypatch, csv_data)
     response = client.post("/api/v1/executions/", json=training_payload(), headers=HEADERS)
     assert response.status_code == 202
     assert fake_database.rows[0]["status"] == "completed"
@@ -488,25 +508,34 @@ def test_training_is_persisted_as_queued_and_returns_202(fake_database, monkeypa
     assert result["prediction_value"] == 15.0
     assert result["predictions"] == [15.0]
     assert result["metrics"] == {"mae": 15.0, "rmse": 15.0}
-    mock_supabase.storage.from_.assert_any_call("training_files")
-    mock_supabase.storage.from_.return_value.download.assert_called_once_with(
-        f"versions/{VERSION_ID}/training.csv"
-    )
+    fetch_file.assert_called_once_with(fake_database, VERSION_ID)
 
 
-def test_data_execution_rechaza_checksum_invalido(monkeypatch):
-    mock_supabase_for_training(monkeypatch, b"clorofila_a\n10.0\n", valid_checksum=False)
-    with pytest.raises(HTTPException) as exc:
-        fetch_training_data("dataset_1", "v1")
-    assert exc.value.status_code == 422
-    assert "Checksum" in exc.value.detail
+def test_parse_training_csv_rechaza_checksum_invalido():
+    csv_data = b"clorofila_a\n10.0\n"
+    with pytest.raises(ValueError, match="Checksum"):
+        parse_training_csv(csv_data, "0" * 64)
 
 
-def test_data_execution_rechaza_valores_invalidos(monkeypatch):
-    mock_supabase_for_training(monkeypatch, b"clorofila_a\n10.0\nNA\n30.0\n")
-    with pytest.raises(HTTPException) as exc:
-        fetch_training_data("dataset_1", "v1")
-    assert "no num" in exc.value.detail or "inv" in exc.value.detail
+def test_parse_training_csv_rechaza_valores_invalidos():
+    csv_data = b"clorofila_a\n10.0\nNA\n30.0\n"
+    with pytest.raises(ValueError, match="no num"):
+        parse_training_csv(csv_data, hashlib.sha256(csv_data).hexdigest())
+
+
+@pytest.mark.parametrize(
+    "csv_data, message",
+    [
+        (b"", "vacío"),
+        (b"\xff\xfe", "UTF-8"),
+        (b"temperatura\n10\n", "columna objetivo"),
+        (b"clorofila_a\nNaN\n", "no num"),
+        (b"clorofila_a\nInf\n", "no num"),
+    ],
+)
+def test_parse_training_csv_rechaza_insumos_invalidos(csv_data, message):
+    with pytest.raises(ValueError, match=message):
+        parse_training_csv(csv_data, hashlib.sha256(csv_data).hexdigest())
 
 
 def test_baseline_evaluacion_no_modifica_media():

@@ -1,16 +1,10 @@
-import asyncio
+import csv
+import hashlib
+import io
 import math
 from collections.abc import Hashable, Iterable
 from typing import Any
 
-from apps.scientific.app.domains.execution.baseline_execution import calculate_baseline
-from apps.scientific.app.domains.execution.data_execution import (
-    fetch_training_data,
-    split_training_validation,
-)
-from apps.scientific.app.domains.execution.schemas_execution import JobCreate
-
-JOB_TIMEOUT_SECONDS = 300
 from apps.scientific.app.domains.execution.schemas_execution import (
     EstimationRequestInput,
     JobCreate,
@@ -20,6 +14,97 @@ from apps.scientific.app.domains.execution.schemas_execution import (
 )
 
 JOB_TIMEOUT_SECONDS = 10.0
+
+
+def parse_training_csv(file_bytes: bytes, expected_checksum: str) -> list[dict[str, Any]]:
+    """Verifica y convierte el CSV de entrenamiento en filas numéricas."""
+    if not file_bytes:
+        raise ValueError("El archivo CSV está vacío.")
+
+    actual_checksum = hashlib.sha256(file_bytes).hexdigest()
+    if actual_checksum != expected_checksum:
+        raise ValueError("Checksum del archivo de entrenamiento incorrecto.")
+
+    try:
+        csv_text = file_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("El archivo de entrenamiento no está codificado en UTF-8.") from exc
+
+    reader = csv.DictReader(io.StringIO(csv_text))
+    if not reader.fieldnames or "clorofila_a" not in reader.fieldnames:
+        raise ValueError("El archivo CSV no contiene la columna objetivo 'clorofila_a'.")
+
+    rows = list(reader)
+    if not rows:
+        raise ValueError("El archivo CSV está vacío.")
+
+    validated_rows: list[dict[str, Any]] = []
+    for row in rows:
+        value = row.get("clorofila_a")
+        if value is None or value.strip() == "":
+            raise ValueError("Valor faltante en la columna 'clorofila_a'.")
+        try:
+            target = float(value)
+        except ValueError as exc:
+            raise ValueError(
+                f"Valor no numérico o inválido en 'clorofila_a': {value}"
+            ) from exc
+        if not math.isfinite(target):
+            raise ValueError(
+                f"Valor no numérico o inválido en 'clorofila_a': {value}"
+            )
+        row["clorofila_a"] = target
+        validated_rows.append(row)
+
+    return validated_rows
+
+
+def split_training_validation(
+    data: list[dict[str, Any]], split_ratio: float = 0.8
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Divide secuencialmente los datos y reserva observaciones para evaluación."""
+    if not math.isfinite(split_ratio) or not 0 < split_ratio < 1:
+        raise ValueError("La proporción de entrenamiento debe estar entre 0 y 1.")
+    if len(data) < 2:
+        raise ValueError("Se requieren al menos 2 observaciones para evaluar el modelo.")
+
+    train_size = max(1, int(len(data) * split_ratio))
+    if train_size == len(data):
+        train_size = len(data) - 1
+    return data[:train_size], data[train_size:]
+
+
+def calculate_baseline(
+    train_data: list[dict[str, Any]], val_data: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Calcula el baseline exclusivamente con el conjunto de entrenamiento."""
+    if not train_data:
+        raise ValueError("Conjunto de entrenamiento vacío. Imposible calcular baseline.")
+    if not val_data:
+        raise ValueError("Conjunto de evaluación vacío. Imposible calcular métricas.")
+
+    train_targets = [row["clorofila_a"] for row in train_data]
+    prediction_value = sum(train_targets) / len(train_targets)
+    val_targets = [row["clorofila_a"] for row in val_data]
+    predictions = [prediction_value] * len(val_data)
+    mae = sum(
+        abs(actual - prediction)
+        for actual, prediction in zip(val_targets, predictions, strict=True)
+    ) / len(val_targets)
+    rmse = math.sqrt(
+        sum(
+            (actual - prediction) ** 2
+            for actual, prediction in zip(val_targets, predictions, strict=True)
+        )
+        / len(val_targets)
+    )
+
+    return {
+        "model": "baseline",
+        "prediction_value": prediction_value,
+        "metrics": {"mae": mae, "rmse": rmse},
+        "predictions": predictions,
+    }
 
 
 def validate_group_partition_disjointness(
@@ -49,41 +134,6 @@ def build_job_accepted_response(job: dict[str, Any]) -> dict[str, Any]:
         "message": "Trabajo encolado y en procesamiento.",
         "status_url": f"/api/v1/executions/{job_id}",
     }
-
-def job_matches_request(
-    existing_job: dict[str, Any], payload: JobCreate, config: dict[str, Any]
-) -> bool:
-    return (
-        existing_job.get("job_type") == payload.job_type
-        and existing_job.get("config") == config
-    )
-
-
-async def run_scientific_algorithm(
-    job_type: str, config: dict[str, Any]
-) -> dict[str, Any]:
-    """Ejecuta el algoritmo científico real (baseline para S2-155)."""
-    await asyncio.sleep(1)
-
-    if job_type != "training":
-        return {"message": f"Tipo de trabajo '{job_type}' no implementado aún."}
-
-    dataset_id = config.get("dataset_id")
-    version_id = config.get("version_id")
-
-    if not dataset_id or not version_id:
-        raise ValueError("Faltan dataset_id o version_id en la configuración.")
-
-    # 1. Cargar datos de entrenamiento desde el storage
-    raw_data = fetch_training_data(str(dataset_id), str(version_id))
-    
-    # 2. Separar particiones (80% entrenamiento, 20% validación)
-    train_data, val_data = split_training_validation(raw_data, split_ratio=0.8)
-    
-    # 3. Calcular baseline exclusivo sobre entrenamiento y validar
-    result = calculate_baseline(train_data, val_data)
-
-    return result
 
 PILOT_ALLOWED_VARIABLES = {"chlorophyll_a": "chlorophyll_a", "clorofila_a": "chlorophyll_a"}
 PILOT_ALLOWED_UNITS = {"ug/l": "ug/L", "µg/l": "ug/L", "μg/l": "ug/L", "mg/m3": "mg/m3"}
