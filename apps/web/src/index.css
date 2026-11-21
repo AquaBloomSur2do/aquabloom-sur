@@ -136,6 +136,27 @@ p {
   font-size: 12.5px;
 }
 
+.traceability-list {
+  margin: 8px 0 0;
+  display: grid;
+  gap: 8px;
+}
+
+.traceability-list > div {
+  display: grid;
+  grid-template-columns: minmax(100px, 0.4fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.traceability-list dt {
+  color: var(--muted);
+}
+
+.traceability-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .head-actions {
   display: flex;
   gap: 9px;
