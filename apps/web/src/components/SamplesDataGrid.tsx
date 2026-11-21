@@ -47,7 +47,6 @@ export const SamplesDataGrid: React.FC = () => {
           params.set('quarantine', 'true');
         }
 
-        // CORRECCIÓN 2: Barra diagonal inicial añadida para evitar 404
         const data = await apiClient.get<SampleListResponse>(
           `/samples?${params.toString()}`
         );
@@ -86,120 +85,89 @@ export const SamplesDataGrid: React.FC = () => {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
-    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <section className="card">
+      <div className="card-head">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">
-            Registro de Muestras Importadas
-          </h2>
-          <p className="text-sm text-gray-500">
+          <h2>Registro de Muestras Importadas</h2>
+          <p className="card-note">
             Separación de registros válidos y muestras retenidas en cuarentena por errores de formato o rango.
           </p>
         </div>
 
-        <div className="inline-flex rounded-md shadow-sm" role="group">
+        <div className="tab-switch" role="group" aria-label="Filtro de muestras">
           <button
             type="button"
             onClick={() => handleFilterChange('all')}
-            className={`px-4 py-2 text-sm font-medium border rounded-l-lg ${
-              filter === 'all'
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-            }`}
+            className={`tab-btn ${filter === 'all' ? 'active' : ''}`}
           >
             Todas
           </button>
           <button
             type="button"
             onClick={() => handleFilterChange('valid')}
-            className={`px-4 py-2 text-sm font-medium border-t border-b ${
-              filter === 'valid'
-                ? 'bg-green-600 text-white border-green-600'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-            }`}
+            className={`tab-btn ${filter === 'valid' ? 'active' : ''}`}
           >
             Válidas
           </button>
           <button
             type="button"
             onClick={() => handleFilterChange('quarantined')}
-            className={`px-4 py-2 text-sm font-medium border rounded-r-lg ${
-              filter === 'quarantined'
-                ? 'bg-red-600 text-white border-red-600'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-            }`}
+            className={`tab-btn ${filter === 'quarantined' ? 'active' : ''}`}
           >
             Con Errores (Cuarentena)
           </button>
         </div>
       </div>
 
-      {/* CORRECCIÓN 4: Renderizado mutuamente excluyente (Error vs UI) */}
       {error ? (
-        <div
-          className="p-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md"
-          role="alert"
-        >
-          {error}
+        <div className="card-body">
+          <div className="status-banner danger" role="alert">
+            {error}
+          </div>
         </div>
       ) : isLoading ? (
-        <div className="py-8 text-center text-gray-500">
-          Cargando muestras...
+        <div className="card-body">
+          <p className="subtitle">Cargando muestras...</p>
         </div>
       ) : samples.length === 0 ? (
-        <div className="py-8 text-center text-gray-500 border border-dashed rounded-md">
-          No se encontraron muestras para el filtro seleccionado.
+        <div className="card-body">
+          <p className="subtitle">
+            No se encontraron muestras para el filtro seleccionado.
+          </p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
+        <div className="table-wrap">
+          <table>
+            <thead>
               <tr>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                  Estación (ID)
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                  Fecha Muestra (UTC)
-                </th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-700">
-                  Clorofila-a (µg/L)
-                </th>
-                <th className="px-4 py-3 text-center font-semibold text-gray-700">
-                  Estado
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                  Detalle / Motivo de Error
-                </th>
+                <th>Estación (ID)</th>
+                <th>Fecha Muestra (UTC)</th>
+                <th>Clorofila-a (µg/L)</th>
+                <th>Estado</th>
+                <th>Detalle / Motivo de Error</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody>
               {samples.map((sample) => (
                 <tr
                   key={sample.id}
-                  className={sample.is_quarantined ? 'bg-red-50/40' : ''}
+                  className={sample.is_quarantined ? 'row-quarantine' : ''}
                 >
-                  <td className="px-4 py-3 font-mono text-xs text-gray-600">
-                    {sample.station_id}
+                  <td>
+                    <span className="code-pill">{sample.station_id}</span>
                   </td>
-                  <td className="px-4 py-3 text-gray-800">
-                    {/* CORRECCIÓN 3: Preservar fidelidad científica con UTC */}
-                    {new Date(sample.sample_datetime_utc).toUTCString()}
+                  <td>{new Date(sample.sample_datetime_utc).toUTCString()}</td>
+                  <td className="cell-title">
+                    {sample.chlorophyll_a_ug_l} µg/L
                   </td>
-                  <td className="px-4 py-3 text-right font-medium text-gray-900">
-                    {sample.chlorophyll_a_ug_l}
-                  </td>
-                  <td className="px-4 py-3 text-center">
+                  <td>
                     {sample.is_quarantined ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        En Cuarentena
-                      </span>
+                      <span className="badge reported">En Cuarentena</span>
                     ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        Válido
-                      </span>
+                      <span className="badge validated">Válido</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">
+                  <td>
                     {sample.is_quarantined
                       ? sample.quarantine_reason || 'Error de validación o formato'
                       : 'OK'}
@@ -211,19 +179,26 @@ export const SamplesDataGrid: React.FC = () => {
         </div>
       )}
 
-      {/* Paginación simple (oculta si hay error para mejorar UX) */}
       {!error && (
-        <div className="flex items-center justify-between pt-2 border-t border-gray-200 text-sm text-gray-600">
-          <span>
+        <div
+          className="card-body"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderTop: '1px solid var(--line)',
+          }}
+        >
+          <span className="card-note">
             Total de registros: <strong>{total}</strong> (Página {page} de{' '}
             {totalPages})
           </span>
-          <div className="space-x-2">
+          <div className="head-actions">
             <button
               type="button"
               disabled={page <= 1 || isLoading}
               onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              className="px-3 py-1 border rounded disabled:opacity-50"
+              className="btn btn-secondary btn-sm"
             >
               Anterior
             </button>
@@ -231,14 +206,14 @@ export const SamplesDataGrid: React.FC = () => {
               type="button"
               disabled={page >= totalPages || isLoading}
               onClick={() => setPage((prev) => prev + 1)}
-              className="px-3 py-1 border rounded disabled:opacity-50"
+              className="btn btn-secondary btn-sm"
             >
               Siguiente
             </button>
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 };
 

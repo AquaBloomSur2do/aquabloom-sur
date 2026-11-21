@@ -3,9 +3,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import BackgroundTasks, HTTPException, status
-from postgrest.exceptions import APIError
-
 from apps.scientific.app.core.database import supabase
 from apps.scientific.app.domains.execution.domain_execution import (
     JOB_TIMEOUT_SECONDS,
@@ -16,6 +13,7 @@ from apps.scientific.app.domains.execution.domain_execution import (
 from apps.scientific.app.domains.execution.model_execution import (
     find_scientific_job_in_db,
     get_dataset_version_for_training,
+    has_active_organization_membership,
     insert_scientific_job_in_db,
     update_scientific_job_in_db,
 )
@@ -23,6 +21,8 @@ from apps.scientific.app.domains.execution.schemas_execution import (
     JobCreate,
     TrainingConfig,
 )
+from fastapi import BackgroundTasks, HTTPException, status
+from postgrest.exceptions import APIError
 
 
 def validate_training_version_service(client, config: TrainingConfig) -> None:
@@ -99,8 +99,23 @@ async def process_scientific_job(job_id: str, config: dict[str, Any]) -> None:
         )
 
 
-def get_job_status_service(client, job_id: UUID) -> dict[str, Any]:
-    job = find_scientific_job_in_db(client, job_id=str(job_id))
+def validate_job_organization_service(
+    client, user_id: UUID, organization_id: UUID
+) -> None:
+    if not has_active_organization_membership(client, user_id, organization_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontró el trabajo.",
+        )
+
+
+def get_job_status_service(
+    client, job_id: UUID, user_id: UUID, organization_id: UUID
+) -> dict[str, Any]:
+    validate_job_organization_service(client, user_id, organization_id)
+    job = find_scientific_job_in_db(
+        client, job_id=str(job_id), organization_id=organization_id
+    )
     if job is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -117,12 +132,17 @@ def create_execution_job_service(
     payload: JobCreate,
     background_tasks: BackgroundTasks,
     idempotency_key: str | None,
+    user_id: UUID,
+    organization_id: UUID,
 ) -> dict[str, Any]:
+    validate_job_organization_service(client, user_id, organization_id)
     config = payload.config.model_dump(mode="json")
 
     if idempotency_key is not None:
         existing_job = find_scientific_job_in_db(
-            client, idempotency_key=idempotency_key
+            client,
+            idempotency_key=idempotency_key,
+            organization_id=organization_id,
         )
         if existing_job is not None:
             if job_matches_request(existing_job, payload, config):
@@ -139,6 +159,8 @@ def create_execution_job_service(
         "job_type": payload.job_type,
         "config": config,
         "status": "queued",
+        "organization_id": str(organization_id),
+        "requested_by": str(user_id),
     }
     if idempotency_key is not None:
         db_payload["idempotency_key"] = idempotency_key
@@ -148,7 +170,9 @@ def create_execution_job_service(
     except APIError as exc:
         if getattr(exc, "code", None) == "23505" and idempotency_key is not None:
             existing_job = find_scientific_job_in_db(
-                client, idempotency_key=idempotency_key
+                client,
+                idempotency_key=idempotency_key,
+                organization_id=organization_id,
             )
             if existing_job is not None:
                 if job_matches_request(existing_job, payload, config):

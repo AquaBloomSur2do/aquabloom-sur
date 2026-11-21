@@ -64,6 +64,8 @@ app.add_middleware(
         "Content-Type",
         "Accept",
         "X-Idempotency-Key",
+        "X-Internal-Token",
+        "X-Organization-ID",
     ],
 )
 

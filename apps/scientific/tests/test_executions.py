@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
+from fastapi import Header, HTTPException, status
 from fastapi.testclient import TestClient
 from postgrest.exceptions import APIError
 from pydantic import SecretStr
@@ -11,18 +12,34 @@ from pydantic import SecretStr
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 
-from apps.scientific.app.core.config import settings
-from apps.scientific.app.main import app
-
-settings.internal_service_token = SecretStr("test-secret-token")
 from apps.api.app.core.config import settings as api_settings
+from apps.scientific.app.core.dependencies import require_authenticated_user
+from apps.scientific.app.main import app
 
 api_settings.internal_service_token = SecretStr("test-secret-token")
 client = TestClient(app)
 
-HEADERS = {"X-Internal-Token": "test-secret-token"}
+USER_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+ORGANIZATION_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+OTHER_ORGANIZATION_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+AUTH_HEADERS = {
+    "Authorization": "Bearer test-user-token",
+    "X-Organization-ID": ORGANIZATION_ID,
+}
+HEADERS = {**AUTH_HEADERS, "X-Internal-Token": "test-secret-token"}
 DATASET_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 VERSION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+
+
+def fake_authenticated_user(
+    authorization: str | None = Header(default=None),
+) -> dict:
+    if authorization != "Bearer test-user-token":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuario no autenticado",
+        )
+    return {"sub": USER_ID}
 
 
 class FakeResponse:
@@ -58,6 +75,22 @@ class FakeQuery:
         return self
 
     def execute(self):
+        if self.table_name == "memberships":
+            rows = [
+                membership
+                for membership in self.database.memberships
+                if all(
+                    str(
+                        membership.get("organization_status")
+                        if key == "organizations.status"
+                        else membership.get(key)
+                    )
+                    == str(value)
+                    for key, value in self.filters.items()
+                )
+            ]
+            return FakeResponse(rows)
+
         # 1. Esquema dataset - tabla versions (S2-147)
         if self.schema_name == "dataset" and self.table_name == "versions":
             rows = [
@@ -93,7 +126,12 @@ class FakeQuery:
                 self.database.rows.append(raced_row)
                 raise APIError({"code": "23505", "message": "unique constraint violation"})
 
-            if idempotency_key and any(row.get("idempotency_key") == idempotency_key for row in self.database.rows):
+            if idempotency_key and any(
+                row.get("idempotency_key") == idempotency_key
+                and row.get("organization_id")
+                == self.insert_payload.get("organization_id")
+                for row in self.database.rows
+            ):
                 raise APIError({"code": "23505", "message": "unique constraint violation"})
 
             row = {
@@ -125,6 +163,20 @@ class FakeDatabase:
         ]
         self.rows = []  # Equivale a scientific_jobs
         self.race_on_insert = False
+        self.memberships = [
+            {
+                "user_id": USER_ID,
+                "organization_id": ORGANIZATION_ID,
+                "status": "active",
+                "organization_status": "active",
+            },
+            {
+                "user_id": USER_ID,
+                "organization_id": OTHER_ORGANIZATION_ID,
+                "status": "active",
+                "organization_status": "active",
+            },
+        ]
 
     def schema(self, schema_name):
         return SimpleNamespace(
@@ -140,6 +192,9 @@ def fake_database(monkeypatch):
     database = FakeDatabase()
     monkeypatch.setattr("apps.scientific.app.domains.execution.controller_execution.supabase", database)
     monkeypatch.setattr("apps.scientific.app.domains.execution.service_execution.supabase", database)
+    monkeypatch.setitem(
+        app.dependency_overrides, require_authenticated_user, fake_authenticated_user
+    )
     return database
 
 
@@ -179,19 +234,88 @@ def test_get_job_status_returns_200(fake_database):
     assert post_response.status_code == 202
     job_id = post_response.json()["job_id"]
 
-    response = client.get(f"/api/v1/executions/{job_id}", headers=HEADERS)
+    response = client.get(f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS)
     assert response.status_code == 200
     data = response.json()
     assert data["job_id"] == job_id
     assert data["status"] == "completed"
+    assert fake_database.rows[0]["organization_id"] == ORGANIZATION_ID
+    assert fake_database.rows[0]["requested_by"] == USER_ID
     assert len(fake_database.rows) == 1
 
 
 def test_get_job_status_returns_404_for_invalid_id(fake_database):
     fake_uuid = "00000000-0000-0000-0000-000000000000"
-    response = client.get(f"/api/v1/executions/{fake_uuid}", headers=HEADERS)
+    response = client.get(f"/api/v1/executions/{fake_uuid}", headers=AUTH_HEADERS)
     assert response.status_code == 404
     assert response.json()["message"] == "No se encontró el trabajo."
+
+
+def test_get_job_status_returns_404_for_another_organization(fake_database):
+    create_response = client.post(
+        "/api/v1/executions/", json=estimation_payload(), headers=HEADERS
+    )
+    job_id = create_response.json()["job_id"]
+
+    response = client.get(
+        f"/api/v1/executions/{job_id}",
+        headers={
+            "Authorization": AUTH_HEADERS["Authorization"],
+            "X-Organization-ID": OTHER_ORGANIZATION_ID,
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["message"] == "No se encontró el trabajo."
+
+
+def test_get_job_status_requires_authentication(fake_database):
+    response = client.get(
+        f"/api/v1/executions/{uuid.uuid4()}",
+        headers={"X-Organization-ID": ORGANIZATION_ID},
+    )
+
+    assert response.status_code == 401
+
+
+def test_create_execution_job_rejects_non_member_organization(fake_database):
+    headers = {
+        "Authorization": AUTH_HEADERS["Authorization"],
+        "X-Organization-ID": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "X-Internal-Token": "test-secret-token",
+    }
+
+    response = client.post(
+        "/api/v1/executions/", json=estimation_payload(), headers=headers
+    )
+
+    assert response.status_code == 404
+    assert fake_database.rows == []
+
+
+def test_idempotency_keys_are_scoped_to_organization(fake_database):
+    idempotency_headers = {
+        **HEADERS,
+        "X-Idempotency-Key": "same-key-in-different-organizations",
+    }
+    first = client.post(
+        "/api/v1/executions/",
+        json=estimation_payload(),
+        headers=idempotency_headers,
+    )
+    second = client.post(
+        "/api/v1/executions/",
+        json=estimation_payload(),
+        headers={
+            **idempotency_headers,
+            "X-Organization-ID": OTHER_ORGANIZATION_ID,
+        },
+    )
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    assert first.json()["job_id"] != second.json()["job_id"]
+    assert len(fake_database.rows) == 2
 
 
 def test_create_execution_job_invalid_payload(fake_database):
@@ -349,6 +473,3 @@ def test_training_is_persisted_as_queued_and_returns_202(fake_database):
     # por lo que el objeto en base de datos ya transitó a "completed".
     assert fake_database.rows[0]["status"] == "completed"
     assert fake_database.rows[0]["job_type"] == "training"
-
-
-
