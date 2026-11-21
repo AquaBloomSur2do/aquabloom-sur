@@ -3,7 +3,9 @@ import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
+from postgrest.exceptions import APIError
 from pydantic import SecretStr
 
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
@@ -13,11 +15,18 @@ from apps.api.app.core.config import settings as api_settings
 from apps.scientific.app.domains import model_scope
 from apps.scientific.app.main import app
 
-api_settings.internal_service_token = SecretStr("test-secret-token")
-
 client = TestClient(app)
 HEADERS = {"X-Internal-Token": "test-secret-token"}
 LAKE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+
+
+@pytest.fixture(autouse=True)
+def internal_service_token(monkeypatch):
+    monkeypatch.setattr(
+        api_settings,
+        "internal_service_token",
+        SecretStr("test-secret-token"),
+    )
 
 
 class FakeModelScopeDatabase:
@@ -46,9 +55,7 @@ class FakeModelScopeDatabase:
 
 def test_create_model_scope_persists_scope_without_validation(monkeypatch):
     database = FakeModelScopeDatabase()
-    monkeypatch.setattr(
-        model_scope.controller_model_scope, "supabase", database
-    )
+    monkeypatch.setattr(model_scope.controller_model_scope, "supabase", database)
     payload = {
         "lake_id": LAKE_ID,
         "variable": "clorofila_a",
@@ -76,9 +83,7 @@ def test_create_model_scope_persists_scope_without_validation(monkeypatch):
 
 def test_create_model_scope_rejects_validation_override(monkeypatch):
     database = FakeModelScopeDatabase()
-    monkeypatch.setattr(
-        model_scope.controller_model_scope, "supabase", database
-    )
+    monkeypatch.setattr(model_scope.controller_model_scope, "supabase", database)
 
     response = client.post(
         "/api/v1/model-scopes/",
@@ -98,9 +103,7 @@ def test_create_model_scope_rejects_validation_override(monkeypatch):
 
 def test_create_model_scope_rejects_reversed_observed_range(monkeypatch):
     database = FakeModelScopeDatabase()
-    monkeypatch.setattr(
-        model_scope.controller_model_scope, "supabase", database
-    )
+    monkeypatch.setattr(model_scope.controller_model_scope, "supabase", database)
 
     response = client.post(
         "/api/v1/model-scopes/",
@@ -115,3 +118,63 @@ def test_create_model_scope_rejects_reversed_observed_range(monkeypatch):
 
     assert response.status_code == 422
     assert database.payload is None
+
+
+def test_create_model_scope_requires_internal_token():
+    response = client.post(
+        "/api/v1/model-scopes/",
+        json={
+            "lake_id": LAKE_ID,
+            "variable": "clorofila_a",
+            "observed_range": {"minimum": 0.2, "maximum": 15.0},
+            "experimental_condition": "muestras de verano",
+        },
+    )
+
+    assert response.status_code == 401
+
+
+def test_create_model_scope_rejects_extra_observed_range_fields(monkeypatch):
+    database = FakeModelScopeDatabase()
+    monkeypatch.setattr(model_scope.controller_model_scope, "supabase", database)
+
+    response = client.post(
+        "/api/v1/model-scopes/",
+        json={
+            "lake_id": LAKE_ID,
+            "variable": "clorofila_a",
+            "observed_range": {
+                "minimum": 0.2,
+                "maximum": 15.0,
+                "unexpected": True,
+            },
+            "experimental_condition": "muestras de verano",
+        },
+        headers=HEADERS,
+    )
+
+    assert response.status_code == 422
+    assert database.payload is None
+
+
+def test_create_model_scope_returns_not_found_for_missing_lake(monkeypatch):
+    class MissingLakeDatabase(FakeModelScopeDatabase):
+        def execute(self):
+            raise APIError({"code": "23503", "message": "foreign key violation"})
+
+    database = MissingLakeDatabase()
+    monkeypatch.setattr(model_scope.controller_model_scope, "supabase", database)
+
+    response = client.post(
+        "/api/v1/model-scopes/",
+        json={
+            "lake_id": LAKE_ID,
+            "variable": "clorofila_a",
+            "observed_range": {"minimum": 0.2, "maximum": 15.0},
+            "experimental_condition": "muestras de verano",
+        },
+        headers=HEADERS,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["message"] == "No se encontró el lago especificado."

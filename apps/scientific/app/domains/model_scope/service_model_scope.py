@@ -16,6 +16,11 @@ def create_model_scope_service(client, payload: ModelScopeCreate) -> dict:
     try:
         model_scope = insert_model_scope_in_db(client, db_payload)
     except APIError as exc:
+        if getattr(exc, "code", None) == "23503":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No se encontró el lago especificado.",
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="No se pudo registrar el alcance del modelo.",

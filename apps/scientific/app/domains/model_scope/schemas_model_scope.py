@@ -8,6 +8,8 @@ class ObservedRange(BaseModel):
     minimum: float = Field(allow_inf_nan=False)
     maximum: float = Field(allow_inf_nan=False)
 
+    model_config = ConfigDict(extra="forbid")
+
     @model_validator(mode="after")
     def validate_order(self) -> "ObservedRange":
         if self.minimum > self.maximum:

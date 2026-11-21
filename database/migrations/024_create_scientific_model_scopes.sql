@@ -19,3 +19,8 @@ CREATE TABLE IF NOT EXISTS public.scientific_model_scopes (
 
 GRANT SELECT, INSERT, UPDATE, DELETE
 ON public.scientific_model_scopes TO service_role;
+
+ALTER TABLE public.scientific_model_scopes ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS idx_scientific_model_scopes_lake_id
+ON public.scientific_model_scopes (lake_id);
