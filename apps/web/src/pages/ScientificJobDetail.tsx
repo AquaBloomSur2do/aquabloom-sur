@@ -3,6 +3,16 @@ import { Link, useParams } from 'react-router-dom';
 import { executionsService } from '../services/executions';
 import type { JobStatusResponse } from '../services/executions';
 
+const statusPresentation: Record<
+  JobStatusResponse['status'],
+  { className: string; label: string; icon: string }
+> = {
+  completed: { className: 'badge validated', label: 'Completado', icon: '✓' },
+  failed: { className: 'badge reported', label: 'Fallido', icon: '!' },
+  running: { className: 'badge restricted', label: 'En ejecución', icon: '↻' },
+  queued: { className: 'badge draft', label: 'En cola', icon: '•' },
+};
+
 function displayValue(value: unknown): string {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') {
@@ -80,12 +90,19 @@ export function ScientificJobDetail() {
           <section className="card">
             <div className="card-head">
               <h2>Estado del experimento</h2>
-              <span className="badge draft">{job.status}</span>
+              <span className={statusPresentation[job.status].className}>
+                <span aria-hidden="true">
+                  {statusPresentation[job.status].icon}
+                </span>{' '}
+                {statusPresentation[job.status].label}
+              </span>
             </div>
             <div className="card-body grid">
               <div className="detail">
                 <span>ID del trabajo</span>
-                <b>{job.id}</b>
+                <span className="code-pill">
+                  {job.job_id ?? job.id ?? jobId}
+                </span>
               </div>
               <div className="detail">
                 <span>Tipo</span>
@@ -95,7 +112,7 @@ export function ScientificJobDetail() {
                 <span>Creado</span>
                 <b>{new Date(job.created_at).toLocaleString()}</b>
               </div>
-              {job.error_message && (
+              {job.status === 'failed' && job.error_message && (
                 <div className="status-banner danger" role="alert">
                   {job.error_message}
                 </div>
@@ -110,25 +127,30 @@ export function ScientificJobDetail() {
             <div className="card-body grid">
               <div className="detail">
                 <span>Versión del dataset</span>
-                <b>{job.dataset_version_id ?? 'No informada por la API'}</b>
+                {job.dataset_version_id ? (
+                  <span className="code-pill">{job.dataset_version_id}</span>
+                ) : (
+                  <b>No informada por la API</b>
+                )}
                 {job.dataset_version_id && (
-                  // TODO: Integrar el enlace al manifiesto cuando la API incluya el ID del dataset.
                   <button
                     type="button"
                     className="btn btn-secondary"
                     disabled
-                    title="La API debe incluir el identificador del dataset para abrir su manifiesto."
                   >
                     Abrir manifiesto
                   </button>
                 )}
+                <p className="card-note">
+                  El enlace al manifiesto aún no está disponible en la API.
+                </p>
               </div>
 
               <div className="detail">
                 <span>Configuración registrada</span>
-                {Object.entries(job.config).length > 0 ? (
+                {Object.entries(job.config ?? {}).length > 0 ? (
                   <dl className="traceability-list">
-                    {Object.entries(job.config).map(([key, value]) => (
+                    {Object.entries(job.config ?? {}).map(([key, value]) => (
                       <div key={key}>
                         <dt>{key}</dt>
                         <dd>{displayValue(value)}</dd>
@@ -142,18 +164,23 @@ export function ScientificJobDetail() {
 
               <div className="detail">
                 <span>Versión del modelo asociada</span>
-                <b>{job.model_version_id ?? 'No informada por la API'}</b>
+                {job.model_version_id ? (
+                  <span className="code-pill">{job.model_version_id}</span>
+                ) : (
+                  <b>No informada por la API</b>
+                )}
                 {job.model_version_id && (
-                  // TODO: Integrar el enlace al artefacto autorizado cuando la API incluya su URL y autorización.
                   <button
                     type="button"
                     className="btn btn-secondary"
                     disabled
-                    title="La API no informa la URL ni el estado de autorización del artefacto."
                   >
                     Abrir artefacto
                   </button>
                 )}
+                <p className="card-note">
+                  El enlace al artefacto autorizado aún no está disponible en la API.
+                </p>
               </div>
             </div>
           </section>

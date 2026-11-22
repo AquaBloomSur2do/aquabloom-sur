@@ -14,10 +14,11 @@ export interface JobResponse {
 }
 
 export interface JobStatusResponse {
-  id: string;
+  job_id: string;
+  id?: string;
   job_type: 'training' | 'modeling' | 'estimation';
   status: 'queued' | 'running' | 'completed' | 'failed';
-  config: Record<string, unknown>;
+  config: Record<string, unknown> | null;
   result: Record<string, unknown> | null;
   dataset_version_id: string | null;
   model_version_id: string | null;
