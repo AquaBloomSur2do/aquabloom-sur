@@ -1,13 +1,25 @@
 import asyncio
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from fastapi import BackgroundTasks, HTTPException, status
+from postgrest.exceptions import APIError
+
+from apps.scientific.app.core.config import settings
 from apps.scientific.app.core.database import supabase
 from apps.scientific.app.domains.execution.domain_execution import (
-    JOB_TIMEOUT_SECONDS,
+    JobLimitExceededError,
+    build_completed_update_payload,
+    build_failure_update_payload,
     build_job_accepted_response,
+    build_running_update_payload,
+    build_timeout_error_message,
+    format_exception_error_message,
+    format_limit_exceeded_error_message,
     job_matches_request,
+    resolve_job_timeout,
     run_scientific_algorithm,
 )
 from apps.scientific.app.domains.execution.model_execution import (
@@ -21,8 +33,29 @@ from apps.scientific.app.domains.execution.schemas_execution import (
     JobCreate,
     TrainingConfig,
 )
-from fastapi import BackgroundTasks, HTTPException, status
-from postgrest.exceptions import APIError
+
+logger = logging.getLogger(__name__)
+JOB_TIMEOUT_SECONDS = settings.job_timeout_seconds
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _persist_job_failure(job_id: str, error_message: str) -> None:
+    """Persiste el estado fallido del trabajo sin propagar fallos secundarios de BD."""
+    if supabase is None:
+        return
+    try:
+        update_scientific_job_in_db(
+            supabase,
+            job_id,
+            build_failure_update_payload(error_message, _utc_now_iso()),
+        )
+    except Exception:
+        logger.exception(
+            "No se pudo persistir el estado fallido para el trabajo %s.", job_id
+        )
 
 
 def validate_training_version_service(client, config: TrainingConfig) -> None:
@@ -47,55 +80,72 @@ def validate_training_version_service(client, config: TrainingConfig) -> None:
         )
 
 
-async def process_scientific_job(job_id: str, config: dict[str, Any]) -> None:
-    """Trabajo asíncrono con control estricto de timeout, fallos y persistencia (S2-150)."""
+async def process_scientific_job(
+    job_id: str,
+    config: dict[str, Any],
+    *,
+    timeout_seconds: float | None = None,
+) -> None:
+    """Trabajo asíncrono con control estricto de timeout, límites, fallos y persistencia (S2-150)."""
     if supabase is None:
         return
 
     try:
+        effective_timeout = resolve_job_timeout(
+            JOB_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+        )
         update_scientific_job_in_db(
             supabase,
             job_id,
-            {
-                "status": "running",
-                "started_at": datetime.now(UTC).isoformat(),
-            },
+            build_running_update_payload(_utc_now_iso()),
         )
 
         result = await asyncio.wait_for(
-            run_scientific_algorithm(config), timeout=JOB_TIMEOUT_SECONDS
+            run_scientific_algorithm(config),
+            timeout=effective_timeout,
         )
 
         update_scientific_job_in_db(
             supabase,
             job_id,
-            {
-                "status": "completed",
-                "result": result,
-                "completed_at": datetime.now(UTC).isoformat(),
-            },
+            build_completed_update_payload(result, _utc_now_iso()),
         )
 
     except TimeoutError:
-        update_scientific_job_in_db(
-            supabase,
+        logger.warning(
+            "Trabajo científico %s excedió el tiempo máximo de %ss.",
             job_id,
-            {
-                "status": "failed",
-                "error_message": f"Tiempo máximo de ejecución excedido (Timeout de {JOB_TIMEOUT_SECONDS}s).",
-                "completed_at": datetime.now(UTC).isoformat(),
-            },
+            effective_timeout,
+        )
+        _persist_job_failure(
+            job_id,
+            build_timeout_error_message(effective_timeout),
         )
 
-    except Exception as exc:  # noqa: BLE001
-        update_scientific_job_in_db(
-            supabase,
+    except JobLimitExceededError as exc:
+        logger.warning(
+            "Trabajo científico %s excedió un límite operativo: %s",
             job_id,
-            {
-                "status": "failed",
-                "error_message": str(exc),
-                "completed_at": datetime.now(UTC).isoformat(),
-            },
+            exc,
+        )
+        _persist_job_failure(
+            job_id,
+            format_limit_exceeded_error_message(exc),
+        )
+
+    except asyncio.CancelledError:
+        logger.warning("Trabajo científico %s cancelado durante ejecución.", job_id)
+        _persist_job_failure(
+            job_id,
+            "La ejecución del trabajo fue cancelada antes de completarse.",
+        )
+        raise
+
+    except Exception as exc:
+        logger.exception("Fallo interno procesando el trabajo científico %s.", job_id)
+        _persist_job_failure(
+            job_id,
+            format_exception_error_message(exc),
         )
 
 
@@ -121,9 +171,10 @@ def get_job_status_service(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No se encontró el trabajo.",
         )
-    if "id" in job:
-        job["job_id"] = job.pop("id")
-    return job
+    response_job = dict(job)
+    if "id" in response_job:
+        response_job["job_id"] = response_job.pop("id")
+    return response_job
 
 
 def create_execution_job_service(
@@ -196,3 +247,6 @@ def create_execution_job_service(
         process_scientific_job, str(inserted_job["id"]), config
     )
     return build_job_accepted_response(inserted_job)
+
+
+

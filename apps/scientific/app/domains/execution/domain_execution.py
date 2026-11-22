@@ -13,6 +13,94 @@ from apps.scientific.app.domains.execution.schemas_execution import (
 )
 
 JOB_TIMEOUT_SECONDS = 10.0
+MAX_ERROR_MESSAGE_LENGTH = 1000
+DEFAULT_JOB_ERROR_MESSAGE = (
+    "Error interno durante la ejecución del trabajo científico."
+)
+
+
+class JobLimitExceededError(RuntimeError):
+    """Error determinista cuando un trabajo excede un límite operativo permitido."""
+
+
+def resolve_job_timeout(timeout_seconds: float | None) -> float:
+    """Valida y resuelve el tiempo máximo permitido para un trabajo científico."""
+    resolved = JOB_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+    if not isinstance(resolved, (int, float)) or isinstance(resolved, bool):
+        raise TypeError("El tiempo máximo de ejecución debe ser numérico.")
+    if not math.isfinite(resolved) or resolved <= 0:
+        raise ValueError(
+            "El tiempo máximo de ejecución debe ser un número finito mayor a 0."
+        )
+    return float(resolved)
+
+
+def sanitize_error_message(
+    message: str | None,
+    *,
+    fallback: str = DEFAULT_JOB_ERROR_MESSAGE,
+    max_length: int = MAX_ERROR_MESSAGE_LENGTH,
+) -> str:
+    """Normaliza espacios, garantiza texto no vacío y acota el largo del error."""
+    normalized = " ".join((message or "").split())
+    if not normalized:
+        normalized = fallback
+    if len(normalized) <= max_length:
+        return normalized
+    return f"{normalized[: max_length - 3].rstrip()}..."
+
+
+def build_timeout_error_message(timeout_seconds: float) -> str:
+    return sanitize_error_message(
+        f"Tiempo máximo de ejecución excedido (Timeout de {timeout_seconds}s)."
+    )
+
+
+def format_limit_exceeded_error_message(exc: JobLimitExceededError) -> str:
+    detail = str(exc).strip()
+    if not detail:
+        return "Límite operativo de ejecución excedido."
+    if detail.lower().startswith("límite"):
+        return sanitize_error_message(detail)
+    return sanitize_error_message(f"Límite de ejecución excedido: {detail}")
+
+
+def format_exception_error_message(exc: Exception) -> str:
+    detail = str(exc).strip()
+    if not detail:
+        return sanitize_error_message(
+            f"Error inesperado ({type(exc).__name__}) durante la ejecución del trabajo científico."
+        )
+    return sanitize_error_message(detail)
+
+
+def build_running_update_payload(started_at: str) -> dict[str, Any]:
+    return {
+        "status": "running",
+        "started_at": started_at,
+    }
+
+
+def build_completed_update_payload(
+    result: dict[str, Any], completed_at: str
+) -> dict[str, Any]:
+    return {
+        "status": "completed",
+        "result": result,
+        "error_message": None,
+        "completed_at": completed_at,
+    }
+
+
+def build_failure_update_payload(
+    error_message: str, completed_at: str
+) -> dict[str, Any]:
+    return {
+        "status": "failed",
+        "result": None,
+        "error_message": sanitize_error_message(error_message),
+        "completed_at": completed_at,
+    }
 
 
 def validate_group_partition_disjointness(
@@ -56,8 +144,16 @@ async def run_scientific_algorithm(config: dict[str, Any]) -> dict[str, Any]:
     return {"accuracy": 0.98, "processed_pixels": 102400}
 
 
-PILOT_ALLOWED_VARIABLES = {"chlorophyll_a": "chlorophyll_a", "clorofila_a": "chlorophyll_a"}
-PILOT_ALLOWED_UNITS = {"ug/l": "ug/L", "µg/l": "ug/L", "μg/l": "ug/L", "mg/m3": "mg/m3"}
+PILOT_ALLOWED_VARIABLES = {
+    "chlorophyll_a": "chlorophyll_a",
+    "clorofila_a": "chlorophyll_a",
+}
+PILOT_ALLOWED_UNITS = {
+    "ug/l": "ug/L",
+    "µg/l": "ug/L",
+    "μg/l": "ug/L",
+    "mg/m3": "mg/m3",
+}
 PILOT_ALLOWED_INDICES = {"ndci": "NDCI"}
 INVALID_QUALITY_FLAGS = {"CLOUDY", "INVALID", "MASKED", "QUARANTINED", "REJECTED"}
 
@@ -134,7 +230,9 @@ def validate_estimation_inputs(
         )
 
     if not request.observations:
-        raise EstimationInputValidationError("La solicitud de estimación no contiene observaciones espectrales.")
+        raise EstimationInputValidationError(
+            "La solicitud de estimación no contiene observaciones espectrales."
+        )
 
     warnings: list[str] = []
     if model_status == "EXPERIMENTAL":
@@ -165,12 +263,19 @@ def validate_estimation_inputs(
                 f"La observación {obs.observation_id} tiene bandera de calidad inválida ('{obs.quality}')."
             )
 
-        if not math.isfinite(obs.index_value) or obs.index_value < -1.0 or obs.index_value > 1.0:
+        if (
+            not math.isfinite(obs.index_value)
+            or obs.index_value < -1.0
+            or obs.index_value > 1.0
+        ):
             raise EstimationInputValidationError(
                 f"El valor del índice ({obs.index_value}) en la observación {obs.observation_id} está fuera del dominio físico [-1.0, 1.0]."
             )
 
-        if obs.index_value < model_spec.min_index_value or obs.index_value > model_spec.max_index_value:
+        if (
+            obs.index_value < model_spec.min_index_value
+            or obs.index_value > model_spec.max_index_value
+        ):
             extrapolated_count += 1
 
     if extrapolated_count > 0:
@@ -189,10 +294,15 @@ def validate_estimation_inputs(
         warnings=warnings,
     )
 
-def calculate_pilot_metrics(y_true: list[float], y_pred: list[float]) -> PilotMetricsResult:
+
+def calculate_pilot_metrics(
+    y_true: list[float], y_pred: list[float]
+) -> PilotMetricsResult:
     """Calcula MAE, RMSE, sesgo y R² condicional cumpliendo RNF-26 (S2-157)."""
     if not y_true or not y_pred:
-        raise ValueError("Las listas de observaciones y predicciones no pueden estar vacías.")
+        raise ValueError(
+            "Las listas de observaciones y predicciones no pueden estar vacías."
+        )
     if len(y_true) != len(y_pred):
         raise ValueError("Las listas deben tener exactamente la misma longitud.")
 
@@ -209,7 +319,7 @@ def calculate_pilot_metrics(y_true: list[float], y_pred: list[float]) -> PilotMe
         error = pred_val - true_val
         sum_error += error
         sum_abs_error += abs(error)
-        sum_sq_error += error ** 2
+        sum_sq_error += error**2
         ss_tot += (true_val - mean_y_true) ** 2
 
     mae = sum_abs_error / n
@@ -220,7 +330,9 @@ def calculate_pilot_metrics(y_true: list[float], y_pred: list[float]) -> PilotMe
         "R² no debe interpretarse de manera aislada; evalúe conjuntamente MAE, RMSE y sesgo (RNF-26)."
     ]
     if n < 10:
-        limitations.append(f"Tamaño de muestra pequeño (n={n}). Interpretar con precaución.")
+        limitations.append(
+            f"Tamaño de muestra pequeño (n={n}). Interpretar con precaución."
+        )
 
     r2_computable = False
     r2_val = None
@@ -242,3 +354,7 @@ def calculate_pilot_metrics(y_true: list[float], y_pred: list[float]) -> PilotMe
         r2=r2_val,
         limitations=limitations,
     )
+
+
+
+
