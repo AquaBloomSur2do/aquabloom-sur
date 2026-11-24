@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { executionsService } from '../services/executions';
-import type { JobStatusResponse, TrainingJobResult } from '../services/executions';
+import type {
+  JobStatusResponse,
+  TrainingJobResult,
+} from '../services/executions';
+
+const DEFAULT_POLL_INTERVAL_MS = 1500;
 
 const statusPresentation: Record<
   JobStatusResponse['status'],
@@ -12,6 +17,22 @@ const statusPresentation: Record<
   running: { className: 'badge restricted', label: 'En ejecución', icon: '↻' },
   queued: { className: 'badge draft', label: 'En cola', icon: '•' },
 };
+
+interface ScientificJobDetailProps {
+  pollIntervalMs?: number;
+}
+
+function isInProgressStatus(status: JobStatusResponse['status']): boolean {
+  return status === 'queued' || status === 'running';
+}
+
+function resolveDatasetVersionId(job: JobStatusResponse): string | null {
+  if (job.dataset_version_id) return job.dataset_version_id;
+  const configVersionId = job.config?.version_id;
+  return typeof configVersionId === 'string' && configVersionId.trim()
+    ? configVersionId
+    : null;
+}
 
 const STRUCTURED_RESULT_KEYS = new Set([
   'model',
@@ -79,7 +100,9 @@ function getExperimentalCondition(result: TrainingJobResult): string {
     : 'Resultado piloto preliminar.';
 }
 
-export function ScientificJobDetail() {
+export function ScientificJobDetail({
+  pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
+}: ScientificJobDetailProps) {
   const { jobId } = useParams<{ jobId: string }>();
   const [job, setJob] = useState<JobStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,20 +111,35 @@ export function ScientificJobDetail() {
   useEffect(() => {
     if (!jobId) return;
 
-    const controller = new AbortController();
     let active = true;
+    let activeController = new AbortController();
+    let pollTimer: number | null = null;
 
-    const loadJob = async () => {
-      setLoading(true);
-      setError(null);
+    const loadJob = async (isInitialLoad: boolean) => {
+      if (isInitialLoad) {
+        setLoading(true);
+        setError(null);
+      }
+
+      activeController = new AbortController();
+
       try {
         const response = await executionsService.getJobStatus(
           jobId,
-          controller.signal
+          activeController.signal
         );
-        if (active) setJob(response);
+        if (!active) return;
+
+        setJob(response);
+        setError(null);
+
+        if (isInProgressStatus(response.status)) {
+          pollTimer = window.setTimeout(() => {
+            void loadJob(false);
+          }, pollIntervalMs);
+        }
       } catch (loadError) {
-        if (active && !controller.signal.aborted) {
+        if (active && !activeController.signal.aborted) {
           setError(
             loadError instanceof Error
               ? loadError.message
@@ -109,16 +147,23 @@ export function ScientificJobDetail() {
           );
         }
       } finally {
-        if (active) setLoading(false);
+        if (active && isInitialLoad) {
+          setLoading(false);
+        }
       }
     };
 
-    void loadJob();
+    void loadJob(true);
     return () => {
       active = false;
-      controller.abort();
+      activeController.abort();
+      if (pollTimer !== null) {
+        window.clearTimeout(pollTimer);
+      }
     };
-  }, [jobId]);
+  }, [jobId, pollIntervalMs]);
+
+  const resolvedDatasetVersionId = job ? resolveDatasetVersionId(job) : null;
 
   const extraResultEntries = job?.result
     ? Object.entries(job.result).filter(
@@ -181,6 +226,12 @@ export function ScientificJobDetail() {
               </span>
             </div>
             <div className="card-body grid">
+              {isInProgressStatus(job.status) && (
+                <p className="card-note" role="status">
+                  Consultando estado del worker automáticamente hasta recibir el
+                  resultado persistido.
+                </p>
+              )}
               <div className="detail">
                 <span>ID del trabajo</span>
                 <span className="code-pill">
@@ -195,6 +246,12 @@ export function ScientificJobDetail() {
                 <span>Creado</span>
                 <b>{new Date(job.created_at).toLocaleString()}</b>
               </div>
+              {job.completed_at && (
+                <div className="detail">
+                  <span>Finalizado</span>
+                  <b>{new Date(job.completed_at).toLocaleString()}</b>
+                </div>
+              )}
               {job.status === 'failed' && job.error_message && (
                 <div className="status-banner danger" role="alert">
                   {job.error_message}
@@ -210,12 +267,12 @@ export function ScientificJobDetail() {
             <div className="card-body grid">
               <div className="detail">
                 <span>Versión del dataset</span>
-                {job.dataset_version_id ? (
-                  <span className="code-pill">{job.dataset_version_id}</span>
+                {resolvedDatasetVersionId ? (
+                  <span className="code-pill">{resolvedDatasetVersionId}</span>
                 ) : (
                   <b>No informada por la API</b>
                 )}
-                {job.dataset_version_id && (
+                {resolvedDatasetVersionId && (
                   <button
                     type="button"
                     className="btn btn-secondary"
@@ -262,7 +319,8 @@ export function ScientificJobDetail() {
                   </button>
                 )}
                 <p className="card-note">
-                  El enlace al artefacto autorizado aún no está disponible en la API.
+                  El enlace al artefacto autorizado aún no está disponible en la
+                  API.
                 </p>
               </div>
             </div>
@@ -382,3 +440,4 @@ export function ScientificJobDetail() {
     </div>
   );
 }
+

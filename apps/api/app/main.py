@@ -26,6 +26,9 @@ from apps.api.app.domains.ingestion.controller_ingestion import (
     router as ingestion_router,
 )
 from apps.api.app.gateway.controller_gateway import router as gateway_router
+from apps.api.app.gateway.executions_bridge import (
+    router as executions_bridge_router,
+)
 from apps.satellite.app.domains.observations.controller_observations import (
     router as observations_router,
 )
@@ -124,6 +127,7 @@ app.add_exception_handler(Exception, global_exception_handler)
 
 app.include_router(auth_router)
 app.include_router(gateway_router)
+app.include_router(executions_bridge_router)
 app.include_router(identity_router)
 app.include_router(catalog_router)
 app.include_router(ingestion_router)
@@ -143,6 +147,7 @@ app.add_middleware(
         "Accept",
         "X-Idempotency-Key",
         "X-Correlation-ID",
+        "X-Organization-ID",
     ],
 )
 
@@ -170,3 +175,6 @@ def health_check():
 )
 def test_permission_route() -> dict:
     return {"message": "Acceso permitido. Tienes el rol correcto."}
+
+
+

@@ -146,7 +146,7 @@ p {
   grid-column: 1 / -1;
 }
 
-.detail > span {
+.detail > span:first-child {
   color: var(--muted);
   font-size: 11px;
 }
@@ -561,3 +561,5 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 }
+
+
