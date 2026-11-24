@@ -220,12 +220,20 @@ def test_web_training_bridge_dispatches_worker_and_persists_result(
     assert status_data["status"] == "completed"
     assert status_data["config"]["dataset_id"] == DATASET_ID
     assert status_data["config"]["version_id"] == VERSION_ID
-    assert status_data["result"] == {
-        "model": "baseline",
-        "prediction_value": 15.0,
-        "predictions": [15.0],
-        "metrics": {"mae": 15.0, "rmse": 15.0},
-    }
+    result = status_data["result"]
+    assert result["model"] == "baseline"
+    assert result["baseline"]["strategy"] == "mean_clorofila_a"
+    assert result["baseline"]["train_sample_count"] == 2
+    assert result["baseline"]["validation_sample_count"] == 1
+    assert result["prediction_value"] == 15.0
+    assert result["predictions"] == [15.0]
+    assert result["metrics"] == {"mae": 15.0, "rmse": 15.0}
+    assert result["version"] == VERSION_ID
+    assert result["dataset_version_id"] == VERSION_ID
+    assert result["model_version_id"] is None
+    assert result["status"] == "completed"
+    assert isinstance(result["warnings"], list)
+    assert len(result["warnings"]) >= 1
     assert status_data["completed_at"] is not None
     fetch_file.assert_called_once_with(fake_staging_db, VERSION_ID)
 
@@ -262,7 +270,6 @@ def test_cors_allows_organization_header_for_web_training():
         "access-control-allow-headers", ""
     ).lower()
     assert "x-organization-id" in allowed_headers
-
 
 
 
