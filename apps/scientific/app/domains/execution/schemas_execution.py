@@ -19,9 +19,17 @@ class ModelConfig(BaseModel):
     parameters: dict[str, Any] = {}
 
 
+class InferencePoint(BaseModel):
+    point_id: str
+    latitude: float | None = None
+    longitude: float | None = None
+    features: dict[str, float] = Field(default_factory=dict)
+
+
 class EstimationConfig(BaseModel):
     model_id: str
     scene_id: str
+    points: list[InferencePoint] | None = None
 
 
 class ScientificJobType(str, Enum):

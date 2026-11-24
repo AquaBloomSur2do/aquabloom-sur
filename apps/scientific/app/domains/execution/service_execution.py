@@ -17,17 +17,21 @@ from apps.scientific.app.domains.execution.domain_execution import (
     build_running_update_payload,
     build_timeout_error_message,
     calculate_baseline,
+    execute_point_inference,
     format_exception_error_message,
     format_limit_exceeded_error_message,
     job_matches_request,
     parse_training_csv,
     resolve_job_timeout,
     split_training_validation,
+    verify_and_deserialize_model_artifact,
 )
 from apps.scientific.app.domains.execution.model_execution import (
+    download_model_artifact_from_storage,
     fetch_training_file,
     find_scientific_job_in_db,
     get_dataset_version_for_training,
+    get_registered_model_artifact_ref,
     has_active_organization_membership,
     insert_scientific_job_in_db,
     update_scientific_job_in_db,
@@ -55,7 +59,7 @@ def _persist_job_failure(job_id: str, error_message: str) -> None:
             job_id,
             build_failure_update_payload(error_message, _utc_now_iso()),
         )
-    except Exception:
+    except (APIError, KeyError, OSError, RuntimeError, TypeError, ValueError):
         logger.exception(
             "No se pudo persistir el estado fallido para el trabajo %s.", job_id
         )
@@ -65,6 +69,45 @@ async def run_scientific_algorithm(
     client, job_type: str, config: dict[str, Any]
 ) -> dict[str, Any]:
     """Orquesta la carga de datos y el procesamiento del trabajo científico."""
+    if job_type == "estimation":
+        model_id = config.get("model_id")
+        points = config.get("points")
+        if points is None:
+            await asyncio.sleep(1)
+            return {"message": "Tipo de trabajo 'estimation' no implementado aún."}
+        if not model_id:
+            raise ValueError("Falta model_id en la configuración.")
+        if not isinstance(points, list):
+            raise ValueError("points debe ser una lista.")
+        if not points:
+            raise ValueError("La lista de puntos no puede estar vacía.")
+
+        normalized_points = []
+        for point in points:
+            if not isinstance(point, dict):
+                raise TypeError("Cada punto debe ser un objeto.")
+            normalized_points.append(point)
+
+        artifact_ref = await asyncio.to_thread(
+            get_registered_model_artifact_ref, client, str(model_id)
+        )
+        artifact_bytes = await asyncio.to_thread(
+            download_model_artifact_from_storage,
+            client,
+            artifact_ref["bucket"],
+            artifact_ref["storage_path"],
+        )
+        artifact = verify_and_deserialize_model_artifact(
+            artifact_bytes, artifact_ref["checksum"]
+        )
+        predictions = execute_point_inference(artifact, normalized_points)
+        return {
+            "model_id": str(model_id),
+            "artifact_checksum": artifact_ref["checksum"],
+            "point_count": len(predictions),
+            "predictions": predictions,
+        }
+
     if job_type != "training":
         await asyncio.sleep(1)
         return {"message": f"Tipo de trabajo '{job_type}' no implementado aún."}
@@ -190,7 +233,7 @@ async def process_scientific_job(
         )
         raise
 
-    except Exception as exc:
+    except (APIError, KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.exception("Fallo interno procesando el trabajo científico %s.", job_id)
         _persist_job_failure(
             job_id,

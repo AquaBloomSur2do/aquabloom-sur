@@ -1,6 +1,7 @@
 import csv
 import hashlib
 import io
+import json
 import math
 from collections.abc import Hashable, Iterable
 from typing import Any
@@ -26,6 +27,144 @@ DEFAULT_JOB_ERROR_MESSAGE = (
 
 class JobLimitExceededError(RuntimeError):
     """Error determinista cuando un trabajo excede un límite operativo permitido."""
+
+
+def verify_and_deserialize_model_artifact(
+    artifact_bytes: bytes, expected_checksum: str
+) -> dict[str, Any]:
+    """Verifica el SHA-256 y deserializa un artefacto JSON."""
+    if not isinstance(artifact_bytes, bytes):
+        raise TypeError("El artefacto del modelo debe ser bytes.")
+    if not isinstance(expected_checksum, str) or len(expected_checksum) != 64:
+        raise ValueError("El checksum esperado del artefacto no es válido.")
+
+    actual_checksum = hashlib.sha256(artifact_bytes).hexdigest()
+    if actual_checksum.lower() != expected_checksum.lower():
+        raise ValueError("Checksum del artefacto del modelo incorrecto.")
+
+    try:
+        artifact = json.loads(artifact_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("El artefacto del modelo contiene JSON inválido.") from exc
+    if not isinstance(artifact, dict):
+        raise TypeError("El artefacto del modelo debe ser un objeto JSON.")
+    return artifact
+
+
+def execute_point_inference(
+    artifact: dict[str, Any],
+    points: list[dict[str, Any]],
+    max_points: int = 100,
+) -> list[dict[str, Any]]:
+    """Ejecuta inferencia por punto para artefactos baseline o de regresión lineal."""
+    if not isinstance(points, list):
+        raise TypeError("points debe ser una lista.")
+    if not points:
+        raise ValueError("La lista de puntos no puede estar vacía.")
+    if any(not isinstance(point, dict) for point in points):
+        raise ValueError("Cada punto debe ser un objeto.")
+    if not isinstance(max_points, int) or isinstance(max_points, bool):
+        raise TypeError("max_points debe ser un entero.")
+    if max_points < 1:
+        raise ValueError("max_points debe ser mayor a cero.")
+    if len(points) > max_points:
+        raise JobLimitExceededError(
+            f"Límite de ejecución excedido: máximo {max_points} puntos."
+        )
+
+    if "prediction_value" in artifact:
+        prediction_value = artifact["prediction_value"]
+        if isinstance(prediction_value, bool) or not isinstance(
+            prediction_value, (int, float)
+        ):
+            raise ValueError("prediction_value del artefacto no es numérico.")
+        prediction_value = float(prediction_value)
+        if not math.isfinite(prediction_value):
+            raise ValueError("prediction_value del artefacto no es finito.")
+        predictions: list[dict[str, Any]] = []
+        for point in points:
+            point_id = point.get("point_id")
+            if not isinstance(point_id, str) or not point_id.strip():
+                raise ValueError("Cada punto debe contener point_id.")
+            predictions.append(
+                {
+                    "point_id": point_id,
+                    "latitude": point.get("latitude"),
+                    "longitude": point.get("longitude"),
+                    "predicted_value": prediction_value,
+                }
+            )
+        return predictions
+
+    intercept = artifact.get("intercept")
+    coefficients = artifact.get("coefficients")
+    if isinstance(intercept, bool) or not isinstance(intercept, (int, float)):
+        raise TypeError("El artefacto lineal no contiene un intercept válido.")
+    if not isinstance(coefficients, dict):
+        single_coefficient = artifact.get("coefficient")
+        if isinstance(single_coefficient, bool) or not isinstance(
+            single_coefficient, (int, float)
+        ):
+            raise TypeError(
+                "El artefacto lineal no contiene coefficients válidos."
+            )
+        coefficients = {"ndci": single_coefficient}
+
+    intercept_value = float(intercept)
+    if not math.isfinite(intercept_value):
+        raise ValueError("El intercept del artefacto no es finito.")
+
+    validated_coefficients: dict[str, float] = {}
+    for feature_name, raw_coefficient in coefficients.items():
+        if isinstance(raw_coefficient, bool) or not isinstance(
+            raw_coefficient, (int, float)
+        ):
+            raise TypeError(
+                f"El coeficiente de {feature_name} del artefacto no es válido."
+            )
+        coefficient = float(raw_coefficient)
+        if not math.isfinite(coefficient):
+            raise ValueError(
+                f"El coeficiente de {feature_name} del artefacto no es finito."
+            )
+        validated_coefficients[str(feature_name)] = coefficient
+
+    predictions: list[dict[str, Any]] = []
+    for point in points:
+        point_id = point.get("point_id")
+        if not isinstance(point_id, str) or not point_id.strip():
+            raise ValueError("Cada punto debe contener point_id.")
+        features = point.get("features", {})
+        if not isinstance(features, dict):
+            raise TypeError("features del punto debe ser un objeto.")
+
+        predicted_value = intercept_value
+        for feature_name, coefficient in validated_coefficients.items():
+            raw_feature_value = features.get(feature_name)
+            if isinstance(raw_feature_value, bool) or not isinstance(
+                raw_feature_value, (int, float)
+            ):
+                raise TypeError(
+                    f"El punto {point_id} no contiene el feature '{feature_name}'."
+                )
+            feature_value = float(raw_feature_value)
+            if not math.isfinite(feature_value):
+                raise ValueError(
+                    f"El feature '{feature_name}' del punto {point_id} no es finito."
+                )
+            predicted_value += coefficient * feature_value
+        if not math.isfinite(predicted_value):
+            raise ValueError(f"La predicción del punto {point_id} no es finita.")
+
+        predictions.append(
+            {
+                "point_id": point_id,
+                "latitude": point.get("latitude"),
+                "longitude": point.get("longitude"),
+                "predicted_value": predicted_value,
+            }
+        )
+    return predictions
 
 
 def resolve_job_timeout(timeout_seconds: float | None) -> float:
