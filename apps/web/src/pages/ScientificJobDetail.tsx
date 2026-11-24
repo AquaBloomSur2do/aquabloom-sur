@@ -51,6 +51,15 @@ function isStructuredTrainingResult(result: TrainingJobResult): boolean {
   );
 }
 
+function getExperimentalCondition(result: TrainingJobResult): string {
+  if (result.warnings && result.warnings.length > 0) {
+    return `Preliminar: ${result.warnings.join(' ')}`;
+  }
+  return result.model === 'baseline'
+    ? 'Modelo piloto preliminar basado en un baseline de referencia.'
+    : 'Condición experimental: resultado piloto preliminar.';
+}
+
 export function ScientificJobDetail() {
   const { jobId } = useParams<{ jobId: string }>();
   const [job, setJob] = useState<JobStatusResponse | null>(null);
@@ -244,6 +253,10 @@ export function ScientificJobDetail() {
               <div className="card-body grid">
                 {isStructuredTrainingResult(job.result) && (
                   <>
+                    <div className="detail" style={{ gridColumn: '1 / -1' }}>
+                      <h3>Métricas frente al baseline</h3>
+                    </div>
+
                     <div className="detail">
                       <span>Modelo baseline</span>
                       <b>
@@ -253,6 +266,20 @@ export function ScientificJobDetail() {
                           : ''}
                       </b>
                     </div>
+
+                    {job.result.baseline?.strategy && (
+                      <div className="detail">
+                        <span>Estrategia baseline</span>
+                        <b>{job.result.baseline.strategy}</b>
+                      </div>
+                    )}
+
+                    {job.result.baseline?.target_variable && (
+                      <div className="detail">
+                        <span>Variable objetivo baseline</span>
+                        <b>{job.result.baseline.target_variable}</b>
+                      </div>
+                    )}
 
                     <div className="detail">
                       <span>Versión</span>
@@ -284,6 +311,29 @@ export function ScientificJobDetail() {
                         <b>{formatMetric(job.result.prediction_value)}</b>
                       </div>
                     )}
+
+                    <div className="detail">
+                      <span>Tamaño de entrenamiento</span>
+                      <b>
+                        {typeof job.result.baseline?.train_sample_count === 'number'
+                          ? String(job.result.baseline.train_sample_count)
+                          : 'No disponible'}
+                      </b>
+                    </div>
+
+                    <div className="detail">
+                      <span>Tamaño de evaluación</span>
+                      <b>
+                        {typeof job.result.baseline?.validation_sample_count === 'number'
+                          ? String(job.result.baseline.validation_sample_count)
+                          : 'No disponible'}
+                      </b>
+                    </div>
+
+                    <div className="detail" style={{ gridColumn: '1 / -1' }}>
+                      <span>Condición experimental</span>
+                      <b>{getExperimentalCondition(job.result)}</b>
+                    </div>
 
                     <div className="detail">
                       <span>Advertencias</span>

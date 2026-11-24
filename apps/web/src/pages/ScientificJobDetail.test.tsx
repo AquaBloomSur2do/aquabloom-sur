@@ -80,6 +80,77 @@ describe('ScientificJobDetail', () => {
         'Modelo baseline de referencia basado en la media de clorofila_a de entrenamiento.'
       )
     ).toBeInTheDocument();
+    expect(
+      screen.getByText('Métricas frente al baseline')
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('mean_clorofila_a').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('clorofila_a')).toBeInTheDocument();
+    expect(screen.getByText('15')).toBeInTheDocument();
+    expect(screen.getByText('8')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(screen.getByText('Condición experimental')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Preliminar: Modelo baseline de referencia basado en la media de clorofila_a de entrenamiento/
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('muestra condición experimental por defecto y tamaños disponibles en formato limpio', async () => {
+    vi.mocked(executionsService.getJobStatus).mockResolvedValue({
+      job_id: 'job-train-default',
+      job_type: 'training',
+      status: 'completed',
+      config: {},
+      result: {
+        model: 'baseline',
+        baseline: {
+          strategy: 'mean_clorofila_a',
+          target_variable: 'clorofila_a',
+          prediction_value: 12.5,
+          train_sample_count: 6,
+          validation_sample_count: 3,
+        },
+        prediction_value: 12.5,
+        predictions: [12.5],
+        metrics: {
+          mae: 1.25,
+          rmse: 1.75,
+        },
+        warnings: [],
+        status: 'completed',
+      },
+      dataset_version_id: null,
+      model_version_id: null,
+      requested_by: null,
+      error_message: null,
+      created_at: '2026-11-23T12:00:00Z',
+      started_at: null,
+      completed_at: '2026-11-23T12:00:02Z',
+      updated_at: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/scientific/jobs/job-train-default']}>
+        <Routes>
+          <Route
+            path="/scientific/jobs/:jobId"
+            element={<ScientificJobDetail />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Métricas frente al baseline')).toBeInTheDocument();
+    expect(screen.getByText('1.2500')).toBeInTheDocument();
+    expect(screen.getByText('1.7500')).toBeInTheDocument();
+    expect(screen.getByText('6')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Modelo piloto preliminar basado en un baseline de referencia.'
+      )
+    ).toBeInTheDocument();
   });
   
   it('muestra la trazabilidad disponible y mantiene deshabilitados los enlaces incompletos', async () => {
