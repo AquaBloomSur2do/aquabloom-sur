@@ -93,12 +93,12 @@ def save_model_artifact(
             "size_bytes": len(artifact_bytes),
         }
 
-        uploaded = True
         storage.upload(
             storage_path,
             artifact_bytes,
             {"content-type": "application/octet-stream"},
         )
+        uploaded = True
 
         update_result = (
             client.table("scientific_jobs")

@@ -12,13 +12,16 @@ from apps.scientific.app.domains.execution.model_artifacts import (
 
 
 class FakeStorageBucket:
-    def __init__(self, remove_error=None):
+    def __init__(self, remove_error=None, upload_error=None):
         self.uploaded = []
         self.removed = []
         self.remove_error = remove_error
+        self.upload_error = upload_error
 
     def upload(self, path, data, file_options):
         self.uploaded.append((path, data, file_options))
+        if self.upload_error is not None:
+            raise self.upload_error
         return {"path": path}
 
     def remove(self, paths):
@@ -63,7 +66,7 @@ class FakeQuery:
             if self.database.update_error is not None:
                 raise self.database.update_error
             self.database.update_payload = self.payload
-            if self.database.job_exists:
+            if self.database.job_exists and not self.database.update_returns_no_rows:
                 return SimpleNamespace(
                     data=[
                         {"id": self.database.job_id, "result": self.payload["result"]}
@@ -89,12 +92,14 @@ class FakeClient:
         previous_result=None,
         update_error=None,
         job_exists=True,
+        update_returns_no_rows=False,
     ):
         self.storage = FakeStorage(bucket or FakeStorageBucket())
         self.previous_result = previous_result
         self.update_error = update_error
         self.update_payload = None
         self.job_exists = job_exists
+        self.update_returns_no_rows = update_returns_no_rows
         self.job_id = "11111111-1111-4111-8111-111111111111"
         self.queries = []
 
@@ -195,6 +200,46 @@ def test_save_model_artifact_removes_upload_when_database_update_fails():
 
     assert bucket.uploaded[0][0] == f"models/{job_id}/model.pkl"
     assert bucket.removed == [f"models/{job_id}/model.pkl"]
+
+
+def test_save_model_artifact_does_not_remove_when_upload_fails():
+    upload_error = RuntimeError("storage upload failed")
+    bucket = FakeStorageBucket(upload_error=upload_error)
+    client = FakeClient(bucket=bucket)
+    job_id = "11111111-1111-4111-8111-111111111111"
+
+    with pytest.raises(RuntimeError) as exc_info:
+        save_model_artifact(client, job_id, b"model-content")
+
+    assert exc_info.value is upload_error
+    assert bucket.removed == []
+
+
+def test_save_model_artifact_removes_upload_when_update_returns_no_rows():
+    bucket = FakeStorageBucket()
+    client = FakeClient(bucket=bucket, update_returns_no_rows=True)
+    job_id = "11111111-1111-4111-8111-111111111111"
+    expected_storage_path = f"models/{job_id}/model.pkl"
+
+    with pytest.raises(ValueError, match="no pudo actualizarse"):
+        save_model_artifact(client, job_id, b"model-content")
+
+    assert bucket.removed == [expected_storage_path]
+
+
+def test_save_model_artifact_preserves_database_error_when_remove_fails(caplog):
+    remove_error = RuntimeError("storage cleanup failed")
+    bucket = FakeStorageBucket(remove_error=remove_error)
+    database_error = APIError({"message": "database update failed", "code": "23514"})
+    client = FakeClient(bucket=bucket, update_error=database_error)
+    job_id = "11111111-1111-4111-8111-111111111111"
+
+    with pytest.raises(APIError) as exc_info:
+        save_model_artifact(client, job_id, b"model-content")
+
+    assert exc_info.value is database_error
+    assert "No se pudo limpiar el artefacto" in caplog.text
+    assert "storage cleanup failed" in caplog.text
 
 
 def test_save_model_artifact_rejects_missing_job_before_upload():
