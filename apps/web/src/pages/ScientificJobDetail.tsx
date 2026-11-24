@@ -35,29 +35,48 @@ function displayValue(value: unknown): string {
 }
 
 function formatMetric(value: number | undefined): string {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
     return 'No disponible';
   }
   return Number.isInteger(value) ? String(value) : value.toFixed(4);
 }
 
+function formatSampleCount(value: number | undefined): string {
+  return typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 0
+    ? String(value)
+    : 'No disponible';
+}
+
+function normalizeWarnings(warnings: string[] | undefined): string[] {
+  if (!Array.isArray(warnings)) {
+    return [];
+  }
+  return warnings
+    .map((warning) => warning.trim())
+    .filter((warning) => warning.length > 0);
+}
+
 function isStructuredTrainingResult(result: TrainingJobResult): boolean {
+  const normalizedWarnings = normalizeWarnings(result.warnings);
   return Boolean(
     result.metrics ||
       result.model ||
       result.baseline ||
       result.version ||
-      result.warnings
+      normalizedWarnings.length > 0
   );
 }
 
 function getExperimentalCondition(result: TrainingJobResult): string {
-  if (result.warnings && result.warnings.length > 0) {
-    return `Preliminar: ${result.warnings.join(' ')}`;
+  const normalizedWarnings = normalizeWarnings(result.warnings);
+  if (normalizedWarnings.length > 0) {
+    return 'Resultado piloto preliminar.';
   }
   return result.model === 'baseline'
     ? 'Modelo piloto preliminar basado en un baseline de referencia.'
-    : 'Condición experimental: resultado piloto preliminar.';
+    : 'Resultado piloto preliminar.';
 }
 
 export function ScientificJobDetail() {
@@ -106,6 +125,10 @@ export function ScientificJobDetail() {
         ([key]) => !STRUCTURED_RESULT_KEYS.has(key)
       )
     : [];
+  const normalizedWarnings = normalizeWarnings(job?.result?.warnings);
+  const baselinePrediction =
+    job?.result?.baseline?.prediction_value ??
+    job?.result?.prediction_value;
 
   const resolvedVersion =
     job?.result?.version ??
@@ -253,17 +276,12 @@ export function ScientificJobDetail() {
               <div className="card-body grid">
                 {isStructuredTrainingResult(job.result) && (
                   <>
-                    <div className="detail" style={{ gridColumn: '1 / -1' }}>
-                      <h3>Métricas frente al baseline</h3>
-                    </div>
+                    <h3 className="detail-full">Métricas frente al baseline</h3>
 
                     <div className="detail">
-                      <span>Modelo baseline</span>
+                      <span>Modelo evaluado</span>
                       <b>
                         {job.result.model ?? 'baseline'}
-                        {job.result.baseline?.strategy
-                          ? ` (${job.result.baseline.strategy})`
-                          : ''}
                       </b>
                     </div>
 
@@ -305,41 +323,41 @@ export function ScientificJobDetail() {
                       <b>{formatMetric(job.result.metrics?.rmse)}</b>
                     </div>
 
-                    {typeof job.result.prediction_value === 'number' && (
+                    {typeof baselinePrediction === 'number' && (
                       <div className="detail">
                         <span>Predicción baseline</span>
-                        <b>{formatMetric(job.result.prediction_value)}</b>
+                        <b>{formatMetric(baselinePrediction)}</b>
                       </div>
                     )}
 
                     <div className="detail">
                       <span>Tamaño de entrenamiento</span>
                       <b>
-                        {typeof job.result.baseline?.train_sample_count === 'number'
-                          ? String(job.result.baseline.train_sample_count)
-                          : 'No disponible'}
+                        {formatSampleCount(
+                          job.result.baseline?.train_sample_count
+                        )}
                       </b>
                     </div>
 
                     <div className="detail">
                       <span>Tamaño de evaluación</span>
                       <b>
-                        {typeof job.result.baseline?.validation_sample_count === 'number'
-                          ? String(job.result.baseline.validation_sample_count)
-                          : 'No disponible'}
+                        {formatSampleCount(
+                          job.result.baseline?.validation_sample_count
+                        )}
                       </b>
                     </div>
 
-                    <div className="detail" style={{ gridColumn: '1 / -1' }}>
+                    <div className="detail detail-full">
                       <span>Condición experimental</span>
                       <b>{getExperimentalCondition(job.result)}</b>
                     </div>
 
                     <div className="detail">
                       <span>Advertencias</span>
-                      {job.result.warnings && job.result.warnings.length > 0 ? (
+                      {normalizedWarnings.length > 0 ? (
                         <ul className="traceability-list">
-                          {job.result.warnings.map((warning) => (
+                          {normalizedWarnings.map((warning) => (
                             <li key={warning}>{warning}</li>
                           ))}
                         </ul>

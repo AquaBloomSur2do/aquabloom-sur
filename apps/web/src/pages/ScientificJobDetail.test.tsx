@@ -72,14 +72,18 @@ describe('ScientificJobDetail', () => {
 
     expect(await screen.findByText('2.3456')).toBeInTheDocument();
     expect(screen.getByText('3.4567')).toBeInTheDocument();
-    expect(screen.getByText(/baseline \(mean_clorofila_a\)/i)).toBeInTheDocument();
+    const modelDetail = screen
+      .getByText('Modelo evaluado')
+      .closest('.detail');
+    expect(modelDetail).toHaveTextContent('baseline');
+    const strategyDetail = screen
+      .getByText('Estrategia baseline')
+      .closest('.detail');
+    expect(strategyDetail).toHaveTextContent('mean_clorofila_a');
     expect(screen.getAllByText('version-2026-1').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Completado').length).toBeGreaterThanOrEqual(2);
-    expect(
-      screen.getByText(
-        'Modelo baseline de referencia basado en la media de clorofila_a de entrenamiento.'
-      )
-    ).toBeInTheDocument();
+    expect(screen.getByText('Modelo evaluado')).toBeInTheDocument();
+    expect(screen.getByText('baseline')).toBeInTheDocument();
     expect(
       screen.getByText('Métricas frente al baseline')
     ).toBeInTheDocument();
@@ -91,7 +95,7 @@ describe('ScientificJobDetail', () => {
     expect(screen.getByText('Condición experimental')).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Preliminar: Modelo baseline de referencia basado en la media de clorofila_a de entrenamiento/
+        'Resultado piloto preliminar.'
       )
     ).toBeInTheDocument();
   });
@@ -151,6 +155,119 @@ describe('ScientificJobDetail', () => {
         'Modelo piloto preliminar basado en un baseline de referencia.'
       )
     ).toBeInTheDocument();
+  });
+
+  it('diferencia el modelo evaluado de la predicción del baseline', async () => {
+    vi.mocked(executionsService.getJobStatus).mockResolvedValue({
+      job_id: 'job-train-linear',
+      job_type: 'training',
+      status: 'completed',
+      config: {},
+      result: {
+        model: 'linear_regression',
+        baseline: {
+          strategy: 'mean_clorofila_a',
+          target_variable: 'clorofila_a',
+          prediction_value: 10,
+          train_sample_count: 8,
+          validation_sample_count: 2,
+        },
+        prediction_value: 42,
+        predictions: [42, 42],
+        metrics: {
+          mae: 1.2345,
+          rmse: 2.3456,
+        },
+        warnings: ['   ', 'Advertencia lineal'],
+        status: 'completed',
+      },
+      dataset_version_id: null,
+      model_version_id: null,
+      requested_by: null,
+      error_message: null,
+      created_at: '2026-11-23T12:00:00Z',
+      started_at: null,
+      completed_at: null,
+      updated_at: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/scientific/jobs/job-train-linear']}>
+        <Routes>
+          <Route
+            path="/scientific/jobs/:jobId"
+            element={<ScientificJobDetail />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('linear_regression')).toBeInTheDocument();
+    expect(screen.getByText('Predicción baseline')).toBeInTheDocument();
+    const baselineDetail = screen
+      .getByText('Predicción baseline')
+      .closest('.detail');
+    expect(baselineDetail).toHaveTextContent('10');
+    expect(screen.queryByText(/ {3}/)).not.toBeInTheDocument();
+    expect(screen.getByText('Advertencia lineal')).toBeInTheDocument();
+  });
+
+  it('muestra fallbacks para métricas y particiones numéricamente inválidas', async () => {
+    vi.mocked(executionsService.getJobStatus).mockResolvedValue({
+      job_id: 'job-train-invalid',
+      job_type: 'training',
+      status: 'completed',
+      config: {},
+      result: {
+        model: 'linear_regression',
+        baseline: {
+          strategy: 'mean_clorofila_a',
+          target_variable: 'clorofila_a',
+          prediction_value: 10,
+          train_sample_count: Number.NaN,
+          validation_sample_count: Number.POSITIVE_INFINITY,
+        },
+        prediction_value: 42,
+        metrics: {
+          mae: Number.POSITIVE_INFINITY,
+          rmse: Number.NaN,
+        },
+        warnings: [],
+        status: 'completed',
+      },
+      dataset_version_id: null,
+      model_version_id: null,
+      requested_by: null,
+      error_message: null,
+      created_at: '2026-11-23T12:00:00Z',
+      started_at: null,
+      completed_at: null,
+      updated_at: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/scientific/jobs/job-train-invalid']}>
+        <Routes>
+          <Route
+            path="/scientific/jobs/:jobId"
+            element={<ScientificJobDetail />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Métricas frente al baseline')).toBeInTheDocument();
+    expect(screen.getAllByText('No disponible').length).toBeGreaterThanOrEqual(4);
+
+    const trainingDetail = screen
+      .getByText('Tamaño de entrenamiento')
+      .closest('.detail');
+    expect(trainingDetail).toHaveTextContent('No disponible');
+
+    const evaluationDetail = screen
+      .getByText('Tamaño de evaluación')
+      .closest('.detail');
+    expect(evaluationDetail).toHaveTextContent('No disponible');
   });
   
   it('muestra la trazabilidad disponible y mantiene deshabilitados los enlaces incompletos', async () => {
