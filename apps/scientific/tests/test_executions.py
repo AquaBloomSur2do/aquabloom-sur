@@ -1,8 +1,12 @@
 import asyncio
 import hashlib
+import json
 import os
+import sqlite3
 import uuid
+from contextlib import closing
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -18,6 +22,10 @@ os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test-secret-token")
 
 from apps.scientific.app.core.config import settings as scientific_settings
 from apps.scientific.app.core.dependencies import require_authenticated_user
+from apps.scientific.app.domains.execution import (
+    controller_execution,
+    service_execution,
+)
 from apps.scientific.app.domains.execution.domain_execution import (
     MAX_ERROR_MESSAGE_LENGTH,
     JobLimitExceededError,
@@ -31,7 +39,7 @@ from apps.scientific.app.domains.execution.model_execution import (
 from apps.scientific.app.domains.execution.service_execution import (
     process_scientific_job,
 )
-from apps.scientific.app.main import app
+from apps.scientific.app.main import app, create_app
 
 client = TestClient(app)
 
@@ -787,9 +795,339 @@ def test_baseline_evaluacion_no_modifica_media():
     assert result["predictions"] == [15.0, 15.0]
     assert result["metrics"]["mae"] == 135.0
 
-
 def test_baseline_falla_con_particiones_vacias():
     with pytest.raises(ValueError, match="entrenamiento vacío"):
         calculate_baseline([], [{"clorofila_a": 10.0}])
     with pytest.raises(ValueError, match="evaluación vacío"):
         calculate_baseline([{"clorofila_a": 10.0}], [])
+
+
+def test_get_training_job_status_exposes_full_structured_result(
+    fake_database, monkeypatch
+):
+    csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
+    mock_training_file(monkeypatch, csv_data)
+
+    post_response = client.post(
+        "/api/v1/executions/", json=training_payload(), headers=HEADERS
+    )
+    assert post_response.status_code == 202
+    job_id = post_response.json()["job_id"]
+
+    get_response = client.get(f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS)
+    assert get_response.status_code == 200
+    body = get_response.json()
+
+    assert body["job_id"] == job_id
+    assert body["status"] == "completed"
+    assert body["dataset_version_id"] == VERSION_ID
+
+    result = body["result"]
+    assert result["model"] == "baseline"
+    assert result["baseline"]["strategy"] == "mean_clorofila_a"
+    assert result["baseline"]["train_sample_count"] == 2
+    assert result["baseline"]["validation_sample_count"] == 1
+    assert result["metrics"] == {"mae": 15.0, "rmse": 15.0}
+    assert result["version"] == VERSION_ID
+    assert result["dataset_version_id"] == VERSION_ID
+    assert result["status"] == "completed"
+    assert isinstance(result["warnings"], list)
+    assert len(result["warnings"]) >= 1
+
+# =========================================================
+# PRUEBA S2-167: PERSISTENCIA Y RECUPERACIÓN TRAS REINICIO
+# =========================================================
+
+
+def _init_persistent_sqlite_db(db_path: Path) -> None:
+    """Inicializa en disco el esquema de scientific_jobs (migraciones 022 y 023)."""
+    with closing(sqlite3.connect(db_path)) as conn, conn:
+        conn.executescript(
+            """
+            CREATE TABLE scientific_jobs (
+                id TEXT PRIMARY KEY,
+                job_type TEXT NOT NULL CHECK (job_type IN ('training', 'modeling', 'estimation')),
+                config TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+                result TEXT,
+                error_message TEXT,
+                idempotency_key TEXT,
+                organization_id TEXT,
+                requested_by TEXT,
+                dataset_version_id TEXT,
+                model_version_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT,
+                started_at TEXT,
+                completed_at TEXT
+            );
+
+            CREATE UNIQUE INDEX uq_scientific_jobs_idempotency_key
+                ON scientific_jobs (organization_id, idempotency_key)
+                WHERE idempotency_key IS NOT NULL AND organization_id IS NOT NULL;
+
+            CREATE TABLE memberships (
+                user_id TEXT NOT NULL,
+                organization_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                organization_status TEXT NOT NULL
+            );
+
+            CREATE TABLE dataset_versions (
+                id TEXT PRIMARY KEY,
+                dataset_id TEXT NOT NULL,
+                state TEXT NOT NULL,
+                status TEXT NOT NULL
+            );
+            """
+        )
+        conn.executemany(
+            """
+            INSERT INTO memberships (user_id, organization_id, status, organization_status)
+            VALUES (?, ?, 'active', 'active')
+            """,
+            [
+                (USER_ID, ORGANIZATION_ID),
+                (USER_ID, OTHER_ORGANIZATION_ID),
+            ],
+        )
+        conn.execute(
+            """
+            INSERT INTO dataset_versions (id, dataset_id, state, status)
+            VALUES (?, ?, 'PUBLISHED', 'PUBLISHED')
+            """,
+            (VERSION_ID, DATASET_ID),
+        )
+
+
+class _PersistentSqliteQuery:
+    def __init__(self, db_path: Path, schema_name: str | None, table_name: str):
+        self.db_path = db_path
+        self.schema_name = schema_name
+        self.table_name = table_name
+        self.filters: dict[str, str] = {}
+        self.insert_payload: dict[str, object] | None = None
+        self.update_payload: dict[str, object] | None = None
+        self.limit_value: int | None = None
+
+    def select(self, *_args, **_kwargs):
+        return self
+
+    def eq(self, column: str, value: object):
+        self.filters[column] = str(value)
+        return self
+
+    def limit(self, count: int):
+        self.limit_value = count
+        return self
+
+    def insert(self, payload: dict[str, object]):
+        self.insert_payload = dict(payload)
+        return self
+
+    def update(self, payload: dict[str, object]):
+        self.update_payload = dict(payload)
+        return self
+
+    def _resolve_table_and_filters(self) -> tuple[str, dict[str, str]]:
+        if self.schema_name == "dataset" and self.table_name == "versions":
+            return "dataset_versions", dict(self.filters)
+        if self.table_name == "memberships":
+            mapped = {
+                (
+                    "organization_status"
+                    if key == "organizations.status"
+                    else key
+                ): value
+                for key, value in self.filters.items()
+            }
+            return "memberships", mapped
+        return self.table_name, dict(self.filters)
+
+    @staticmethod
+    def _serialize_value(column: str, value: object) -> object:
+        if column in {"config", "result"} and value is not None:
+            return json.dumps(value)
+        return value
+
+    @staticmethod
+    def _deserialize_row(row: sqlite3.Row) -> dict[str, object]:
+        record = dict(row)
+        for json_col in ("config", "result"):
+            raw = record.get(json_col)
+            if isinstance(raw, str):
+                record[json_col] = json.loads(raw)
+        return record
+
+    def execute(self):
+        sql_table, mapped_filters = self._resolve_table_and_filters()
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            conn.row_factory = sqlite3.Row
+
+            if self.insert_payload is not None:
+                row = dict(self.insert_payload)
+                row.setdefault("id", str(uuid.uuid4()))
+                row.setdefault("created_at", datetime.now(UTC).isoformat())
+                row.setdefault("result", None)
+                columns = list(row.keys())
+                values = [
+                    self._serialize_value(col, row[col]) for col in columns
+                ]
+                placeholders = ", ".join("?" for _ in columns)
+                col_names = ", ".join(columns)
+                conn.execute(
+                    f"INSERT INTO {sql_table} ({col_names}) VALUES ({placeholders})",
+                    values,
+                )
+                return FakeResponse([row])
+
+            where_clauses = [f"{col} = ?" for col in mapped_filters]
+            where_sql = (
+                f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+            )
+            filter_values = list(mapped_filters.values())
+
+            if self.update_payload is not None:
+                updates = dict(self.update_payload)
+                updates.setdefault("updated_at", datetime.now(UTC).isoformat())
+                set_clauses = [f"{col} = ?" for col in updates]
+                set_values = [
+                    self._serialize_value(col, updates[col]) for col in updates
+                ]
+                conn.execute(
+                    f"UPDATE {sql_table} SET {', '.join(set_clauses)}{where_sql}",
+                    [*set_values, *filter_values],
+                )
+                cursor = conn.execute(
+                    f"SELECT * FROM {sql_table}{where_sql}", filter_values
+                )
+                return FakeResponse(
+                    [self._deserialize_row(r) for r in cursor.fetchall()]
+                )
+
+            limit_sql = (
+                f" LIMIT {int(self.limit_value)}"
+                if self.limit_value is not None
+                else ""
+            )
+            cursor = conn.execute(
+                f"SELECT * FROM {sql_table}{where_sql}{limit_sql}",
+                filter_values,
+            )
+            return FakeResponse(
+                [self._deserialize_row(r) for r in cursor.fetchall()]
+            )
+
+
+class PersistentSqliteClient:
+    """Cliente de base de datos respaldado por archivo SQLite en disco."""
+
+    def __init__(self, db_path: Path):
+        self.db_path = db_path
+
+    def schema(self, schema_name: str):
+        return SimpleNamespace(
+            table=lambda table_name: _PersistentSqliteQuery(
+                self.db_path, schema_name, table_name
+            )
+        )
+
+    def table(self, table_name: str):
+        return _PersistentSqliteQuery(self.db_path, None, table_name)
+
+
+def test_job_status_and_result_persist_across_api_restart(
+    tmp_path, monkeypatch
+):
+    """Tras reiniciar la API, el estado y resultado completados siguen disponibles (S2-167)."""
+    db_path = tmp_path / "scientific_persistent.db"
+    _init_persistent_sqlite_db(db_path)
+
+    csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
+    checksum = hashlib.sha256(csv_data).hexdigest()
+
+    first_app = create_app()
+    restarted_app = create_app()
+
+    try:
+        # 1. Primera instancia de la API conectada a almacenamiento persistente en disco
+        first_db_client = PersistentSqliteClient(db_path)
+        monkeypatch.setattr(controller_execution, "supabase", first_db_client)
+        monkeypatch.setattr(service_execution, "supabase", first_db_client)
+        first_app.dependency_overrides[require_authenticated_user] = (
+            fake_authenticated_user
+        )
+
+        with monkeypatch.context() as mp:
+            mp.setattr(
+                service_execution,
+                "fetch_training_file",
+                lambda _client, _version_id: (csv_data, checksum),
+            )
+            with TestClient(first_app) as first_api_client:
+                create_response = first_api_client.post(
+                    "/api/v1/executions/",
+                    json=training_payload(),
+                    headers=HEADERS,
+                )
+                assert create_response.status_code == 202
+                job_id = create_response.json()["job_id"]
+
+                initial_status = first_api_client.get(
+                    f"/api/v1/executions/{job_id}",
+                    headers=AUTH_HEADERS,
+                )
+                assert initial_status.status_code == 200
+                initial_body = initial_status.json()
+                assert initial_body["status"] == "completed"
+                assert initial_body["result"] is not None
+
+        # 2. Descartar la primera instancia y crear un cliente limpio tras el reinicio
+        first_app.dependency_overrides.clear()
+        restarted_db_client = PersistentSqliteClient(db_path)
+        monkeypatch.setattr(controller_execution, "supabase", restarted_db_client)
+        monkeypatch.setattr(service_execution, "supabase", restarted_db_client)
+        restarted_app.dependency_overrides[require_authenticated_user] = (
+            fake_authenticated_user
+        )
+
+        # 3. Consultar el mismo job_id en la nueva instancia sin mockear fetch_training_file
+        with TestClient(restarted_app) as restarted_api_client:
+            recovered_response = restarted_api_client.get(
+                f"/api/v1/executions/{job_id}",
+                headers=AUTH_HEADERS,
+            )
+            assert recovered_response.status_code == 200
+            recovered_body = recovered_response.json()
+
+            assert recovered_body == initial_body
+            assert recovered_body["job_id"] == job_id
+            assert recovered_body["job_type"] == "training"
+            assert recovered_body["status"] == "completed"
+            assert recovered_body["dataset_version_id"] == VERSION_ID
+            assert recovered_body["requested_by"] == USER_ID
+            assert recovered_body["created_at"] is not None
+            assert recovered_body["started_at"] is not None
+            assert recovered_body["completed_at"] is not None
+            assert recovered_body["error_message"] is None
+            assert recovered_body["result"]["prediction_value"] == 15.0
+            assert recovered_body["result"]["metrics"] == {
+                "mae": 15.0,
+                "rmse": 15.0,
+            }
+
+            # Verificar aislamiento real por organización sobre scientific_jobs en disco
+            # (USER_ID es miembro activo de OTHER_ORGANIZATION_ID, por lo que el 404 proviene de scientific_jobs)
+            forbidden_response = restarted_api_client.get(
+                f"/api/v1/executions/{job_id}",
+                headers={
+                    "Authorization": AUTH_HEADERS["Authorization"],
+                    "X-Organization-ID": OTHER_ORGANIZATION_ID,
+                },
+            )
+            assert forbidden_response.status_code == 404
+    finally:
+        first_app.dependency_overrides.clear()
+        restarted_app.dependency_overrides.clear()
+
+        
