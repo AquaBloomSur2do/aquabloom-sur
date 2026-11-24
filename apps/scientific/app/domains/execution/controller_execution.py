@@ -49,6 +49,7 @@ def _require_database():
     "/{job_id}",
     response_model=JobStatus,
     status_code=status.HTTP_200_OK,
+    summary="Consultar estado y resultado de un trabajo científico",
 )
 def get_job_status(
     job_id: UUID,

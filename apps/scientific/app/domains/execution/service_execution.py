@@ -60,7 +60,7 @@ def _persist_job_failure(job_id: str, error_message: str) -> None:
             "No se pudo persistir el estado fallido para el trabajo %s.", job_id
         )
 
-        
+
 async def run_scientific_algorithm(
     client, job_type: str, config: dict[str, Any]
 ) -> dict[str, Any]:
@@ -69,16 +69,23 @@ async def run_scientific_algorithm(
         await asyncio.sleep(1)
         return {"message": f"Tipo de trabajo '{job_type}' no implementado aún."}
 
-    version_id = config.get("version_id")
+    version_id = config.get("version_id") or config.get("dataset_version_id")
     if not version_id:
         raise ValueError("Falta version_id en la configuración.")
+    model_version_id = config.get("model_version_id")
 
     file_bytes, checksum = await asyncio.to_thread(
         fetch_training_file, client, str(version_id)
     )
     raw_data = parse_training_csv(file_bytes, checksum)
     train_data, val_data = split_training_validation(raw_data, split_ratio=0.8)
-    return calculate_baseline(train_data, val_data)
+    return calculate_baseline(
+        train_data,
+        val_data,
+        version=str(model_version_id or version_id),
+        dataset_version_id=str(version_id),
+        model_version_id=str(model_version_id) if model_version_id else None,
+    )
 
 
 async def _update_scientific_job(
@@ -137,10 +144,20 @@ async def process_scientific_job(
             timeout=effective_timeout,
         )
 
+        completed_payload = build_completed_update_payload(result, _utc_now_iso())
+        dataset_version_id = config.get("version_id") or config.get(
+            "dataset_version_id"
+        )
+        model_version_id = config.get("model_version_id")
+        if dataset_version_id:
+            completed_payload["dataset_version_id"] = str(dataset_version_id)
+        if model_version_id:
+            completed_payload["model_version_id"] = str(model_version_id)
+
         await _update_scientific_job(
             supabase,
             job_id,
-            build_completed_update_payload(result, _utc_now_iso()),
+            completed_payload,
         )
 
     except TimeoutError:
@@ -245,6 +262,10 @@ def create_execution_job_service(
         "organization_id": str(organization_id),
         "requested_by": str(user_id),
     }
+    if payload.job_type == "training" and isinstance(
+        payload.config, TrainingConfig
+    ):
+        db_payload["dataset_version_id"] = str(payload.config.version_id)
     if idempotency_key is not None:
         db_payload["idempotency_key"] = idempotency_key
 
@@ -282,6 +303,3 @@ def create_execution_job_service(
         config,
     )
     return build_job_accepted_response(inserted_job)
-
-
-
