@@ -1,7 +1,8 @@
 import logging
 
-from apps.satellite.app.core.config import settings
 from supabase import Client, create_client
+
+from apps.satellite.app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
