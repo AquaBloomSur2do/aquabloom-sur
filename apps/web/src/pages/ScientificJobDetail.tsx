@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { executionsService } from '../services/executions';
-import type { JobStatusResponse, TrainingJobResult } from '../services/executions';
+import type {
+  JobStatusResponse,
+  PointPredictionItem,
+  TrainingJobResult,
+} from '../services/executions';
 
 const statusPresentation: Record<
   JobStatusResponse['status'],
@@ -24,6 +28,10 @@ const STRUCTURED_RESULT_KEYS = new Set([
   'model_version_id',
   'status',
   'warnings',
+  'unit',
+  'point_count',
+  'model_id',
+  'artifact_checksum',
 ]);
 
 function displayValue(value: unknown): string {
@@ -41,7 +49,25 @@ function formatMetric(value: number | undefined): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(4);
 }
 
+function formatPointValue(value: number | null | undefined): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return 'No disponible';
+  }
+  return Number.isInteger(value) ? String(value) : value.toFixed(4);
+}
+
+function isPointPredictionList(
+  predictions: number[] | PointPredictionItem[] | undefined
+): predictions is PointPredictionItem[] {
+  return Array.isArray(predictions) && predictions.some(
+    (prediction) => typeof prediction === 'object' && prediction !== null
+  );
+}
+
 function isStructuredTrainingResult(result: TrainingJobResult): boolean {
+  if (isPointPredictionList(result.predictions)) {
+    return false;
+  }
   return Boolean(
     result.metrics ||
       result.model ||
@@ -49,6 +75,16 @@ function isStructuredTrainingResult(result: TrainingJobResult): boolean {
       result.version ||
       result.warnings
   );
+}
+
+function formatCoordinates(
+  latitude: number | null | undefined,
+  longitude: number | null | undefined
+): string | null {
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+    return null;
+  }
+  return `${latitude}, ${longitude}`;
 }
 
 export function ScientificJobDetail() {
@@ -95,6 +131,13 @@ export function ScientificJobDetail() {
   const extraResultEntries = job?.result
     ? Object.entries(job.result).filter(
         ([key]) => !STRUCTURED_RESULT_KEYS.has(key)
+      )
+    : [];
+  const pointPredictionSource = job?.result?.predictions;
+  const pointPredictions = isPointPredictionList(pointPredictionSource)
+    ? pointPredictionSource.filter(
+        (prediction): prediction is PointPredictionItem =>
+          typeof prediction === 'object' && prediction !== null
       )
     : [];
 
@@ -306,6 +349,75 @@ export function ScientificJobDetail() {
                     <b>{displayValue(value)}</b>
                   </div>
                 ))}
+              </div>
+            </section>
+          )}
+          {job.job_type === 'estimation' && pointPredictions.length > 0 && (
+            <section className="card">
+              <div className="card-head">
+                <h2>Resultados por punto</h2>
+              </div>
+              <div className="card-body">
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <caption className="sr-only">
+                    Estimaciones puntuales de la escena
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Estación / Coordenada</th>
+                      <th scope="col">Valor</th>
+                      <th scope="col">Unidad</th>
+                      <th scope="col">Advertencia</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pointPredictions.map((item, index) => {
+                      const stationLabel =
+                        item.station_name ??
+                        item.station_code ??
+                        item.point_id ??
+                        null;
+                      const coordinates = formatCoordinates(
+                        item.latitude,
+                        item.longitude
+                      );
+                      const rawValue =
+                        item.predicted_value ?? item.value;
+                      const unit =
+                        item.unit?.trim() ||
+                        job.result?.unit?.trim() ||
+                        'Sin unidad';
+                      const warning =
+                        item.warning?.trim() ||
+                        (item.warnings?.length
+                          ? item.warnings.join('; ')
+                          : null) ||
+                        (job.result?.warnings?.length
+                          ? job.result.warnings.join('; ')
+                          : null) ||
+                        'Sin advertencias';
+                      const rowKey =
+                        item.point_id ??
+                        item.station_code ??
+                        item.station_name ??
+                        `${item.latitude ?? 'na'}-${item.longitude ?? 'na'}-${index}`;
+
+                      return (
+                        <tr key={rowKey}>
+                          <td>
+                            <div>{stationLabel ?? 'No disponible'}</div>
+                            {coordinates && (
+                              <div className="lake-meta">{coordinates}</div>
+                            )}
+                          </td>
+                          <td>{formatPointValue(rawValue)}</td>
+                          <td>{unit}</td>
+                          <td>{warning}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </section>
           )}
