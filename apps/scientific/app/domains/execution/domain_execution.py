@@ -6,14 +6,106 @@ from collections.abc import Hashable, Iterable
 from typing import Any
 
 from apps.scientific.app.domains.execution.schemas_execution import (
+    BaselineInfo,
     EstimationRequestInput,
     JobCreate,
     ModelScopeSpec,
     PilotMetricsResult,
+    ScientificJobStatusEnum,
+    TrainingMetrics,
+    TrainingResult,
     ValidatedEstimationInput,
 )
 
 JOB_TIMEOUT_SECONDS = 10.0
+MAX_ERROR_MESSAGE_LENGTH = 1000
+DEFAULT_JOB_ERROR_MESSAGE = (
+    "Error interno durante la ejecución del trabajo científico."
+)
+
+
+class JobLimitExceededError(RuntimeError):
+    """Error determinista cuando un trabajo excede un límite operativo permitido."""
+
+
+def resolve_job_timeout(timeout_seconds: float | None) -> float:
+    """Valida y resuelve el tiempo máximo permitido para un trabajo científico."""
+    resolved = JOB_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+    if not isinstance(resolved, (int, float)) or isinstance(resolved, bool):
+        raise TypeError("El tiempo máximo de ejecución debe ser numérico.")
+    if not math.isfinite(resolved) or resolved <= 0:
+        raise ValueError(
+            "El tiempo máximo de ejecución debe ser un número finito mayor a 0."
+        )
+    return float(resolved)
+
+
+def sanitize_error_message(
+    message: str | None,
+    *,
+    fallback: str = DEFAULT_JOB_ERROR_MESSAGE,
+    max_length: int = MAX_ERROR_MESSAGE_LENGTH,
+) -> str:
+    """Normaliza espacios, garantiza texto no vacío y acota el largo del error."""
+    normalized = " ".join((message or "").split())
+    if not normalized:
+        normalized = fallback
+    if len(normalized) <= max_length:
+        return normalized
+    return f"{normalized[: max_length - 3].rstrip()}..."
+
+
+def build_timeout_error_message(timeout_seconds: float) -> str:
+    return sanitize_error_message(
+        f"Tiempo máximo de ejecución excedido (Timeout de {timeout_seconds}s)."
+    )
+
+
+def format_limit_exceeded_error_message(exc: JobLimitExceededError) -> str:
+    detail = str(exc).strip()
+    if not detail:
+        return "Límite operativo de ejecución excedido."
+    if detail.lower().startswith("límite"):
+        return sanitize_error_message(detail)
+    return sanitize_error_message(f"Límite de ejecución excedido: {detail}")
+
+
+def format_exception_error_message(exc: Exception) -> str:
+    detail = str(exc).strip()
+    if not detail:
+        return sanitize_error_message(
+            f"Error inesperado ({type(exc).__name__}) durante la ejecución del trabajo científico."
+        )
+    return sanitize_error_message(detail)
+
+
+def build_running_update_payload(started_at: str) -> dict[str, Any]:
+    return {
+        "status": "running",
+        "started_at": started_at,
+    }
+
+
+def build_completed_update_payload(
+    result: dict[str, Any], completed_at: str
+) -> dict[str, Any]:
+    return {
+        "status": "completed",
+        "result": result,
+        "error_message": None,
+        "completed_at": completed_at,
+    }
+
+
+def build_failure_update_payload(
+    error_message: str, completed_at: str
+) -> dict[str, Any]:
+    return {
+        "status": "failed",
+        "result": None,
+        "error_message": sanitize_error_message(error_message),
+        "completed_at": completed_at,
+    }
 
 
 def parse_training_csv(file_bytes: bytes, expected_checksum: str) -> list[dict[str, Any]]:
@@ -75,9 +167,12 @@ def split_training_validation(
 
 
 def calculate_baseline(
-    train_data: list[dict[str, Any]], val_data: list[dict[str, Any]]
+    train_data: list[dict[str, Any]],
+    val_data: list[dict[str, Any]],
+    version: str | None = None,
+    dataset_version_id: str | None = None,
+    model_version_id: str | None = None,
 ) -> dict[str, Any]:
-    """Calcula el baseline exclusivamente con el conjunto de entrenamiento."""
     if not train_data:
         raise ValueError("Conjunto de entrenamiento vacío. Imposible calcular baseline.")
     if not val_data:
@@ -99,13 +194,38 @@ def calculate_baseline(
         / len(val_targets)
     )
 
-    return {
-        "model": "baseline",
-        "prediction_value": prediction_value,
-        "metrics": {"mae": mae, "rmse": rmse},
-        "predictions": predictions,
-    }
+    resolved_version = version or model_version_id or dataset_version_id
+    warnings = [
+        "Modelo baseline de referencia basado en la media de clorofila_a de entrenamiento; no incorpora variables espectrales ni espaciales."
+    ]
+    if len(train_data) < 10 or len(val_data) < 5:
+        warnings.append(
+            f"Tamaño de muestra reducido (entrenamiento={len(train_data)}, validación={len(val_data)}); interpretar métricas con precaución."
+        )
+    if not resolved_version:
+        warnings.append(
+            "Versión de dataset o modelo no informada durante la ejecución del baseline."
+        )
 
+    result = TrainingResult(
+        model="baseline",
+        baseline=BaselineInfo(
+            strategy="mean_clorofila_a",
+            target_variable="clorofila_a",
+            prediction_value=prediction_value,
+            train_sample_count=len(train_data),
+            validation_sample_count=len(val_data),
+        ),
+        prediction_value=prediction_value,
+        predictions=predictions,
+        metrics=TrainingMetrics(mae=mae, rmse=rmse),
+        version=resolved_version,
+        dataset_version_id=dataset_version_id,
+        model_version_id=model_version_id,
+        status=ScientificJobStatusEnum.COMPLETED,
+        warnings=warnings,
+    )
+    return result.model_dump(mode="json")
 
 def validate_group_partition_disjointness(
     training_groups: Iterable[Hashable],
@@ -213,7 +333,9 @@ def validate_estimation_inputs(
         )
 
     if not request.observations:
-        raise EstimationInputValidationError("La solicitud de estimación no contiene observaciones espectrales.")
+        raise EstimationInputValidationError(
+            "La solicitud de estimación no contiene observaciones espectrales."
+        )
 
     warnings: list[str] = []
     if model_status == "EXPERIMENTAL":
@@ -244,12 +366,19 @@ def validate_estimation_inputs(
                 f"La observación {obs.observation_id} tiene bandera de calidad inválida ('{obs.quality}')."
             )
 
-        if not math.isfinite(obs.index_value) or obs.index_value < -1.0 or obs.index_value > 1.0:
+        if (
+            not math.isfinite(obs.index_value)
+            or obs.index_value < -1.0
+            or obs.index_value > 1.0
+        ):
             raise EstimationInputValidationError(
                 f"El valor del índice ({obs.index_value}) en la observación {obs.observation_id} está fuera del dominio físico [-1.0, 1.0]."
             )
 
-        if obs.index_value < model_spec.min_index_value or obs.index_value > model_spec.max_index_value:
+        if (
+            obs.index_value < model_spec.min_index_value
+            or obs.index_value > model_spec.max_index_value
+        ):
             extrapolated_count += 1
 
     if extrapolated_count > 0:
@@ -268,10 +397,15 @@ def validate_estimation_inputs(
         warnings=warnings,
     )
 
-def calculate_pilot_metrics(y_true: list[float], y_pred: list[float]) -> PilotMetricsResult:
+
+def calculate_pilot_metrics(
+    y_true: list[float], y_pred: list[float]
+) -> PilotMetricsResult:
     """Calcula MAE, RMSE, sesgo y R² condicional cumpliendo RNF-26 (S2-157)."""
     if not y_true or not y_pred:
-        raise ValueError("Las listas de observaciones y predicciones no pueden estar vacías.")
+        raise ValueError(
+            "Las listas de observaciones y predicciones no pueden estar vacías."
+        )
     if len(y_true) != len(y_pred):
         raise ValueError("Las listas deben tener exactamente la misma longitud.")
 
@@ -288,7 +422,7 @@ def calculate_pilot_metrics(y_true: list[float], y_pred: list[float]) -> PilotMe
         error = pred_val - true_val
         sum_error += error
         sum_abs_error += abs(error)
-        sum_sq_error += error ** 2
+        sum_sq_error += error**2
         ss_tot += (true_val - mean_y_true) ** 2
 
     mae = sum_abs_error / n
@@ -299,7 +433,9 @@ def calculate_pilot_metrics(y_true: list[float], y_pred: list[float]) -> PilotMe
         "R² no debe interpretarse de manera aislada; evalúe conjuntamente MAE, RMSE y sesgo (RNF-26)."
     ]
     if n < 10:
-        limitations.append(f"Tamaño de muestra pequeño (n={n}). Interpretar con precaución.")
+        limitations.append(
+            f"Tamaño de muestra pequeño (n={n}). Interpretar con precaución."
+        )
 
     r2_computable = False
     r2_val = None
@@ -321,3 +457,7 @@ def calculate_pilot_metrics(y_true: list[float], y_pred: list[float]) -> PilotMe
         r2=r2_val,
         limitations=limitations,
     )
+
+
+
+

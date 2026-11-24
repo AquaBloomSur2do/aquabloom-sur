@@ -158,6 +158,27 @@ export function ScientificJobDetail({
       ? statusPresentation[resultStatusKey].label
       : job?.result?.status ?? statusPresentation[job?.status ?? 'queued'].label;
 
+  const extraResultEntries = job?.result
+    ? Object.entries(job.result).filter(
+        ([key]) => !STRUCTURED_RESULT_KEYS.has(key)
+      )
+    : [];
+
+  const resolvedVersion =
+    job?.result?.version ??
+    job?.result?.model_version_id ??
+    job?.result?.dataset_version_id ??
+    job?.model_version_id ??
+    job?.dataset_version_id;
+
+  const resultStatusKey = job?.result?.status as
+    | JobStatusResponse['status']
+    | undefined;
+  const resultStatusLabel =
+    resultStatusKey && resultStatusKey in statusPresentation
+      ? statusPresentation[resultStatusKey].label
+      : job?.result?.status ?? statusPresentation[job?.status ?? 'queued'].label;
+
   return (
     <div className="content-container">
       <header className="page-head">

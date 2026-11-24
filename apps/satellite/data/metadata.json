@@ -1,6 +1,51 @@
 {
+  "acquisition_date": "2025-01-15",
+  "bands": {
+    "B04": 1,
+    "B05": 2,
+    "water_mask": 3
+  },
+  "crs": "EPSG:32718",
+  "height": 100,
   "id": "pilot_sentinel2_l2a",
-  "provider": "Sentinel-2",
   "is_synthetic": true,
-  "sha256": "fc59e33f0f627dd5232b73e86efd62bd54690b78a0539f7c76e38602ad062967"
+  "pilot_fixture": {
+    "dataset_is_synthetic": true,
+    "dataset_version": "pilot-fixture-v1",
+    "inputs": [
+      {
+        "is_synthetic": true,
+        "name": "B04"
+      },
+      {
+        "is_synthetic": true,
+        "name": "B05"
+      },
+      {
+        "is_synthetic": true,
+        "name": "water_mask"
+      }
+    ],
+    "random_seed": 20250115,
+    "scene_identifier": "SYNTHETIC_SENTINEL2_L2A_PILOT_20250115",
+    "scene_is_synthetic": true
+  },
+  "provenance": "Synthetic Sentinel-2 L2A Pilot",
+  "provider": "Sentinel-2",
+  "raster_file": "pilot_sentinel2_l2a.tif",
+  "reflectance_scale": 10000,
+  "sha256": "f352bd259ef620e0a78ff6ef39e0ba0a331e2d4d49770f048ddf791e8e4af095",
+  "transform": [
+    700000.0,
+    10.0,
+    0.0,
+    5700000.0,
+    0.0,
+    -10.0
+  ],
+  "water_mask_values": {
+    "invalid": 0,
+    "water": 1
+  },
+  "width": 100
 }
