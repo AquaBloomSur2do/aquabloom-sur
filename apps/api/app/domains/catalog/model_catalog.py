@@ -2,6 +2,8 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
+from supabase import Client
+
 from apps.api.app.core.database import supabase
 from apps.api.app.domains.catalog.domain_catalog import (
     PUBLIC_LAKE_FIELDS,
@@ -14,7 +16,6 @@ from apps.api.app.domains.catalog.schemas_catalog import (
     LakeSummary,
     PaginatedLakes,
 )
-from supabase import Client
 
 
 def get_active_lakes(client: Client) -> list[LakeDetail]:
