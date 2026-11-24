@@ -1,11 +1,23 @@
 ﻿services:
+  # 0. Redis (Cola de mensajería para Satellite y workers)
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - aquabloom-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # 1. API Gateway (Punto de entrada único)
   gateway:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn apps.api.app.main:app --host 0.0.0.0 --port 8000
     env_file:
       - path: ./apps/api/.env.example
         required: false
@@ -19,11 +31,11 @@
       core:
         condition: service_healthy
       satellite:
-        condition: service_started
+        condition: service_healthy
       scientific:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,52 +43,73 @@
   # 2. Core Service (Catálogo, Identidad, Dataset, Ingesta)
   core:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8001
+    command: uvicorn apps.api.app.main:app --host 0.0.0.0 --port 8001
     env_file:
       - path: ./apps/api/.env.example
         required: false
       - path: ./apps/api/.env
         required: false
+    ports:
+      - "8001:8001"
     networks:
       - aquabloom-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/api/v1/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # 3. Satellite Service (Procesamiento Raster y Sentinel-2)
+  # 3. Satellite Service (Procesamiento Raster y Sentinel-2 — Despliegue Independiente)
   satellite:
     build:
       context: ./apps/satellite
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8002
+    command: uvicorn apps.satellite.app.main:app --host 0.0.0.0 --port 8002
     env_file:
       - path: ./apps/satellite/.env.example
         required: true
       - path: ./apps/satellite/.env
         required: false
+    environment:
+      SATELLITE_REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8002:8002"
     networks:
       - aquabloom-net
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # 4. Scientific Service (ML, Entrenamiento, Inferencia)
+  # 4. Scientific Service (ML, Entrenamiento, Inferencia — Despliegue Independiente)
   scientific:
     build:
       context: ./apps/scientific
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8003
+    command: uvicorn apps.scientific.app.main:app --host 0.0.0.0 --port 8003
     env_file:
       - path: ./apps/scientific/.env.example
         required: true
       - path: ./apps/scientific/.env
         required: false
+    ports:
+      - "8003:8003"
     networks:
       - aquabloom-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/api/v1/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # 5. Frontend React (App Web)
   web:
@@ -100,4 +133,6 @@
 networks:
   aquabloom-net:
     driver: bridge
+
+
 
