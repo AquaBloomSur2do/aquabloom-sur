@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { executionsService } from '../services/executions';
-import type { JobStatusResponse } from '../services/executions';
+import type {
+  JobStatusResponse,
+  TrainingJobResult,
+} from '../services/executions';
 
 const DEFAULT_POLL_INTERVAL_MS = 1500;
 
@@ -31,12 +34,42 @@ function resolveDatasetVersionId(job: JobStatusResponse): string | null {
     : null;
 }
 
+const STRUCTURED_RESULT_KEYS = new Set([
+  'model',
+  'baseline',
+  'prediction_value',
+  'predictions',
+  'metrics',
+  'version',
+  'dataset_version_id',
+  'model_version_id',
+  'status',
+  'warnings',
+]);
+
 function displayValue(value: unknown): string {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') {
     return String(value);
   }
   return JSON.stringify(value) ?? String(value);
+}
+
+function formatMetric(value: number | undefined): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return 'No disponible';
+  }
+  return Number.isInteger(value) ? String(value) : value.toFixed(4);
+}
+
+function isStructuredTrainingResult(result: TrainingJobResult): boolean {
+  return Boolean(
+    result.metrics ||
+      result.model ||
+      result.baseline ||
+      result.version ||
+      result.warnings
+  );
 }
 
 export function ScientificJobDetail({
@@ -65,7 +98,7 @@ export function ScientificJobDetail({
       try {
         const response = await executionsService.getJobStatus(
           jobId,
-          activeController.signal,
+          activeController.signal
         );
         if (!active) return;
 
@@ -82,7 +115,7 @@ export function ScientificJobDetail({
           setError(
             loadError instanceof Error
               ? loadError.message
-              : 'No se pudo cargar el detalle del trabajo.',
+              : 'No se pudo cargar el detalle del trabajo.'
           );
         }
       } finally {
@@ -103,6 +136,27 @@ export function ScientificJobDetail({
   }, [jobId, pollIntervalMs]);
 
   const resolvedDatasetVersionId = job ? resolveDatasetVersionId(job) : null;
+
+  const extraResultEntries = job?.result
+    ? Object.entries(job.result).filter(
+        ([key]) => !STRUCTURED_RESULT_KEYS.has(key)
+      )
+    : [];
+
+  const resolvedVersion =
+    job?.result?.version ??
+    job?.result?.model_version_id ??
+    job?.result?.dataset_version_id ??
+    job?.model_version_id ??
+    job?.dataset_version_id;
+
+  const resultStatusKey = job?.result?.status as
+    | JobStatusResponse['status']
+    | undefined;
+  const resultStatusLabel =
+    resultStatusKey && resultStatusKey in statusPresentation
+      ? statusPresentation[resultStatusKey].label
+      : job?.result?.status ?? statusPresentation[job?.status ?? 'queued'].label;
 
   return (
     <div className="content-container">
@@ -246,7 +300,65 @@ export function ScientificJobDetail({
                 <h2>Resultado</h2>
               </div>
               <div className="card-body grid">
-                {Object.entries(job.result).map(([key, value]) => (
+                {isStructuredTrainingResult(job.result) && (
+                  <>
+                    <div className="detail">
+                      <span>Modelo baseline</span>
+                      <b>
+                        {job.result.model ?? 'baseline'}
+                        {job.result.baseline?.strategy
+                          ? ` (${job.result.baseline.strategy})`
+                          : ''}
+                      </b>
+                    </div>
+
+                    <div className="detail">
+                      <span>Versión</span>
+                      {resolvedVersion ? (
+                        <span className="code-pill">{resolvedVersion}</span>
+                      ) : (
+                        <b>No informada</b>
+                      )}
+                    </div>
+
+                    <div className="detail">
+                      <span>Estado del resultado</span>
+                      <b>{resultStatusLabel}</b>
+                    </div>
+
+                    <div className="detail">
+                      <span>MAE</span>
+                      <b>{formatMetric(job.result.metrics?.mae)}</b>
+                    </div>
+
+                    <div className="detail">
+                      <span>RMSE</span>
+                      <b>{formatMetric(job.result.metrics?.rmse)}</b>
+                    </div>
+
+                    {typeof job.result.prediction_value === 'number' && (
+                      <div className="detail">
+                        <span>Predicción baseline</span>
+                        <b>{formatMetric(job.result.prediction_value)}</b>
+                      </div>
+                    )}
+
+                    <div className="detail">
+                      <span>Advertencias</span>
+                      {job.result.warnings && job.result.warnings.length > 0 ? (
+                        <ul className="traceability-list">
+                          {job.result.warnings.map((warning) => (
+                            <li key={warning}>{warning}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <b>Sin advertencias</b>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {extraResultEntries.map(([key, value]) => (
                   <div className="detail" key={key}>
                     <span>{key}</span>
                     <b>{displayValue(value)}</b>

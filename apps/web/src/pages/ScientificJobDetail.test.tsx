@@ -217,13 +217,18 @@ describe('ScientificJobDetail', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('Completado')).toBeInTheDocument();
-    expect(screen.getByText('prediction_value')).toBeInTheDocument();
-    expect(screen.getByText('15')).toBeInTheDocument();
+    expect(await screen.findByText('Modelo baseline')).toBeInTheDocument();
+    expect(screen.getAllByText('Completado').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('MAE')).toBeInTheDocument();
+    expect(screen.getByText('RMSE')).toBeInTheDocument();
+    expect(screen.getByText('Predicción baseline')).toBeInTheDocument();
+    expect(screen.getAllByText('15').length).toBeGreaterThanOrEqual(3);
     expect(screen.getAllByText('ver-1').length).toBeGreaterThanOrEqual(1);
     expect(executionsService.getJobStatus).toHaveBeenCalledTimes(3);
   });
 });
+
+
 
 
 

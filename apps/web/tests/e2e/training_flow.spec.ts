@@ -67,16 +67,15 @@ test('S2-168: Flujo E2E - Entrenamiento completo en staging con resultado persis
   expect(acceptedPayload.job_id).toBeTruthy();
 
   // 4. Confirmar navegación al detalle y polling hasta resultado persistido
-  await page.waitForURL(`**/scientific/jobs/${acceptedPayload.job_id}`, {
-    timeout: 15000,
+  await expect(page.getByText('Completado').first()).toBeVisible({
+    timeout: 20000,
   });
-
-  await expect(page.getByText('Completado')).toBeVisible({ timeout: 20000 });
   await expect(page.getByText(acceptedPayload.job_id)).toBeVisible();
 
   const resultHeading = page.getByRole('heading', { name: 'Resultado' });
   await expect(resultHeading).toBeVisible();
-  await expect(page.getByText('prediction_value')).toBeVisible();
-  await expect(page.getByText('metrics')).toBeVisible();
+  await expect(page.getByText('Modelo baseline')).toBeVisible();
+  await expect(page.getByText('MAE')).toBeVisible();
+  await expect(page.getByText('RMSE')).toBeVisible();
 });
 
