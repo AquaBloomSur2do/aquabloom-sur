@@ -1,8 +1,10 @@
 import asyncio
+import hashlib
 import os
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import Header, HTTPException, status
@@ -12,13 +14,19 @@ from pydantic import SecretStr
 
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
+os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test-secret-token")
 
-from apps.api.app.core.config import settings as api_settings
+from apps.scientific.app.core.config import settings as scientific_settings
 from apps.scientific.app.core.dependencies import require_authenticated_user
 from apps.scientific.app.domains.execution.domain_execution import (
     MAX_ERROR_MESSAGE_LENGTH,
     JobLimitExceededError,
+    calculate_baseline,
+    parse_training_csv,
     resolve_job_timeout,
+)
+from apps.scientific.app.domains.execution.model_execution import (
+    fetch_training_file,
 )
 from apps.scientific.app.domains.execution.service_execution import (
     process_scientific_job,
@@ -64,7 +72,7 @@ class FakeQuery:
         self.insert_payload = None
         self.update_payload = None
 
-    def select(self, *_args, **kwargs):
+    def select(self, *_args, **_kwargs):
         return self
 
     def eq(self, column, value):
@@ -212,7 +220,7 @@ class FakeDatabase:
 def fake_database(monkeypatch):
     database = FakeDatabase()
     monkeypatch.setattr(
-        api_settings,
+        scientific_settings,
         "internal_service_token",
         SecretStr("test-secret-token"),
     )
@@ -225,7 +233,9 @@ def fake_database(monkeypatch):
         database,
     )
     monkeypatch.setitem(
-        app.dependency_overrides, require_authenticated_user, fake_authenticated_user
+        app.dependency_overrides,
+        require_authenticated_user,
+        fake_authenticated_user,
     )
     return database
 
@@ -436,8 +446,18 @@ def test_empty_idempotency_key_is_rejected(fake_database):
 # =========================================================
 
 
-def test_execution_job_handles_internal_exception(fake_database):
+def test_execution_job_handles_internal_exception(monkeypatch, fake_database):
     """Una excepción persiste FAILED y expone el error consultable vía API (S2-150)."""
+
+    async def fail_internally(*_args, **_kwargs):
+        raise RuntimeError(
+            "Excepción interna: Fallo al procesar los tensores de la escena."
+        )
+
+    monkeypatch.setattr(
+        "apps.scientific.app.domains.execution.service_execution.run_scientific_algorithm",
+        fail_internally,
+    )
     payload = estimation_payload(scene_id="scene_fail")
 
     post_response = client.post("/api/v1/executions/", json=payload, headers=HEADERS)
@@ -484,7 +504,7 @@ def test_execution_job_handles_timeout_exceeded(monkeypatch, fake_database):
 def test_execution_job_handles_limit_exceeded_error(monkeypatch, fake_database):
     """Un límite operativo excedido deja estado failed y mensaje claro consultable."""
 
-    async def fail_with_limit(_config):
+    async def fail_with_limit(*_args, **_kwargs):
         raise JobLimitExceededError("Máximo de 500000 píxeles superado.")
 
     monkeypatch.setattr(
@@ -512,7 +532,7 @@ def test_execution_job_handles_empty_exception_with_fallback_message(
 ):
     """Una excepción sin texto siempre persiste un mensaje descriptivo consultable."""
 
-    async def fail_silently(_config):
+    async def fail_silently(*_args, **_kwargs):
         raise RuntimeError()
 
     monkeypatch.setattr(
@@ -535,7 +555,7 @@ def test_execution_job_handles_empty_exception_with_fallback_message(
 def test_execution_job_truncates_oversized_error_message(monkeypatch, fake_database):
     """Mensajes de error extensos se acotan sin romper la persistencia ni la consulta."""
 
-    async def fail_with_huge_message(_config):
+    async def fail_with_huge_message(*_args, **_kwargs):
         raise RuntimeError("fallo " * 400)
 
     monkeypatch.setattr(
@@ -574,7 +594,7 @@ def test_execution_job_persists_failed_state_on_cancellation(
         }
     )
 
-    async def cancel_algorithm(_config):
+    async def cancel_algorithm(*_args, **_kwargs):
         raise asyncio.CancelledError
 
     monkeypatch.setattr(
@@ -583,7 +603,7 @@ def test_execution_job_persists_failed_state_on_cancellation(
     )
 
     with pytest.raises(asyncio.CancelledError):
-        asyncio.run(process_scientific_job(job_id, config))
+        asyncio.run(process_scientific_job(job_id, "estimation", config))
 
     status_response = client.get(f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS)
     assert status_response.status_code == 200
@@ -593,14 +613,24 @@ def test_execution_job_persists_failed_state_on_cancellation(
     assert "cancelada" in data["error_message"].lower()
 
 
-def test_failed_job_error_is_isolated_by_organization(fake_database):
+def test_failed_job_error_is_isolated_by_organization(monkeypatch, fake_database):
     """El error de un trabajo fallido solo es consultable por su organización."""
+
+    async def fail_internally(*_args, **_kwargs):
+        raise RuntimeError("Fallo aislado por organización.")
+
+    monkeypatch.setattr(
+        "apps.scientific.app.domains.execution.service_execution.run_scientific_algorithm",
+        fail_internally,
+    )
+
     post_response = client.post(
         "/api/v1/executions/",
         json=estimation_payload(scene_id="scene_fail"),
         headers=HEADERS,
     )
     job_id = post_response.json()["job_id"]
+    assert fake_database.rows[0]["status"] == "failed"
 
     other_org_response = client.get(
         f"/api/v1/executions/{job_id}",
@@ -664,20 +694,102 @@ def test_training_requires_version_to_belong_to_dataset(fake_database):
     assert fake_database.rows == []
 
 
-def test_training_is_persisted_as_queued_and_returns_202(fake_database):
+# =========================================================
+# PRUEBAS S2-155: BASELINE Y FLUJOS CON MOCKS
+# =========================================================
+
+
+def mock_training_file(monkeypatch, csv_content: bytes, valid_checksum: bool = True):
+    checksum = hashlib.sha256(csv_content).hexdigest() if valid_checksum else "0" * 64
+    fetch_file = MagicMock(return_value=(csv_content, checksum))
+    monkeypatch.setattr(
+        "apps.scientific.app.domains.execution.service_execution.fetch_training_file",
+        fetch_file,
+    )
+    return fetch_file
+
+
+def test_model_fetches_training_file_for_version():
+    mock_client = MagicMock()
+    expected_checksum = "a" * 64
+    csv_content = b"clorofila_a\n10.0\n"
+    (
+        mock_client.schema.return_value.table.return_value.select.return_value.eq.return_value
+        .limit.return_value.execute.return_value.data
+    ) = [
+        {
+            "storage_path": f"versions/{VERSION_ID}/training.csv",
+            "checksum": expected_checksum,
+        }
+    ]
+    mock_client.storage.from_.return_value.download.return_value = csv_content
+
+    assert fetch_training_file(mock_client, VERSION_ID) == (
+        csv_content,
+        expected_checksum,
+    )
+    mock_client.schema.return_value.table.return_value.select.return_value.eq.assert_called_once_with(
+        "version_id", VERSION_ID
+    )
+    mock_client.storage.from_.assert_called_once_with("training_files")
+    mock_client.storage.from_.return_value.download.assert_called_once_with(
+        f"versions/{VERSION_ID}/training.csv"
+    )
+
+
+def test_training_is_persisted_as_queued_and_returns_202(fake_database, monkeypatch):
+    csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
+    fetch_file = mock_training_file(monkeypatch, csv_data)
     response = client.post(
         "/api/v1/executions/", json=training_payload(), headers=HEADERS
     )
     assert response.status_code == 202
-    data = response.json()
-    assert data["status"] == "queued"
-    assert data["status_url"] == f"/api/v1/executions/{data['job_id']}"
-    assert len(fake_database.rows) == 1
-
-    # En FastAPI TestClient, las BackgroundTasks se ejecutan sincrónicamente
-    # por lo que el objeto en base de datos ya transitó a "completed".
     assert fake_database.rows[0]["status"] == "completed"
-    assert fake_database.rows[0]["job_type"] == "training"
+    result = fake_database.rows[0]["result"]
+    assert result["prediction_value"] == 15.0
+    assert result["predictions"] == [15.0]
+    assert result["metrics"] == {"mae": 15.0, "rmse": 15.0}
+    fetch_file.assert_called_once_with(fake_database, VERSION_ID)
 
 
+def test_parse_training_csv_rechaza_checksum_invalido():
+    csv_data = b"clorofila_a\n10.0\n"
+    with pytest.raises(ValueError, match="Checksum"):
+        parse_training_csv(csv_data, "0" * 64)
 
+
+def test_parse_training_csv_rechaza_valores_invalidos():
+    csv_data = b"clorofila_a\n10.0\nNA\n30.0\n"
+    with pytest.raises(ValueError, match="no num"):
+        parse_training_csv(csv_data, hashlib.sha256(csv_data).hexdigest())
+
+
+@pytest.mark.parametrize(
+    ("csv_data", "message"),
+    [
+        (b"", "vacío"),
+        (b"\xff\xfe", "UTF-8"),
+        (b"temperatura\n10\n", "columna objetivo"),
+        (b"clorofila_a\nNaN\n", "no num"),
+        (b"clorofila_a\nInf\n", "no num"),
+    ],
+)
+def test_parse_training_csv_rechaza_insumos_invalidos(csv_data, message):
+    with pytest.raises(ValueError, match=message):
+        parse_training_csv(csv_data, hashlib.sha256(csv_data).hexdigest())
+
+
+def test_baseline_evaluacion_no_modifica_media():
+    train_data = [{"clorofila_a": 10.0}, {"clorofila_a": 20.0}]
+    val_data = [{"clorofila_a": 100.0}, {"clorofila_a": 200.0}]
+    result = calculate_baseline(train_data, val_data)
+    assert result["prediction_value"] == 15.0
+    assert result["predictions"] == [15.0, 15.0]
+    assert result["metrics"]["mae"] == 135.0
+
+
+def test_baseline_falla_con_particiones_vacias():
+    with pytest.raises(ValueError, match="entrenamiento vacío"):
+        calculate_baseline([], [{"clorofila_a": 10.0}])
+    with pytest.raises(ValueError, match="evaluación vacío"):
+        calculate_baseline([{"clorofila_a": 10.0}], [])

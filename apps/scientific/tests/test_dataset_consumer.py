@@ -9,7 +9,7 @@ import pytest
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "dummy-secret-key")
 
-from app.dataset_consumer import (  # noqa: E402
+from app.dataset_consumer import (
     DatasetContractError,
     fetch_and_verify_training_dataset,
 )

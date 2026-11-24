@@ -2,17 +2,18 @@ import secrets
 from collections.abc import Callable
 from typing import Annotated
 
-from apps.api.app.core.auth import (
+from fastapi import Depends, Header, HTTPException, Security, status
+from fastapi.security import HTTPAuthorizationCredentials
+
+from apps.scientific.app.core.auth import (
     AuthException as SupabaseAuthException,
 )
-from apps.api.app.core.auth import (
+from apps.scientific.app.core.auth import (
     security,
     verify_supabase_jwt,
 )
-from apps.api.app.core.config import settings
-from apps.api.app.core.permissions import has_permission
-from fastapi import Depends, Header, HTTPException, Security, status
-from fastapi.security import HTTPAuthorizationCredentials
+from apps.scientific.app.core.config import settings
+from apps.scientific.app.core.permissions import has_permission
 
 __all__ = [
     "mock_get_current_user",

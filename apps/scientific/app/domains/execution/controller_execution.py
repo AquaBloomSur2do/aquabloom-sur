@@ -1,5 +1,14 @@
 from uuid import UUID
 
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    status,
+)
+
 from apps.scientific.app.core.database import supabase
 from apps.scientific.app.core.dependencies import (
     require_authenticated_user,
@@ -17,14 +26,6 @@ from apps.scientific.app.domains.execution.service_execution import (
     create_execution_job_service,
     get_job_status_service,
     process_scientific_job,
-)
-from fastapi import (
-    APIRouter,
-    BackgroundTasks,
-    Depends,
-    Header,
-    HTTPException,
-    status,
 )
 
 router = APIRouter(prefix="/api/v1/executions", tags=["Executions"])
@@ -93,7 +94,7 @@ def create_execution_job(
 
     if idempotency_key == "":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="La clave de idempotencia no puede estar vacía.",
         )
 

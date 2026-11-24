@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     core_api_url: str = "http://localhost:8000"
     job_timeout_seconds: float = Field(default=10.0, gt=0)
+    internal_service_token: SecretStr | None = None
 
     # Variables obligatorias (sin valor por defecto)
     supabase_url: str

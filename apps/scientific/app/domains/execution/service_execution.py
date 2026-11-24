@@ -16,13 +16,16 @@ from apps.scientific.app.domains.execution.domain_execution import (
     build_job_accepted_response,
     build_running_update_payload,
     build_timeout_error_message,
+    calculate_baseline,
     format_exception_error_message,
     format_limit_exceeded_error_message,
     job_matches_request,
+    parse_training_csv,
     resolve_job_timeout,
-    run_scientific_algorithm,
+    split_training_validation,
 )
 from apps.scientific.app.domains.execution.model_execution import (
+    fetch_training_file,
     find_scientific_job_in_db,
     get_dataset_version_for_training,
     has_active_organization_membership,
@@ -57,6 +60,34 @@ def _persist_job_failure(job_id: str, error_message: str) -> None:
             "No se pudo persistir el estado fallido para el trabajo %s.", job_id
         )
 
+        
+async def run_scientific_algorithm(
+    client, job_type: str, config: dict[str, Any]
+) -> dict[str, Any]:
+    """Orquesta la carga de datos y el procesamiento del trabajo científico."""
+    if job_type != "training":
+        await asyncio.sleep(1)
+        return {"message": f"Tipo de trabajo '{job_type}' no implementado aún."}
+
+    version_id = config.get("version_id")
+    if not version_id:
+        raise ValueError("Falta version_id en la configuración.")
+
+    file_bytes, checksum = await asyncio.to_thread(
+        fetch_training_file, client, str(version_id)
+    )
+    raw_data = parse_training_csv(file_bytes, checksum)
+    train_data, val_data = split_training_validation(raw_data, split_ratio=0.8)
+    return calculate_baseline(train_data, val_data)
+
+
+async def _update_scientific_job(
+    client, job_id: str, update_payload: dict[str, Any]
+) -> None:
+    await asyncio.to_thread(
+        update_scientific_job_in_db, client, job_id, update_payload
+    )
+
 
 def validate_training_version_service(client, config: TrainingConfig) -> None:
     version = get_dataset_version_for_training(client, config.version_id)
@@ -82,6 +113,7 @@ def validate_training_version_service(client, config: TrainingConfig) -> None:
 
 async def process_scientific_job(
     job_id: str,
+    job_type: str,
     config: dict[str, Any],
     *,
     timeout_seconds: float | None = None,
@@ -94,18 +126,18 @@ async def process_scientific_job(
         effective_timeout = resolve_job_timeout(
             JOB_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
         )
-        update_scientific_job_in_db(
+        await _update_scientific_job(
             supabase,
             job_id,
             build_running_update_payload(_utc_now_iso()),
         )
 
         result = await asyncio.wait_for(
-            run_scientific_algorithm(config),
+            run_scientific_algorithm(supabase, job_type, config),
             timeout=effective_timeout,
         )
 
-        update_scientific_job_in_db(
+        await _update_scientific_job(
             supabase,
             job_id,
             build_completed_update_payload(result, _utc_now_iso()),
@@ -244,7 +276,10 @@ def create_execution_job_service(
         )
 
     background_tasks.add_task(
-        process_scientific_job, str(inserted_job["id"]), config
+        process_scientific_job,
+        str(inserted_job["id"]),
+        payload.job_type,
+        config,
     )
     return build_job_accepted_response(inserted_job)
 
