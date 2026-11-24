@@ -1,10 +1,10 @@
 import asyncio
 import hashlib
-import importlib
 import json
 import os
 import sqlite3
 import uuid
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,6 +22,10 @@ os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test-secret-token")
 
 from apps.scientific.app.core.config import settings as scientific_settings
 from apps.scientific.app.core.dependencies import require_authenticated_user
+from apps.scientific.app.domains.execution import (
+    controller_execution,
+    service_execution,
+)
 from apps.scientific.app.domains.execution.domain_execution import (
     MAX_ERROR_MESSAGE_LENGTH,
     JobLimitExceededError,
@@ -35,7 +39,7 @@ from apps.scientific.app.domains.execution.model_execution import (
 from apps.scientific.app.domains.execution.service_execution import (
     process_scientific_job,
 )
-from apps.scientific.app.main import app
+from apps.scientific.app.main import app, create_app
 
 client = TestClient(app)
 
@@ -837,7 +841,7 @@ def test_get_training_job_status_exposes_full_structured_result(
 
 def _init_persistent_sqlite_db(db_path: Path) -> None:
     """Inicializa en disco el esquema de scientific_jobs (migraciones 022 y 023)."""
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.executescript(
             """
             CREATE TABLE scientific_jobs (
@@ -877,12 +881,15 @@ def _init_persistent_sqlite_db(db_path: Path) -> None:
             );
             """
         )
-        conn.execute(
+        conn.executemany(
             """
             INSERT INTO memberships (user_id, organization_id, status, organization_status)
             VALUES (?, ?, 'active', 'active')
             """,
-            (USER_ID, ORGANIZATION_ID),
+            [
+                (USER_ID, ORGANIZATION_ID),
+                (USER_ID, OTHER_ORGANIZATION_ID),
+            ],
         )
         conn.execute(
             """
@@ -954,7 +961,7 @@ class _PersistentSqliteQuery:
 
     def execute(self):
         sql_table, mapped_filters = self._resolve_table_and_filters()
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.row_factory = sqlite3.Row
 
             if self.insert_payload is not None:
@@ -1033,66 +1040,59 @@ def test_job_status_and_result_persist_across_api_restart(
     tmp_path, monkeypatch
 ):
     """Tras reiniciar la API, el estado y resultado completados siguen disponibles (S2-167)."""
-    import apps.scientific.app.domains.execution.controller_execution as controller_mod
-    import apps.scientific.app.domains.execution.service_execution as service_mod
-    import apps.scientific.app.main as scientific_main
-
     db_path = tmp_path / "scientific_persistent.db"
     _init_persistent_sqlite_db(db_path)
 
     csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
     checksum = hashlib.sha256(csv_data).hexdigest()
 
+    first_app = create_app()
+    restarted_app = create_app()
+
     try:
         # 1. Primera instancia de la API conectada a almacenamiento persistente en disco
         first_db_client = PersistentSqliteClient(db_path)
-        monkeypatch.setattr(controller_mod, "supabase", first_db_client)
-        monkeypatch.setattr(service_mod, "supabase", first_db_client)
-        monkeypatch.setattr(
-            service_mod,
-            "fetch_training_file",
-            lambda _client, _version_id: (csv_data, checksum),
-        )
-        scientific_main.app.dependency_overrides[require_authenticated_user] = (
+        monkeypatch.setattr(controller_execution, "supabase", first_db_client)
+        monkeypatch.setattr(service_execution, "supabase", first_db_client)
+        first_app.dependency_overrides[require_authenticated_user] = (
             fake_authenticated_user
         )
 
-        with TestClient(scientific_main.app) as first_api_client:
-            create_response = first_api_client.post(
-                "/api/v1/executions/",
-                json=training_payload(),
-                headers=HEADERS,
+        with monkeypatch.context() as mp:
+            mp.setattr(
+                service_execution,
+                "fetch_training_file",
+                lambda _client, _version_id: (csv_data, checksum),
             )
-            assert create_response.status_code == 202
-            job_id = create_response.json()["job_id"]
+            with TestClient(first_app) as first_api_client:
+                create_response = first_api_client.post(
+                    "/api/v1/executions/",
+                    json=training_payload(),
+                    headers=HEADERS,
+                )
+                assert create_response.status_code == 202
+                job_id = create_response.json()["job_id"]
 
-            initial_status = first_api_client.get(
-                f"/api/v1/executions/{job_id}",
-                headers=AUTH_HEADERS,
-            )
-            assert initial_status.status_code == 200
-            initial_body = initial_status.json()
-            assert initial_body["status"] == "completed"
-            assert initial_body["result"] is not None
+                initial_status = first_api_client.get(
+                    f"/api/v1/executions/{job_id}",
+                    headers=AUTH_HEADERS,
+                )
+                assert initial_status.status_code == 200
+                initial_body = initial_status.json()
+                assert initial_body["status"] == "completed"
+                assert initial_body["result"] is not None
 
-        # 2. Simular caída/reinicio completo del proceso de la API (limpieza en memoria + reload)
-        scientific_main.app.dependency_overrides.clear()
-        controller_mod.supabase = None
-        service_mod.supabase = None
-
-        controller_mod = importlib.reload(controller_mod)
-        service_mod = importlib.reload(service_mod)
-        scientific_main = importlib.reload(scientific_main)
-
+        # 2. Descartar la primera instancia y crear un cliente limpio tras el reinicio
+        first_app.dependency_overrides.clear()
         restarted_db_client = PersistentSqliteClient(db_path)
-        controller_mod.supabase = restarted_db_client
-        service_mod.supabase = restarted_db_client
-        scientific_main.app.dependency_overrides[require_authenticated_user] = (
+        monkeypatch.setattr(controller_execution, "supabase", restarted_db_client)
+        monkeypatch.setattr(service_execution, "supabase", restarted_db_client)
+        restarted_app.dependency_overrides[require_authenticated_user] = (
             fake_authenticated_user
         )
 
-        # 3. Consultar el mismo job_id en la nueva instancia de la API tras el reinicio
-        with TestClient(scientific_main.app) as restarted_api_client:
+        # 3. Consultar el mismo job_id en la nueva instancia sin mockear fetch_training_file
+        with TestClient(restarted_app) as restarted_api_client:
             recovered_response = restarted_api_client.get(
                 f"/api/v1/executions/{job_id}",
                 headers=AUTH_HEADERS,
@@ -1100,17 +1100,24 @@ def test_job_status_and_result_persist_across_api_restart(
             assert recovered_response.status_code == 200
             recovered_body = recovered_response.json()
 
+            assert recovered_body == initial_body
             assert recovered_body["job_id"] == job_id
+            assert recovered_body["job_type"] == "training"
             assert recovered_body["status"] == "completed"
+            assert recovered_body["dataset_version_id"] == VERSION_ID
+            assert recovered_body["requested_by"] == USER_ID
+            assert recovered_body["created_at"] is not None
+            assert recovered_body["started_at"] is not None
             assert recovered_body["completed_at"] is not None
-            assert recovered_body["result"] == initial_body["result"]
+            assert recovered_body["error_message"] is None
             assert recovered_body["result"]["prediction_value"] == 15.0
             assert recovered_body["result"]["metrics"] == {
                 "mae": 15.0,
                 "rmse": 15.0,
             }
 
-            # Verificar que el aislamiento por organización se mantiene tras reiniciar
+            # Verificar aislamiento real por organización sobre scientific_jobs en disco
+            # (USER_ID es miembro activo de OTHER_ORGANIZATION_ID, por lo que el 404 proviene de scientific_jobs)
             forbidden_response = restarted_api_client.get(
                 f"/api/v1/executions/{job_id}",
                 headers={
@@ -1120,9 +1127,7 @@ def test_job_status_and_result_persist_across_api_restart(
             )
             assert forbidden_response.status_code == 404
     finally:
-        scientific_main.app.dependency_overrides.clear()
-        importlib.reload(controller_mod)
-        importlib.reload(service_mod)
-        scientific_main = importlib.reload(scientific_main)
-        client.app = scientific_main.app
+        first_app.dependency_overrides.clear()
+        restarted_app.dependency_overrides.clear()
+
         
