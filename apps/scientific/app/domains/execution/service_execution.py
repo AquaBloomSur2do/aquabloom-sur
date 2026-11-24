@@ -24,6 +24,7 @@ from apps.scientific.app.domains.execution.domain_execution import (
     parse_training_csv,
     resolve_job_timeout,
     split_training_validation,
+    validate_and_normalize_inference_points,
     verify_and_deserialize_model_artifact,
 )
 from apps.scientific.app.domains.execution.model_execution import (
@@ -66,30 +67,34 @@ def _persist_job_failure(job_id: str, error_message: str) -> None:
 
 
 async def run_scientific_algorithm(
-    client, job_type: str, config: dict[str, Any]
+    client,
+    job_type: str,
+    config: dict[str, Any],
+    organization_id: UUID | str | None = None,
 ) -> dict[str, Any]:
     """Orquesta la carga de datos y el procesamiento del trabajo científico."""
     if job_type == "estimation":
         model_id = config.get("model_id")
+        scene_id = config.get("scene_id")
         points = config.get("points")
+        if not isinstance(model_id, str) or not model_id.strip():
+            raise ValueError("Falta model_id en la configuración.")
+        if not isinstance(scene_id, str) or not scene_id.strip():
+            raise ValueError("Falta scene_id en la configuración.")
+        normalized_model_id = model_id.strip()
+        normalized_scene_id = scene_id.strip()
         if points is None:
             await asyncio.sleep(1)
             return {"message": "Tipo de trabajo 'estimation' no implementado aún."}
-        if not model_id:
-            raise ValueError("Falta model_id en la configuración.")
-        if not isinstance(points, list):
-            raise ValueError("points debe ser una lista.")
-        if not points:
-            raise ValueError("La lista de puntos no puede estar vacía.")
-
-        normalized_points = []
-        for point in points:
-            if not isinstance(point, dict):
-                raise TypeError("Cada punto debe ser un objeto.")
-            normalized_points.append(point)
+        normalized_points = validate_and_normalize_inference_points(points)
+        if organization_id is None or not str(organization_id).strip():
+            raise ValueError("Falta organization_id para ejecutar la inferencia.")
 
         artifact_ref = await asyncio.to_thread(
-            get_registered_model_artifact_ref, client, str(model_id)
+            get_registered_model_artifact_ref,
+            client,
+            normalized_model_id,
+            organization_id,
         )
         artifact_bytes = await asyncio.to_thread(
             download_model_artifact_from_storage,
@@ -101,12 +106,18 @@ async def run_scientific_algorithm(
             artifact_bytes, artifact_ref["checksum"]
         )
         predictions = execute_point_inference(artifact, normalized_points)
-        return {
-            "model_id": str(model_id),
+        model_type = "baseline" if "prediction_value" in artifact else "linear"
+        result = {
+            "model_id": normalized_model_id,
+            "scene_id": normalized_scene_id,
+            "model_type": model_type,
             "artifact_checksum": artifact_ref["checksum"],
             "point_count": len(predictions),
             "predictions": predictions,
         }
+        if model_type == "baseline":
+            result["baseline"] = artifact.get("strategy", "baseline")
+        return result
 
     if job_type != "training":
         await asyncio.sleep(1)
@@ -134,9 +145,7 @@ async def run_scientific_algorithm(
 async def _update_scientific_job(
     client, job_id: str, update_payload: dict[str, Any]
 ) -> None:
-    await asyncio.to_thread(
-        update_scientific_job_in_db, client, job_id, update_payload
-    )
+    await asyncio.to_thread(update_scientific_job_in_db, client, job_id, update_payload)
 
 
 def validate_training_version_service(client, config: TrainingConfig) -> None:
@@ -167,6 +176,7 @@ async def process_scientific_job(
     config: dict[str, Any],
     *,
     timeout_seconds: float | None = None,
+    organization_id: UUID | str | None = None,
 ) -> None:
     """Trabajo asíncrono con control estricto de timeout, límites, fallos y persistencia (S2-150)."""
     if supabase is None:
@@ -183,7 +193,12 @@ async def process_scientific_job(
         )
 
         result = await asyncio.wait_for(
-            run_scientific_algorithm(supabase, job_type, config),
+            run_scientific_algorithm(
+                supabase,
+                job_type,
+                config,
+                organization_id=organization_id,
+            ),
             timeout=effective_timeout,
         )
 
@@ -191,7 +206,15 @@ async def process_scientific_job(
         dataset_version_id = config.get("version_id") or config.get(
             "dataset_version_id"
         )
-        model_version_id = config.get("model_version_id")
+        model_version_candidate = config.get("model_version_id") or config.get(
+            "model_id"
+        )
+        model_version_id = None
+        if model_version_candidate:
+            try:
+                model_version_id = str(UUID(str(model_version_candidate)))
+            except (ValueError, TypeError):
+                pass
         if dataset_version_id:
             completed_payload["dataset_version_id"] = str(dataset_version_id)
         if model_version_id:
@@ -305,9 +328,7 @@ def create_execution_job_service(
         "organization_id": str(organization_id),
         "requested_by": str(user_id),
     }
-    if payload.job_type == "training" and isinstance(
-        payload.config, TrainingConfig
-    ):
+    if payload.job_type == "training" and isinstance(payload.config, TrainingConfig):
         db_payload["dataset_version_id"] = str(payload.config.version_id)
     if idempotency_key is not None:
         db_payload["idempotency_key"] = idempotency_key
@@ -344,5 +365,6 @@ def create_execution_job_service(
         str(inserted_job["id"]),
         payload.job_type,
         config,
+        organization_id=str(organization_id),
     )
     return build_job_accepted_response(inserted_job)

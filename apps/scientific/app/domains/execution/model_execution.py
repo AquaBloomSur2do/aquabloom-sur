@@ -73,17 +73,23 @@ def fetch_training_file(client, version_id: UUID | str) -> tuple[bytes, str]:
 
 
 def get_registered_model_artifact_ref(
-    client, model_id: UUID | str
+    client, model_id: UUID | str, organization_id: UUID | str
 ) -> dict[str, Any]:
     """Obtiene la referencia del artefacto desde el trabajo científico."""
     normalized_model_id = str(model_id).strip()
     if not normalized_model_id:
         raise ValueError("model_id no puede estar vacío.")
+    normalized_org_id = str(organization_id).strip()
+    if not normalized_org_id:
+        raise ValueError("organization_id no puede estar vacío.")
 
     jobs = (
         client.table("scientific_jobs")
         .select("result")
         .eq("id", normalized_model_id)
+        .eq("organization_id", normalized_org_id)
+        .eq("job_type", "training")
+        .eq("status", "completed")
         .limit(1)
         .execute()
         .data
@@ -113,8 +119,8 @@ def get_registered_model_artifact_ref(
     ):
         raise ValueError("La referencia del artefacto no contiene checksum válido.")
     return {
-        "bucket": bucket,
-        "storage_path": storage_path,
+        "bucket": bucket.strip(),
+        "storage_path": storage_path.strip(),
         "checksum": checksum,
     }
 
@@ -127,9 +133,13 @@ def download_model_artifact_from_storage(
         raise ValueError("bucket no puede estar vacío.")
     if not isinstance(storage_path, str) or not storage_path.strip():
         raise ValueError("storage_path no puede estar vacío.")
+    normalized_bucket = bucket.strip()
+    normalized_storage_path = storage_path.strip()
 
     try:
-        artifact_bytes = client.storage.from_(bucket).download(storage_path)
+        artifact_bytes = client.storage.from_(normalized_bucket).download(
+            normalized_storage_path
+        )
     except StorageException as exc:
         raise ValueError("Artefacto del modelo no encontrado en Storage.") from exc
     if not isinstance(artifact_bytes, bytes):
@@ -164,11 +174,7 @@ def insert_scientific_job_in_db(
     client, db_payload: dict[str, Any]
 ) -> dict[str, Any] | None:
     insert_result = client.table("scientific_jobs").insert(db_payload).execute()
-    return (
-        insert_result.data[0]
-        if getattr(insert_result, "data", None)
-        else None
-    )
+    return insert_result.data[0] if getattr(insert_result, "data", None) else None
 
 
 def update_scientific_job_in_db(
