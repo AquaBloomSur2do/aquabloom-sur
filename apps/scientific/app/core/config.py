@@ -1,10 +1,12 @@
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     environment: str = "development"
     cors_origins: str = "http://localhost:5173"
+    core_api_url: str = "http://localhost:8000"
+    job_timeout_seconds: float = Field(default=10.0, gt=0)
     internal_service_token: SecretStr | None = None
 
     # Variables obligatorias (sin valor por defecto)
@@ -12,7 +14,10 @@ class Settings(BaseSettings):
     supabase_key: SecretStr
     supabase_jwt_secret: SecretStr | None = None
 
-    model_config = SettingsConfigDict(env_file=(".env", "apps/scientific/.env", "apps/api/.env", "../../.env"), extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(".env", "apps/scientific/.env", "apps/api/.env", "../../.env"),
+        extra="ignore",
+    )
 
     @property
     def cors_origins_list(self) -> list[str]:
@@ -20,3 +25,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+

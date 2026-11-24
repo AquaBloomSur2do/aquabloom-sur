@@ -12,19 +12,38 @@ PILOT_WIDTH = 100
 PILOT_HEIGHT = 100
 PROVENANCE = "Synthetic Sentinel-2 L2A Pilot"
 DEFAULT_ACQUISITION_DATE = "2025-01-15"
+DEFAULT_RANDOM_SEED = 20250115
+PILOT_DATASET_VERSION = "pilot-fixture-v1"
+PILOT_SCENE_IDENTIFIER = "SYNTHETIC_SENTINEL2_L2A_PILOT_20250115"
 
 
 def generate_pilot_data(
-    output_dir: Path, acquisition_date: str = DEFAULT_ACQUISITION_DATE
+    output_dir: Path,
+    acquisition_date: str = DEFAULT_ACQUISITION_DATE,
+    seed: int = DEFAULT_RANDOM_SEED,
 ) -> tuple[Path, Path]:
     date.fromisoformat(acquisition_date)
+    if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+        raise ValueError("La semilla debe ser un entero no negativo.")
+
     output_dir.mkdir(parents=True, exist_ok=True)
     raster_path = output_dir / "pilot_sentinel2_l2a.tif"
     metadata_path = output_dir / "metadata.json"
 
     rows, columns = np.indices((PILOT_HEIGHT, PILOT_WIDTH))
-    band_b04 = (900 + columns * 3 + rows * 2).astype(np.uint16)
-    band_b05 = (1300 + columns * 4 + rows * 2).astype(np.uint16)
+    rng = np.random.default_rng(seed)
+    band_b04 = (
+        900
+        + columns * 3
+        + rows * 2
+        + rng.integers(-10, 11, (PILOT_HEIGHT, PILOT_WIDTH))
+    ).astype(np.uint16)
+    band_b05 = (
+        1300
+        + columns * 4
+        + rows * 2
+        + rng.integers(-10, 11, (PILOT_HEIGHT, PILOT_WIDTH))
+    ).astype(np.uint16)
     water_mask = (
         (columns - PILOT_WIDTH // 2) ** 2 + (rows - PILOT_HEIGHT // 2) ** 2 <= 38**2
     ).astype(np.uint16)
@@ -51,9 +70,23 @@ def generate_pilot_data(
 
     checksum = hashlib.sha256(raster_path.read_bytes()).hexdigest()
     metadata = {
+        "id": "pilot_sentinel2_l2a",
+        "provider": "Sentinel-2",
         "acquisition_date": acquisition_date,
         "provenance": PROVENANCE,
         "is_synthetic": True,
+        "pilot_fixture": {
+            "dataset_version": PILOT_DATASET_VERSION,
+            "dataset_is_synthetic": True,
+            "scene_identifier": PILOT_SCENE_IDENTIFIER,
+            "scene_is_synthetic": True,
+            "random_seed": seed,
+            "inputs": [
+                {"name": "B04", "is_synthetic": True},
+                {"name": "B05", "is_synthetic": True},
+                {"name": "water_mask", "is_synthetic": True},
+            ],
+        },
         "raster_file": raster_path.name,
         "sha256": checksum,
         "width": PILOT_WIDTH,
@@ -80,9 +113,12 @@ def main() -> None:
         default=Path(__file__).resolve().parents[1] / "data",
     )
     parser.add_argument("--date", default=DEFAULT_ACQUISITION_DATE)
+    parser.add_argument("--seed", type=int, default=DEFAULT_RANDOM_SEED)
     args = parser.parse_args()
 
-    raster_path, metadata_path = generate_pilot_data(args.output_dir, args.date)
+    raster_path, metadata_path = generate_pilot_data(
+        args.output_dir, args.date, args.seed
+    )
     print(f"Created {raster_path} and {metadata_path}")
 
 

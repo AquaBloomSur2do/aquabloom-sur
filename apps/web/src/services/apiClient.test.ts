@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../lib/supabase', () => ({
   supabase: {
     auth: {
-      getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+      getSession: vi.fn().mockResolvedValue({
+        data: { session: { access_token: 'test-access-token' } },
+      }),
       signOut: vi.fn(),
     },
   },
@@ -38,5 +40,37 @@ describe('apiClient', () => {
       'http://localhost:8000/api/v1/lakes',
       expect.objectContaining({ method: 'GET' }),
     );
+  });
+
+  it('publishes a dataset version through the authorized API endpoint', async () => {
+    const publishedVersion = {
+      id: 'version-1',
+      dataset_id: 'dataset-1',
+      version_number: 1,
+      status: 'published',
+      created_at: '2026-10-27T00:00:00Z',
+      published_at: '2026-10-29T00:00:00Z',
+    };
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify(publishedVersion), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const { apiClient } = await import('./apiClient');
+
+    const result = await apiClient.publishDatasetVersion('version-1');
+
+    expect(fetch).toHaveBeenCalledWith(
+      'http://localhost:8000/api/v1/datasets/versions/version-1/publish',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer test-access-token',
+        }),
+      }),
+    );
+    expect(vi.mocked(fetch).mock.calls[0]?.[1]?.body).toBeUndefined();
+    expect(result).toEqual(publishedVersion);
   });
 });

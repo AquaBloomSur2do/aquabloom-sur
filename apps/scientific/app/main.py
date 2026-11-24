@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -8,11 +9,20 @@ from apps.scientific.app.core.config import settings
 from apps.scientific.app.domains.execution.controller_execution import (
     router as execution_router,
 )
+from apps.scientific.app.domains.model_scope.controller_model_scope import (
+    router as model_scope_router,
+)
+from apps.scientific.app.domains.prediction.controller_prediction import (
+    router as prediction_router,
+)
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
     {"name": "Scientific", "description": "Entrenamiento de modelos y estimaciones."},
-    {"name": "Executions", "description": "Ejecución y estado de trabajos científicos."},
+    {
+        "name": "Executions",
+        "description": "Ejecución y estado de trabajos científicos.",
+    },
 ]
 
 app = FastAPI(
@@ -42,12 +52,14 @@ async def validation_exception_handler(request, exc):
         content={
             "error": "Validation Error",
             "message": "Parámetros de entrada inválidos",
-            "details": exc.errors(),
+            "details": jsonable_encoder(exc.errors()),
         },
     )
 
 
 app.include_router(execution_router)
+app.include_router(model_scope_router)
+app.include_router(prediction_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -59,6 +71,8 @@ app.add_middleware(
         "Content-Type",
         "Accept",
         "X-Idempotency-Key",
+        "X-Internal-Token",
+        "X-Organization-ID",
     ],
 )
 
@@ -77,4 +91,3 @@ def health_check():
         "version": "v1",
         "status": "ok",
     }
-
