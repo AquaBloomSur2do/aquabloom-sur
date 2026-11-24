@@ -1,2 +1,2 @@
-ALTER TABLE public.scenes
+ALTER TABLE satellite.scenes
 ADD COLUMN IF NOT EXISTS is_experimental BOOLEAN NOT NULL DEFAULT FALSE;

@@ -1,7 +1,7 @@
 -- Crear la tabla audit_events
 CREATE TABLE IF NOT EXISTS public.audit_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    actor UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    actor UUID NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
     action VARCHAR(255) NOT NULL,
     resource_type VARCHAR(255) NOT NULL,
     resource_id UUID NOT NULL,
