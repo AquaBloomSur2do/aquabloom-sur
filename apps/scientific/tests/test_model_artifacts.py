@@ -12,15 +12,18 @@ from apps.scientific.app.domains.execution.model_artifacts import (
 
 
 class FakeStorageBucket:
-    def __init__(self):
+    def __init__(self, remove_error=None):
         self.uploaded = []
         self.removed = []
+        self.remove_error = remove_error
 
     def upload(self, path, data, file_options):
         self.uploaded.append((path, data, file_options))
         return {"path": path}
 
     def remove(self, paths):
+        if self.remove_error is not None:
+            raise self.remove_error
         self.removed.extend(paths)
         return {"removed": paths}
 
@@ -39,11 +42,13 @@ class FakeQuery:
     def __init__(self, database, payload=None):
         self.database = database
         self.payload = payload
+        self.filters = []
 
     def select(self, _columns):
         return self
 
-    def eq(self, _column, _value):
+    def eq(self, column, value):
+        self.filters.append((column, value))
         return self
 
     def limit(self, _limit):
@@ -58,19 +63,46 @@ class FakeQuery:
             if self.database.update_error is not None:
                 raise self.database.update_error
             self.database.update_payload = self.payload
-        return SimpleNamespace(data=[{"result": self.database.previous_result}])
+            if self.database.job_exists:
+                return SimpleNamespace(
+                    data=[
+                        {"id": self.database.job_id, "result": self.payload["result"]}
+                    ]
+                )
+            return SimpleNamespace(data=[])
+        if self.database.job_exists:
+            return SimpleNamespace(
+                data=[
+                    {
+                        "id": self.database.job_id,
+                        "result": self.database.previous_result,
+                    }
+                ]
+            )
+        return SimpleNamespace(data=[])
 
 
 class FakeClient:
-    def __init__(self, bucket=None, previous_result=None, update_error=None):
+    def __init__(
+        self,
+        bucket=None,
+        previous_result=None,
+        update_error=None,
+        job_exists=True,
+    ):
         self.storage = FakeStorage(bucket or FakeStorageBucket())
         self.previous_result = previous_result
         self.update_error = update_error
         self.update_payload = None
+        self.job_exists = job_exists
+        self.job_id = "11111111-1111-4111-8111-111111111111"
+        self.queries = []
 
     def table(self, table_name):
         assert table_name == "scientific_jobs"
-        return FakeQuery(self)
+        query = FakeQuery(self)
+        self.queries.append(query)
+        return query
 
 
 def test_calculate_sha256_is_deterministic():
@@ -85,10 +117,28 @@ def test_calculate_sha256_is_deterministic():
 
 
 def test_build_model_artifact_storage_path():
-    assert (
-        build_model_artifact_storage_path("job-123", "../model.bin")
-        == "models/job-123/model.bin"
+    job_id = "11111111-1111-4111-8111-111111111111"
+    assert build_model_artifact_storage_path(job_id, "model.bin") == (
+        f"models/{job_id}/model.bin"
     )
+
+
+@pytest.mark.parametrize(
+    "job_id",
+    ["job-123", "../otro", "/tmp/otro", "11111111-1111-4111-8111-111111111111/extra"],
+)
+def test_build_model_artifact_storage_path_rejects_invalid_job_id(job_id):
+    with pytest.raises(ValueError, match="UUID"):
+        build_model_artifact_storage_path(job_id, "model.bin")
+
+
+@pytest.mark.parametrize(
+    "filename", ["", ".", "..", "../model.bin", "folder/model.bin", "folder\\model.bin"]
+)
+def test_build_model_artifact_storage_path_rejects_invalid_filename(filename):
+    job_id = "11111111-1111-4111-8111-111111111111"
+    with pytest.raises(ValueError, match="filename"):
+        build_model_artifact_storage_path(job_id, filename)
 
 
 def test_save_model_artifact_uploads_and_updates_job_result():
@@ -97,10 +147,11 @@ def test_save_model_artifact_uploads_and_updates_job_result():
         bucket=bucket,
         previous_result={"accuracy": 0.98, "processed_pixels": 102400},
     )
+    job_id = "11111111-1111-4111-8111-111111111111"
 
     reference = save_model_artifact(
         client,
-        "job-123",
+        job_id,
         b"model-content",
         filename="model.bin",
     )
@@ -108,7 +159,7 @@ def test_save_model_artifact_uploads_and_updates_job_result():
     assert client.storage.requested_bucket == "model_artifacts"
     assert bucket.uploaded == [
         (
-            "models/job-123/model.bin",
+            f"models/{job_id}/model.bin",
             b"model-content",
             {"content-type": "application/octet-stream"},
         )
@@ -116,17 +167,18 @@ def test_save_model_artifact_uploads_and_updates_job_result():
     assert client.update_payload["result"]["accuracy"] == 0.98
     assert client.update_payload["result"]["processed_pixels"] == 102400
     assert client.update_payload["result"]["model_artifact"] == {
-        "job_id": "job-123",
+        "job_id": job_id,
         "bucket": "model_artifacts",
-        "storage_path": "models/job-123/model.bin",
+        "storage_path": f"models/{job_id}/model.bin",
         "checksum": hashlib.sha256(b"model-content").hexdigest(),
         "size_bytes": len(b"model-content"),
     }
-    assert reference.job_id == "job-123"
+    assert reference.job_id == job_id
     assert reference.bucket == "model_artifacts"
-    assert reference.storage_path == "models/job-123/model.bin"
+    assert reference.storage_path == f"models/{job_id}/model.bin"
     assert reference.checksum == hashlib.sha256(b"model-content").hexdigest()
     assert reference.size_bytes == len(b"model-content")
+    assert all(("id", job_id) in query.filters for query in client.queries)
 
 
 def test_save_model_artifact_removes_upload_when_database_update_fails():
@@ -136,9 +188,63 @@ def test_save_model_artifact_removes_upload_when_database_update_fails():
         bucket=bucket,
         update_error=error,
     )
+    job_id = "11111111-1111-4111-8111-111111111111"
 
     with pytest.raises(APIError):
-        save_model_artifact(client, "job-123", b"model-content")
+        save_model_artifact(client, job_id, b"model-content")
 
-    assert bucket.uploaded[0][0] == "models/job-123/model.pkl"
-    assert bucket.removed == ["models/job-123/model.pkl"]
+    assert bucket.uploaded[0][0] == f"models/{job_id}/model.pkl"
+    assert bucket.removed == [f"models/{job_id}/model.pkl"]
+
+
+def test_save_model_artifact_rejects_missing_job_before_upload():
+    bucket = FakeStorageBucket()
+    client = FakeClient(bucket=bucket, job_exists=False)
+    job_id = "11111111-1111-4111-8111-111111111111"
+
+    with pytest.raises(ValueError, match="no existe"):
+        save_model_artifact(client, job_id, b"model-content")
+
+    assert bucket.uploaded == []
+    assert bucket.removed == []
+
+
+def test_save_model_artifact_rejects_empty_artifact():
+    job_id = "11111111-1111-4111-8111-111111111111"
+    client = FakeClient()
+
+    with pytest.raises(ValueError, match="vacío"):
+        save_model_artifact(client, job_id, b"")
+
+
+def test_save_model_artifact_normalizes_bucket():
+    bucket = FakeStorageBucket()
+    client = FakeClient(bucket=bucket)
+    job_id = "11111111-1111-4111-8111-111111111111"
+
+    reference = save_model_artifact(
+        client,
+        job_id,
+        b"model-content",
+        bucket="  model_artifacts  ",
+    )
+
+    assert client.storage.requested_bucket == "model_artifacts"
+    assert reference.bucket == "model_artifacts"
+
+
+@pytest.mark.parametrize("job_id", ["job-123", "../otro", "/tmp/otro"])
+def test_save_model_artifact_rejects_invalid_job_id(job_id):
+    client = FakeClient()
+
+    with pytest.raises(ValueError, match="UUID"):
+        save_model_artifact(client, job_id, b"model-content")
+
+
+@pytest.mark.parametrize("bucket", ["", "   ", None])
+def test_save_model_artifact_rejects_invalid_bucket(bucket):
+    job_id = "11111111-1111-4111-8111-111111111111"
+    client = FakeClient()
+
+    with pytest.raises((TypeError, ValueError)):
+        save_model_artifact(client, job_id, b"model-content", bucket=bucket)
