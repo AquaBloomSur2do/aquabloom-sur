@@ -1,7 +1,8 @@
 from uuid import UUID
 
-from apps.api.app.core.permissions import has_permission
 from supabase import Client
+
+from apps.api.app.core.permissions import has_permission
 
 
 def get_active_memberships(client: Client, user_id: UUID) -> list[dict]:
