@@ -75,7 +75,7 @@ def _validate_format(value: str, fmt: str, path: str) -> None:
             ) from exc
     elif fmt == "date-time":
         try:
-            datetime.fromisoformat(value.replace("Z", "+00:00"))
+            datetime.fromisoformat(value)
         except ValueError as exc:
             raise AssertionError(
                 f"{path}: '{value}' no es un datetime ISO válido"
