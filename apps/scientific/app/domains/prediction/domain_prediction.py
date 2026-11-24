@@ -225,6 +225,49 @@ def _extract_warnings(
     return warnings
 
 
+def _extract_usage_limits(
+    result: dict[str, Any],
+    warnings: list[str],
+    points: list[EstimationPoint],
+) -> list[str]:
+    limits: list[str] = []
+    synthetic_flags = (
+        result.get("is_synthetic"),
+        result.get("dataset_is_synthetic"),
+        result.get("scene_is_synthetic"),
+    )
+    if any(flag is True for flag in synthetic_flags):
+        limits.append(
+            "El resultado utiliza datos sintéticos y no representa mediciones observacionales reales."
+        )
+
+    extrapolation_reported = any(
+        point.quality
+        and point.quality.strip().upper() in {"EXTRAPOLATED", "EXTRAPOLATION"}
+        for point in points
+    ) or any(
+        "extrapol" in warning.lower()
+        or "fuera del rango" in warning.lower()
+        or "excede el rango" in warning.lower()
+        for warning in warnings
+    )
+    if extrapolation_reported:
+        limits.append(
+            "Una o más estimaciones están fuera del rango observado por el modelo (extrapolación)."
+        )
+
+    uncertainty = result.get("uncertainty")
+    uncertainty_calibrated = result.get("uncertainty_calibrated") is True or (
+        isinstance(uncertainty, dict) and uncertainty.get("calibrated") is True
+    )
+    if not uncertainty_calibrated:
+        limits.append(
+            "No se dispone de incertidumbre calibrada; el resultado no debe interpretarse como un intervalo de confianza."
+        )
+
+    return limits
+
+
 def build_prediction_detail(
     prediction_row: dict[str, Any],
     scene_row: dict[str, Any] | None = None,
@@ -239,6 +282,7 @@ def build_prediction_detail(
     status_value = _resolve_status(result)
     points = _extract_points(result, variable)
     warnings = _extract_warnings(result, scene_row, status_value, points)
+    usage_limits = _extract_usage_limits(result, warnings, points)
 
     raw_rules = prediction_row.get("rules") or []
     rules = [
@@ -289,6 +333,7 @@ def build_prediction_detail(
         points=points,
         provenance=provenance,
         warnings=warnings,
+        usage_limits=usage_limits,
         created_at=prediction_row["created_at"],
     )
 
