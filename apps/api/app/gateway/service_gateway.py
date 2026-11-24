@@ -1,7 +1,8 @@
 from uuid import uuid4
 
 import httpx
-from fastapi import Request, Response
+from fastapi import Request, Response, status
+from fastapi.responses import JSONResponse
 
 PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 HOP_BY_HOP_HEADERS = {
@@ -17,6 +18,9 @@ HOP_BY_HOP_HEADERS = {
     "upgrade",
 }
 RESPONSE_HEADERS_TO_DROP = HOP_BY_HOP_HEADERS | {"content-encoding"}
+
+DEPENDENCY_UNAVAILABLE_ERROR = "ServiceUnavailable"
+DEPENDENCY_UNAVAILABLE_MESSAGE = "La dependencia solicitada no está disponible."
 
 
 async def forward_proxy_request(
@@ -40,12 +44,23 @@ async def forward_proxy_request(
     if request.url.query:
         target_url = f"{target_url}?{request.url.query}"
 
-    async with httpx.AsyncClient() as client:
-        upstream_response = await client.request(
-            request.method,
-            target_url,
-            headers=headers,
-            content=await request.body(),
+    try:
+        async with httpx.AsyncClient() as client:
+            upstream_response = await client.request(
+                request.method,
+                target_url,
+                headers=headers,
+                content=await request.body(),
+            )
+    except httpx.TransportError:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "error": DEPENDENCY_UNAVAILABLE_ERROR,
+                "message": DEPENDENCY_UNAVAILABLE_MESSAGE,
+                "details": None,
+            },
+            headers={"X-Correlation-ID": correlation_id},
         )
 
     response_headers = {
