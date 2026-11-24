@@ -6,10 +6,14 @@ from collections.abc import Hashable, Iterable
 from typing import Any
 
 from apps.scientific.app.domains.execution.schemas_execution import (
+    BaselineInfo,
     EstimationRequestInput,
     JobCreate,
     ModelScopeSpec,
     PilotMetricsResult,
+    ScientificJobStatusEnum,
+    TrainingMetrics,
+    TrainingResult,
     ValidatedEstimationInput,
 )
 
@@ -75,9 +79,12 @@ def split_training_validation(
 
 
 def calculate_baseline(
-    train_data: list[dict[str, Any]], val_data: list[dict[str, Any]]
+    train_data: list[dict[str, Any]],
+    val_data: list[dict[str, Any]],
+    version: str | None = None,
+    dataset_version_id: str | None = None,
+    model_version_id: str | None = None,
 ) -> dict[str, Any]:
-    """Calcula el baseline exclusivamente con el conjunto de entrenamiento."""
     if not train_data:
         raise ValueError("Conjunto de entrenamiento vacío. Imposible calcular baseline.")
     if not val_data:
@@ -99,13 +106,38 @@ def calculate_baseline(
         / len(val_targets)
     )
 
-    return {
-        "model": "baseline",
-        "prediction_value": prediction_value,
-        "metrics": {"mae": mae, "rmse": rmse},
-        "predictions": predictions,
-    }
+    resolved_version = version or model_version_id or dataset_version_id
+    warnings = [
+        "Modelo baseline de referencia basado en la media de clorofila_a de entrenamiento; no incorpora variables espectrales ni espaciales."
+    ]
+    if len(train_data) < 10 or len(val_data) < 5:
+        warnings.append(
+            f"Tamaño de muestra reducido (entrenamiento={len(train_data)}, validación={len(val_data)}); interpretar métricas con precaución."
+        )
+    if not resolved_version:
+        warnings.append(
+            "Versión de dataset o modelo no informada durante la ejecución del baseline."
+        )
 
+    result = TrainingResult(
+        model="baseline",
+        baseline=BaselineInfo(
+            strategy="mean_clorofila_a",
+            target_variable="clorofila_a",
+            prediction_value=prediction_value,
+            train_sample_count=len(train_data),
+            validation_sample_count=len(val_data),
+        ),
+        prediction_value=prediction_value,
+        predictions=predictions,
+        metrics=TrainingMetrics(mae=mae, rmse=rmse),
+        version=resolved_version,
+        dataset_version_id=dataset_version_id,
+        model_version_id=model_version_id,
+        status=ScientificJobStatusEnum.COMPLETED,
+        warnings=warnings,
+    )
+    return result.model_dump(mode="json")
 
 def validate_group_partition_disjointness(
     training_groups: Iterable[Hashable],

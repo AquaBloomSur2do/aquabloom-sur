@@ -37,6 +37,32 @@ class ScientificJobStatusEnum(str, Enum):
     FAILED = "failed"
 
 
+class TrainingMetrics(BaseModel):
+    mae: float = Field(ge=0.0)
+    rmse: float = Field(ge=0.0)
+
+
+class BaselineInfo(BaseModel):
+    strategy: str = "mean_clorofila_a"
+    target_variable: str = "clorofila_a"
+    prediction_value: float
+    train_sample_count: int = Field(ge=1)
+    validation_sample_count: int = Field(ge=1)
+
+
+class TrainingResult(BaseModel):
+    model: str = "baseline"
+    baseline: BaselineInfo
+    prediction_value: float
+    predictions: list[float]
+    metrics: TrainingMetrics
+    version: str | None = None
+    dataset_version_id: str | None = None
+    model_version_id: str | None = None
+    status: ScientificJobStatusEnum = ScientificJobStatusEnum.COMPLETED
+    warnings: list[str] = Field(default_factory=list)
+
+
 class JobCreate(BaseModel):
     job_type: Literal["training", "modeling", "estimation"]
     config: TrainingConfig | ModelConfig | EstimationConfig
@@ -76,7 +102,7 @@ class JobStatus(BaseModel):
     job_type: ScientificJobType
     status: ScientificJobStatusEnum
     config: dict[str, Any]
-    result: dict[str, Any] | None = None
+    result: TrainingResult | dict[str, Any] | None = None
     dataset_version_id: UUID | None = None
     model_version_id: UUID | None = None
     requested_by: UUID | None = None
@@ -87,7 +113,6 @@ class JobStatus(BaseModel):
     updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-
 
 
 class ModelScopeSpec(BaseModel):
@@ -133,6 +158,7 @@ class ValidatedEstimationInput(BaseModel):
     valid_observation_count: int
     warnings: list[str] = Field(default_factory=list)
 
+
 class PilotMetricsResult(BaseModel):
     sample_count: int = Field(ge=1)
     mae: float = Field(ge=0.0)
@@ -141,4 +167,4 @@ class PilotMetricsResult(BaseModel):
     r2_computable: bool
     r2: float | None = None
     limitations: list[str] = Field(default_factory=list)
-
+    

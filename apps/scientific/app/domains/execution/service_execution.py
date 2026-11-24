@@ -37,16 +37,23 @@ async def run_scientific_algorithm(
         await asyncio.sleep(1)
         return {"message": f"Tipo de trabajo '{job_type}' no implementado aún."}
 
-    version_id = config.get("version_id")
+    version_id = config.get("version_id") or config.get("dataset_version_id")
     if not version_id:
         raise ValueError("Falta version_id en la configuración.")
+    model_version_id = config.get("model_version_id")
 
     file_bytes, checksum = await asyncio.to_thread(
         fetch_training_file, client, str(version_id)
     )
     raw_data = parse_training_csv(file_bytes, checksum)
     train_data, val_data = split_training_validation(raw_data, split_ratio=0.8)
-    return calculate_baseline(train_data, val_data)
+    return calculate_baseline(
+        train_data,
+        val_data,
+        version=str(model_version_id or version_id),
+        dataset_version_id=str(version_id),
+        model_version_id=str(model_version_id) if model_version_id else None,
+    )
 
 
 async def _update_scientific_job(
@@ -101,14 +108,24 @@ async def process_scientific_job(
             timeout=JOB_TIMEOUT_SECONDS,
         )
 
+        completed_payload: dict[str, Any] = {
+            "status": "completed",
+            "result": result,
+            "completed_at": datetime.now(UTC).isoformat(),
+        }
+        dataset_version_id = config.get("version_id") or config.get(
+            "dataset_version_id"
+        )
+        model_version_id = config.get("model_version_id")
+        if dataset_version_id:
+            completed_payload["dataset_version_id"] = str(dataset_version_id)
+        if model_version_id:
+            completed_payload["model_version_id"] = str(model_version_id)
+
         await _update_scientific_job(
             supabase,
             job_id,
-            {
-                "status": "completed",
-                "result": result,
-                "completed_at": datetime.now(UTC).isoformat(),
-            },
+            completed_payload,
         )
 
     except TimeoutError:
@@ -117,7 +134,9 @@ async def process_scientific_job(
             job_id,
             {
                 "status": "failed",
-                "error_message": f"Tiempo máximo de ejecución excedido (Timeout de {JOB_TIMEOUT_SECONDS}s).",
+                "error_message": (
+                    f"Tiempo máximo de ejecución excedido (Timeout de {JOB_TIMEOUT_SECONDS}s)."
+                ),
                 "completed_at": datetime.now(UTC).isoformat(),
             },
         )
@@ -197,6 +216,10 @@ def create_execution_job_service(
         "organization_id": str(organization_id),
         "requested_by": str(user_id),
     }
+    if payload.job_type == "training" and isinstance(
+        payload.config, TrainingConfig
+    ):
+        db_payload["dataset_version_id"] = str(payload.config.version_id)
     if idempotency_key is not None:
         db_payload["idempotency_key"] = idempotency_key
 

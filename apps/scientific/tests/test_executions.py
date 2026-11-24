@@ -552,3 +552,40 @@ def test_baseline_falla_con_particiones_vacias():
         calculate_baseline([], [{"clorofila_a": 10.0}])
     with pytest.raises(ValueError, match="evaluación vacío"):
         calculate_baseline([{"clorofila_a": 10.0}], [])
+
+def test_get_training_job_status_exposes_full_structured_result(
+    fake_database, monkeypatch
+):
+    csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
+    checksum = hashlib.sha256(csv_data).hexdigest()
+    monkeypatch.setattr(
+        "apps.scientific.app.domains.execution.service_execution.fetch_training_file",
+        lambda _client, _version_id: (csv_data, checksum),
+    )
+
+    post_response = client.post(
+        "/api/v1/executions/", json=training_payload(), headers=HEADERS
+    )
+    assert post_response.status_code == 202
+    job_id = post_response.json()["job_id"]
+
+    get_response = client.get(f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS)
+    assert get_response.status_code == 200
+    body = get_response.json()
+
+    assert body["job_id"] == job_id
+    assert body["status"] == "completed"
+    assert body["dataset_version_id"] == VERSION_ID
+
+    result = body["result"]
+    assert result["model"] == "baseline"
+    assert result["baseline"]["strategy"] == "mean_clorofila_a"
+    assert result["baseline"]["train_sample_count"] == 2
+    assert result["baseline"]["validation_sample_count"] == 1
+    assert result["metrics"] == {"mae": 15.0, "rmse": 15.0}
+    assert result["version"] == VERSION_ID
+    assert result["dataset_version_id"] == VERSION_ID
+    assert result["status"] == "completed"
+    assert isinstance(result["warnings"], list)
+    assert len(result["warnings"]) >= 1
+    

@@ -17,6 +17,71 @@ describe('ScientificJobDetail', () => {
     vi.clearAllMocks();
   });
 
+  it('muestra métricas MAE y RMSE, modelo baseline, versión, estado y advertencias en entrenamiento', async () => {
+    vi.mocked(executionsService.getJobStatus).mockResolvedValue({
+      job_id: 'job-train-161',
+      job_type: 'training',
+      status: 'completed',
+      config: {
+        dataset_id: 'dataset-1',
+        version_id: 'version-2026-1',
+      },
+      result: {
+        model: 'baseline',
+        baseline: {
+          strategy: 'mean_clorofila_a',
+          target_variable: 'clorofila_a',
+          prediction_value: 15.0,
+          train_sample_count: 8,
+          validation_sample_count: 2,
+        },
+        prediction_value: 15.0,
+        predictions: [15.0, 15.0],
+        metrics: {
+          mae: 2.3456,
+          rmse: 3.4567,
+        },
+        version: 'version-2026-1',
+        dataset_version_id: 'version-2026-1',
+        model_version_id: null,
+        status: 'completed',
+        warnings: [
+          'Modelo baseline de referencia basado en la media de clorofila_a de entrenamiento.',
+        ],
+      },
+      dataset_version_id: 'version-2026-1',
+      model_version_id: null,
+      requested_by: 'user-1',
+      error_message: null,
+      created_at: '2026-11-23T12:00:00Z',
+      started_at: '2026-11-23T12:00:01Z',
+      completed_at: '2026-11-23T12:00:02Z',
+      updated_at: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/scientific/jobs/job-train-161']}>
+        <Routes>
+          <Route
+            path="/scientific/jobs/:jobId"
+            element={<ScientificJobDetail />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('2.3456')).toBeInTheDocument();
+    expect(screen.getByText('3.4567')).toBeInTheDocument();
+    expect(screen.getByText(/baseline \(mean_clorofila_a\)/i)).toBeInTheDocument();
+    expect(screen.getAllByText('version-2026-1').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Completado').length).toBeGreaterThanOrEqual(2);
+    expect(
+      screen.getByText(
+        'Modelo baseline de referencia basado en la media de clorofila_a de entrenamiento.'
+      )
+    ).toBeInTheDocument();
+  });
+  
   it('muestra la trazabilidad disponible y mantiene deshabilitados los enlaces incompletos', async () => {
     vi.mocked(executionsService.getJobStatus).mockResolvedValue({
       job_id: 'job-123',
