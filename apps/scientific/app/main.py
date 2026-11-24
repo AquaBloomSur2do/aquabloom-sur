@@ -12,11 +12,17 @@ from apps.scientific.app.domains.execution.controller_execution import (
 from apps.scientific.app.domains.model_scope.controller_model_scope import (
     router as model_scope_router,
 )
+from apps.scientific.app.domains.prediction.controller_prediction import (
+    router as prediction_router,
+)
 
 tags_metadata = [
     {"name": "System", "description": "Endpoints del sistema."},
     {"name": "Scientific", "description": "Entrenamiento de modelos y estimaciones."},
-    {"name": "Executions", "description": "Ejecución y estado de trabajos científicos."},
+    {
+        "name": "Executions",
+        "description": "Ejecución y estado de trabajos científicos.",
+    },
 ]
 
 app = FastAPI(
@@ -53,6 +59,7 @@ async def validation_exception_handler(request, exc):
 
 app.include_router(execution_router)
 app.include_router(model_scope_router)
+app.include_router(prediction_router)
 
 app.add_middleware(
     CORSMiddleware,
