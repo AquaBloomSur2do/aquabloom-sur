@@ -1,5 +1,7 @@
 import { apiClient } from './apiClient';
 
+const ACTIVE_ORG_STORAGE_KEY = 'aquabloom:active_organization_id';
+
 export interface JobCreatePayload {
   dataset_version_id?: string;
   job_type: 'TRAINING' | 'ESTIMATION';
@@ -74,12 +76,53 @@ export interface JobStatusResponse {
   updated_at: string | null;
 }
 
+export function setActiveOrganizationId(organizationId: string): void {
+  const normalized = organizationId.trim();
+  if (!normalized) return;
+  try {
+    window.sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, normalized);
+  } catch {
+    // Ignorar restricciones de almacenamiento en entornos sin sessionStorage.
+  }
+}
+
+async function resolveOrganizationId(
+  signal?: AbortSignal,
+): Promise<string | null> {
+  try {
+    const cached = window.sessionStorage.getItem(ACTIVE_ORG_STORAGE_KEY);
+    if (cached) return cached;
+  } catch {
+    // Continuar con resolución desde la API si sessionStorage no está disponible.
+  }
+
+  try {
+    const organizations = await apiClient.get<Array<{ id: string }>>(
+      'organizations/',
+      { signal },
+    );
+    const firstId = Array.isArray(organizations)
+      ? (organizations[0]?.id ?? null)
+      : null;
+    if (firstId) {
+      setActiveOrganizationId(firstId);
+    }
+    return firstId;
+  } catch {
+    return null;
+  }
+}
+
 export const executionsService = {
   /**
-   * Envía la solicitud para iniciar un trabajo asíncrono científico (S2-163 / S2-175).
+   * Envía la solicitud para iniciar un trabajo asíncrono científico (S2-163 / S2-168 / S2-175).
    */
   async createJob(payload: JobCreatePayload): Promise<JobResponse> {
-    return apiClient.post<JobResponse>('executions/jobs', payload);
+    const organizationId = await resolveOrganizationId();
+    const headers = organizationId
+      ? { 'X-Organization-ID': organizationId }
+      : undefined;
+    return apiClient.post<JobResponse>('executions/jobs', payload, { headers });
   },
 
   /**
@@ -87,8 +130,15 @@ export const executionsService = {
    */
   async getJobStatus(
     jobId: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<JobStatusResponse> {
-    return apiClient.get<JobStatusResponse>(`executions/${jobId}`, { signal });
+    const organizationId = await resolveOrganizationId(signal);
+    const headers = organizationId
+      ? { 'X-Organization-ID': organizationId }
+      : undefined;
+    return apiClient.get<JobStatusResponse>(`executions/${jobId}`, {
+      signal,
+      headers,
+    });
   },
 };
