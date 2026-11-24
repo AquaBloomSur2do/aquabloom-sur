@@ -1,22 +1,23 @@
 import { useState } from 'react';
 import { useInRouterContext, useNavigate } from 'react-router-dom';
 import { ApiError } from '../services/apiClient';
-import { executionsService } from '../services/executions';
+import {
+  executionsService,
+  setActiveOrganizationId,
+} from '../services/executions';
 
 interface StartTrainingButtonProps {
   datasetVersionId: string;
+  datasetId?: string;
+  organizationId?: string;
   disabled?: boolean;
 }
 
-function RouterAwareTrainingButton({
-  datasetVersionId,
-  disabled = false,
-}: StartTrainingButtonProps) {
+function RouterAwareTrainingButton(props: StartTrainingButtonProps) {
   const navigate = useNavigate();
   return (
     <StartTrainingButtonInner
-      datasetVersionId={datasetVersionId}
-      disabled={disabled}
+      {...props}
       onNavigate={(path) => navigate(path)}
     />
   );
@@ -24,6 +25,8 @@ function RouterAwareTrainingButton({
 
 function StartTrainingButtonInner({
   datasetVersionId,
+  datasetId,
+  organizationId,
   disabled = false,
   onNavigate,
 }: StartTrainingButtonProps & { onNavigate: (path: string) => void }) {
@@ -36,13 +39,23 @@ function StartTrainingButtonInner({
     setIsLoading(true);
     setError(null);
     try {
+      if (organizationId) {
+        setActiveOrganizationId(organizationId);
+      }
+
+      const config: Record<string, unknown> = {
+        target_variable: 'chlorophyll_a',
+        required_index: 'NDCI',
+      };
+      if (datasetId) {
+        config.dataset_id = datasetId;
+        config.version_id = datasetVersionId;
+      }
+
       const response = await executionsService.createJob({
         dataset_version_id: datasetVersionId,
         job_type: 'TRAINING',
-        config: {
-          target_variable: 'chlorophyll_a',
-          required_index: 'NDCI',
-        },
+        config,
       });
 
       onNavigate(`/scientific/jobs/${response.job_id}`);
@@ -60,17 +73,17 @@ function StartTrainingButtonInner({
   };
 
   return (
-    <div className="flex flex-col gap-2">
+    <div style={{ display: 'grid', gap: '8px' }}>
       <button
         type="button"
         onClick={() => void handleStartTraining()}
         disabled={isLoading || disabled || !datasetVersionId}
-        className="rounded-md bg-emerald-600 px-4 py-2 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="btn btn-primary"
       >
         {isLoading ? 'Iniciando entrenamiento...' : 'Entrenar Modelo Piloto'}
       </button>
       {error && (
-        <p className="text-sm font-medium text-red-700" role="alert">
+        <p className="status-banner danger" role="alert">
           {error}
         </p>
       )}
@@ -92,3 +105,5 @@ export function StartTrainingButton(props: StartTrainingButtonProps) {
     />
   );
 }
+
+
