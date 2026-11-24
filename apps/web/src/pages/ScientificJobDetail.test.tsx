@@ -42,18 +42,22 @@ describe('ScientificJobDetail', () => {
             element={<ScientificJobDetail />}
           />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     expect(await screen.findByText('dataset-version-1')).toBeInTheDocument();
     expect(screen.getByText('model-version-1')).toBeInTheDocument();
     expect(screen.getByText('model-1')).toBeInTheDocument();
     expect(screen.getByText('scene-1')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Abrir manifiesto' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Abrir artefacto' })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Abrir manifiesto' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Abrir artefacto' }),
+    ).toBeDisabled();
     expect(executionsService.getJobStatus).toHaveBeenCalledWith(
       'job-123',
-      expect.any(AbortSignal)
+      expect.any(AbortSignal),
     );
   });
 
@@ -82,23 +86,23 @@ describe('ScientificJobDetail', () => {
             element={<ScientificJobDetail />}
           />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
+    expect(await screen.findAllByText('No informada por la API')).toHaveLength(
+      2,
+    );
     expect(
-      await screen.findAllByText('No informada por la API')
-    ).toHaveLength(2);
-    expect(
-      screen.queryByRole('button', { name: 'Abrir manifiesto' })
+      screen.queryByRole('button', { name: 'Abrir manifiesto' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Abrir artefacto' })
+      screen.queryByRole('button', { name: 'Abrir artefacto' }),
     ).not.toBeInTheDocument();
   });
 
   it('muestra errores de carga y el mensaje de error del trabajo fallido', async () => {
     vi.mocked(executionsService.getJobStatus).mockRejectedValueOnce(
-      new Error('No se pudo consultar el trabajo.')
+      new Error('No se pudo consultar el trabajo.'),
     );
 
     const { unmount } = render(
@@ -109,11 +113,11 @@ describe('ScientificJobDetail', () => {
             element={<ScientificJobDetail />}
           />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'No se pudo consultar el trabajo.'
+      'No se pudo consultar el trabajo.',
     );
     unmount();
 
@@ -141,12 +145,85 @@ describe('ScientificJobDetail', () => {
             element={<ScientificJobDetail />}
           />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Falló el procesamiento de la escena.'
+      'Falló el procesamiento de la escena.',
     );
     expect(screen.getByText('Fallido')).toBeInTheDocument();
   });
+
+  it('consulta periódicamente el estado del worker hasta mostrar el resultado persistido', async () => {
+    vi.mocked(executionsService.getJobStatus)
+      .mockResolvedValueOnce({
+        job_id: 'job-staging-1',
+        job_type: 'training',
+        status: 'queued',
+        config: { dataset_id: 'ds-1', version_id: 'ver-1' },
+        result: null,
+        dataset_version_id: null,
+        model_version_id: null,
+        requested_by: 'user-1',
+        error_message: null,
+        created_at: '2026-11-22T12:00:00Z',
+        started_at: null,
+        completed_at: null,
+        updated_at: null,
+      })
+      .mockResolvedValueOnce({
+        job_id: 'job-staging-1',
+        job_type: 'training',
+        status: 'running',
+        config: { dataset_id: 'ds-1', version_id: 'ver-1' },
+        result: null,
+        dataset_version_id: null,
+        model_version_id: null,
+        requested_by: 'user-1',
+        error_message: null,
+        created_at: '2026-11-22T12:00:00Z',
+        started_at: '2026-11-22T12:00:01Z',
+        completed_at: null,
+        updated_at: null,
+      })
+      .mockResolvedValueOnce({
+        job_id: 'job-staging-1',
+        job_type: 'training',
+        status: 'completed',
+        config: { dataset_id: 'ds-1', version_id: 'ver-1' },
+        result: {
+          prediction_value: 15.0,
+          predictions: [15.0],
+          metrics: { mae: 15.0, rmse: 15.0 },
+        },
+        dataset_version_id: null,
+        model_version_id: null,
+        requested_by: 'user-1',
+        error_message: null,
+        created_at: '2026-11-22T12:00:00Z',
+        started_at: '2026-11-22T12:00:01Z',
+        completed_at: '2026-11-22T12:00:02Z',
+        updated_at: '2026-11-22T12:00:02Z',
+      });
+
+    render(
+      <MemoryRouter initialEntries={['/scientific/jobs/job-staging-1']}>
+        <Routes>
+          <Route
+            path="/scientific/jobs/:jobId"
+            element={<ScientificJobDetail pollIntervalMs={10} />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Completado')).toBeInTheDocument();
+    expect(screen.getByText('prediction_value')).toBeInTheDocument();
+    expect(screen.getByText('15')).toBeInTheDocument();
+    expect(screen.getAllByText('ver-1').length).toBeGreaterThanOrEqual(1);
+    expect(executionsService.getJobStatus).toHaveBeenCalledTimes(3);
+  });
 });
+
+
+
