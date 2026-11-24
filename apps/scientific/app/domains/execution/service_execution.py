@@ -3,14 +3,20 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from fastapi import BackgroundTasks, HTTPException, status
+from postgrest.exceptions import APIError
+
 from apps.scientific.app.core.database import supabase
 from apps.scientific.app.domains.execution.domain_execution import (
     JOB_TIMEOUT_SECONDS,
     build_job_accepted_response,
+    calculate_baseline,
     job_matches_request,
-    run_scientific_algorithm,
+    parse_training_csv,
+    split_training_validation,
 )
 from apps.scientific.app.domains.execution.model_execution import (
+    fetch_training_file,
     find_scientific_job_in_db,
     get_dataset_version_for_training,
     has_active_organization_membership,
@@ -21,8 +27,34 @@ from apps.scientific.app.domains.execution.schemas_execution import (
     JobCreate,
     TrainingConfig,
 )
-from fastapi import BackgroundTasks, HTTPException, status
-from postgrest.exceptions import APIError
+
+
+async def run_scientific_algorithm(
+    client, job_type: str, config: dict[str, Any]
+) -> dict[str, Any]:
+    """Orquesta la carga de datos y el procesamiento del trabajo científico."""
+    if job_type != "training":
+        await asyncio.sleep(1)
+        return {"message": f"Tipo de trabajo '{job_type}' no implementado aún."}
+
+    version_id = config.get("version_id")
+    if not version_id:
+        raise ValueError("Falta version_id en la configuración.")
+
+    file_bytes, checksum = await asyncio.to_thread(
+        fetch_training_file, client, str(version_id)
+    )
+    raw_data = parse_training_csv(file_bytes, checksum)
+    train_data, val_data = split_training_validation(raw_data, split_ratio=0.8)
+    return calculate_baseline(train_data, val_data)
+
+
+async def _update_scientific_job(
+    client, job_id: str, update_payload: dict[str, Any]
+) -> None:
+    await asyncio.to_thread(
+        update_scientific_job_in_db, client, job_id, update_payload
+    )
 
 
 def validate_training_version_service(client, config: TrainingConfig) -> None:
@@ -47,13 +79,15 @@ def validate_training_version_service(client, config: TrainingConfig) -> None:
         )
 
 
-async def process_scientific_job(job_id: str, config: dict[str, Any]) -> None:
+async def process_scientific_job(
+    job_id: str, job_type: str, config: dict[str, Any]
+) -> None:
     """Trabajo asíncrono con control estricto de timeout, fallos y persistencia (S2-150)."""
     if supabase is None:
         return
 
     try:
-        update_scientific_job_in_db(
+        await _update_scientific_job(
             supabase,
             job_id,
             {
@@ -63,10 +97,11 @@ async def process_scientific_job(job_id: str, config: dict[str, Any]) -> None:
         )
 
         result = await asyncio.wait_for(
-            run_scientific_algorithm(config), timeout=JOB_TIMEOUT_SECONDS
+            run_scientific_algorithm(supabase, job_type, config),
+            timeout=JOB_TIMEOUT_SECONDS,
         )
 
-        update_scientific_job_in_db(
+        await _update_scientific_job(
             supabase,
             job_id,
             {
@@ -77,7 +112,7 @@ async def process_scientific_job(job_id: str, config: dict[str, Any]) -> None:
         )
 
     except TimeoutError:
-        update_scientific_job_in_db(
+        await _update_scientific_job(
             supabase,
             job_id,
             {
@@ -88,7 +123,7 @@ async def process_scientific_job(job_id: str, config: dict[str, Any]) -> None:
         )
 
     except Exception as exc:  # noqa: BLE001
-        update_scientific_job_in_db(
+        await _update_scientific_job(
             supabase,
             job_id,
             {
@@ -193,6 +228,9 @@ def create_execution_job_service(
         )
 
     background_tasks.add_task(
-        process_scientific_job, str(inserted_job["id"]), config
+        process_scientific_job,
+        str(inserted_job["id"]),
+        payload.job_type,
+        config,
     )
     return build_job_accepted_response(inserted_job)
