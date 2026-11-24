@@ -1,0 +1,207 @@
+openapi: 3.0.3
+info:
+  title: AquaBloom Scientific Execution API
+  version: 1.0.0
+  description: >
+    Contrato OpenAPI del microservicio científico para consulta de estado y
+    exposición estructurada de resultados de entrenamiento (S2-161).
+servers:
+  - url: /api/v1
+    description: Prefijo base de rutas del servicio científico
+
+paths:
+  /executions/{job_id}:
+    get:
+      summary: Obtener estado y resultado de un trabajo científico
+      description: >
+        Consulta el estado de ejecución y, cuando está disponible, el resultado
+        estructurado del entrenamiento con métricas (MAE, RMSE), información del
+        modelo baseline, versión asociada, estado y advertencias.
+      operationId: getScientificJobStatus
+      tags:
+        - Executions
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          description: Identificador UUID del trabajo científico.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Organization-ID
+          in: header
+          required: true
+          description: Identificador UUID de la organización activa del usuario.
+          schema:
+            type: string
+            format: uuid
+        - name: Authorization
+          in: header
+          required: true
+          description: Token Bearer del usuario autenticado.
+          schema:
+            type: string
+            example: Bearer <token>
+      responses:
+        "200":
+          description: Estado y resultado del trabajo científico recuperados correctamente.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobStatus"
+        "401":
+          description: Usuario no autenticado o token inválido.
+        "404":
+          description: Trabajo no encontrado o sin acceso en la organización indicada.
+
+components:
+  schemas:
+    TrainingMetrics:
+      type: object
+      required:
+        - mae
+        - rmse
+      properties:
+        mae:
+          type: number
+          format: float
+          minimum: 0
+          description: Error absoluto medio (Mean Absolute Error) sobre partición de evaluación.
+        rmse:
+          type: number
+          format: float
+          minimum: 0
+          description: Raíz del error cuadrático medio (Root Mean Squared Error).
+
+    BaselineInfo:
+      type: object
+      required:
+        - strategy
+        - target_variable
+        - prediction_value
+        - train_sample_count
+        - validation_sample_count
+      properties:
+        strategy:
+          type: string
+          example: mean_clorofila_a
+        target_variable:
+          type: string
+          example: clorofila_a
+        prediction_value:
+          type: number
+          format: float
+          description: Valor constante predicho calculado sobre entrenamiento.
+        train_sample_count:
+          type: integer
+          minimum: 1
+        validation_sample_count:
+          type: integer
+          minimum: 1
+
+    TrainingResult:
+      type: object
+      required:
+        - model
+        - baseline
+        - prediction_value
+        - predictions
+        - metrics
+        - status
+        - warnings
+      properties:
+        model:
+          type: string
+          example: baseline
+          description: Tipo de modelo entrenado.
+        baseline:
+          $ref: "#/components/schemas/BaselineInfo"
+        prediction_value:
+          type: number
+          format: float
+        predictions:
+          type: array
+          items:
+            type: number
+            format: float
+        metrics:
+          $ref: "#/components/schemas/TrainingMetrics"
+        version:
+          type: string
+          nullable: true
+          description: Versión del modelo o dataset utilizada en el entrenamiento.
+        dataset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        model_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        warnings:
+          type: array
+          items:
+            type: string
+          description: Advertencias y limitaciones metodológicas del resultado.
+
+    JobStatus:
+      type: object
+      required:
+        - job_id
+        - job_type
+        - status
+        - config
+        - created_at
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        job_type:
+          type: string
+          enum: [training, modeling, estimation]
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        config:
+          type: object
+          additionalProperties: true
+        result:
+          oneOf:
+            - $ref: "#/components/schemas/TrainingResult"
+            - type: object
+              additionalProperties: true
+          nullable: true
+        dataset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        model_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        requested_by:
+          type: string
+          format: uuid
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          
