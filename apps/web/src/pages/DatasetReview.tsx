@@ -182,6 +182,8 @@ export function DatasetReview() {
   const selectedVersion = versions.find((version) => version.id === versionId);
   const selectedVersionState =
     selectedVersion?.state ?? selectedVersion?.status;
+  const isSelectedVersionPublished =
+    selectedVersionState?.toUpperCase() === 'PUBLISHED';
 
   const handleDatasetChange = (nextDatasetId: string) => {
     const nextDataset = datasets.find(
@@ -329,8 +331,7 @@ export function DatasetReview() {
           <div className="head-actions">
             <span
               className={`badge ${
-                selectedVersionState === 'PUBLISHED' ||
-                selectedVersion.status === 'published'
+                isSelectedVersionPublished
                   ? 'validated'
                   : selectedVersionState === 'APPROVED'
                     ? 'review'
@@ -470,7 +471,7 @@ export function DatasetReview() {
             </section>
           )}
 
-          {selectedVersionState === 'PUBLISHED' && selectedVersion && (
+          {isSelectedVersionPublished && selectedVersion && (
             <section
               aria-label="Estado de publicación"
               className="status-banner success"
@@ -491,7 +492,11 @@ export function DatasetReview() {
                 }}
               >
                 <span className="badge validated">Oficial · Inmutable</span>
-                <StartTrainingButton datasetVersionId={selectedVersion.id} />
+                <StartTrainingButton
+                  datasetVersionId={selectedVersion.id}
+                  datasetId={selectedDataset?.id}
+                  organizationId={selectedDataset?.organization_id}
+                />
               </div>
             </section>
           )}
@@ -892,3 +897,4 @@ export function DatasetReview() {
     </main>
   );
 }
+
