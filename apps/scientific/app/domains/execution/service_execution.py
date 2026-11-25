@@ -5,6 +5,9 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from fastapi import BackgroundTasks, HTTPException, status
+from postgrest.exceptions import APIError
+
 from apps.scientific.app.core.config import settings
 from apps.scientific.app.core.correlation import resolve_correlation_id
 from apps.scientific.app.core.database import supabase
@@ -43,8 +46,6 @@ from apps.scientific.app.domains.execution.schemas_execution import (
     TrainingConfig,
     TrainingPartitionMetadata,
 )
-from fastapi import BackgroundTasks, HTTPException, status
-from postgrest.exceptions import APIError
 
 logger = logging.getLogger(__name__)
 JOB_TIMEOUT_SECONDS = settings.job_timeout_seconds
@@ -312,7 +313,7 @@ async def process_scientific_job(
         )
         raise
 
-except (APIError, KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
+    except (APIError, KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.exception(
             "Fallo interno procesando el trabajo científico %s | correlation_id=%s",
             job_id,
@@ -441,11 +442,6 @@ def create_execution_job_service(
         )
 
     background_tasks.add_task(
-        process_scientific_job,
-        str(inserted_job["id"]),
-        payload.job_type,
-        config,
-background_tasks.add_task(
         process_scientific_job,
         str(inserted_job["id"]),
         payload.job_type,
