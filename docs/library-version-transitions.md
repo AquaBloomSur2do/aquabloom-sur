@@ -63,3 +63,5 @@ Define el ciclo de vida, los roles autorizados y las transiciones válidas e inv
 
 - **Rol no autorizado (`403 Forbidden`):** un usuario con rol `author` intenta ejecutar **Publicar** (`approved` -> `published`) o **Retirar** una versión ya `published`.
 - **Reapertura de versión retirada (`409 Conflict`):** cualquier intento de pasar desde `withdrawn` a `draft` o `published` se rechaza; se debe crear una nueva versión (`S3-31`).
+
+
