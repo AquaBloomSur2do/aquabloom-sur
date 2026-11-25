@@ -26,6 +26,9 @@ def test_train_initial_regression_fits_exact_linear_relationship():
     assert model.config.solver == "ordinary_least_squares"
     assert model.config.fit_intercept is True
     assert model.config.hyperparameter_search is False
+    assert model.config.feature_name == "NDCI"
+    assert model.config.target_variable == "chlorophyll_a"
+    assert model.config.unit == "ug/L"
     assert model.is_validated is False
     assert model.sample_count == 4
     assert model.slope == pytest.approx(15.0)

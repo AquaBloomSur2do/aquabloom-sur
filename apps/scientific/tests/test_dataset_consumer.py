@@ -147,4 +147,54 @@ def test_fetch_dataset_rejects_mismatched_csv_columns():
         )
 
     assert exc_info.value.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("NDCI", ""),
+        ("NDCI", "NaN"),
+        ("chlorophyll_a", "Inf"),
+        ("chlorophyll_a", "NA"),
+    ],
+)
+def test_fetch_dataset_rejects_missing_or_non_finite_pilot_values(column, value):
+    version_id = uuid4()
+    manifest_id = uuid4()
+    variables = ["NDCI", "chlorophyll_a"]
+    row = {"NDCI": "0.25", "chlorophyll_a": "2.1"}
+    row[column] = value
+    csv_bytes = (
+        f"NDCI,chlorophyll_a\r\n{row['NDCI']},{row['chlorophyll_a']}\r\n".encode()
+    )
+    checksum = hashlib.sha256(csv_bytes).hexdigest()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/training-file"):
+            return httpx.Response(
+                200,
+                json={
+                    "version_id": str(version_id),
+                    "manifest_id": str(manifest_id),
+                    "variables": variables,
+                    "checksum": checksum,
+                    "download_url": f"/download/{version_id}",
+                },
+            )
+        return httpx.Response(200, content=csv_bytes)
+
+    mock_client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="http://core-api.local",
+    )
+
+    with pytest.raises(DatasetContractError) as exc_info:
+        fetch_and_verify_training_dataset(
+            version_id=version_id,
+            bearer_token="valid-jwt",
+            client=mock_client,
+        )
+
+    assert exc_info.value.status_code == 422
+    assert column in exc_info.value.message
     

@@ -31,6 +31,13 @@ Para aislar el experimento y validar la arquitectura de los microservicios sin s
 
 El **Normalized Difference Chlorophyll Index (NDCI)** evalúa la presencia y concentración de clorofila-a en cuerpos de agua utilizando el raster preparado multi-banda **`pilot_sentinel2_l2a.tif`** (bandas Sentinel-2 **B05** [Red Edge, ~705 nm] y **B04** [Red, ~665 nm]).
 
+### Variables del piloto (S2-152)
+
+- Predictor espectral único: **NDCI**, calculado desde B05 y B04.
+- Variable objetivo única: **`chlorophyll_a`**, con `clorofila_a` aceptado como alias.
+- Unidad canónica de salida: **ug/L**. `µg/L` y `mg/m3` se normalizan a esta unidad.
+- Los datos de entrenamiento rechazan campos faltantes, valores no numéricos y valores no finitos (`NaN`/`Inf`); NDCI además debe estar en `[-1, 1]` y la clorofila-a no puede ser negativa.
+
 ### Fórmula Matemática
 $$NDCI = \frac{B05 - B04}{B05 + B04}$$
 
