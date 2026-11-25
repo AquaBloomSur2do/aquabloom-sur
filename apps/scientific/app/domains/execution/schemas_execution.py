@@ -1,9 +1,10 @@
+import math
 from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class TrainingConfig(BaseModel):
@@ -19,9 +20,44 @@ class ModelConfig(BaseModel):
     parameters: dict[str, Any] = {}
 
 
+class InferencePoint(BaseModel):
+    point_id: str = Field(min_length=1)
+    latitude: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    longitude: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
+    features: dict[str, float] = Field(default_factory=dict)
+
+    @field_validator("point_id")
+    @classmethod
+    def normalize_point_id(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("point_id no puede estar vacío.")
+        return normalized
+
+    @field_validator("features")
+    @classmethod
+    def validate_finite_features(cls, value: dict[str, float]) -> dict[str, float]:
+        if any(not math.isfinite(feature) for feature in value.values()):
+            raise ValueError("features debe contener solo valores finitos.")
+        return value
+
+
 class EstimationConfig(BaseModel):
-    model_id: UUID
-    scene_id: UUID
+    model_id: str = Field(min_length=1)
+    scene_id: str = Field(min_length=1)
+    points: list[InferencePoint] | None = Field(default=None, min_length=1)
+
+    @field_validator("model_id", "scene_id", mode="before")
+    @classmethod
+    def normalize_required_ids(cls, value: Any) -> str:
+        if isinstance(value, UUID):
+            return str(value)
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("El identificador no puede estar vacío.")
+        return normalized
 
 
 class ScientificJobType(str, Enum):
@@ -86,9 +122,7 @@ class JobCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_config_type(self) -> "JobCreate":
-        if self.job_type == "training" and not isinstance(
-            self.config, TrainingConfig
-        ):
+        if self.job_type == "training" and not isinstance(self.config, TrainingConfig):
             raise ValueError(
                 "La configuración debe ser TrainingConfig para trabajos 'training'"
             )
@@ -185,4 +219,3 @@ class PilotMetricsResult(BaseModel):
     r2_computable: bool
     r2: float | None = None
     limitations: list[str] = Field(default_factory=list)
-    

@@ -19,17 +19,22 @@ from apps.scientific.app.domains.execution.domain_execution import (
     build_running_update_payload,
     build_timeout_error_message,
     calculate_baseline,
+    execute_point_inference,
     format_exception_error_message,
     format_limit_exceeded_error_message,
     job_matches_request,
     parse_training_csv,
     resolve_job_timeout,
     split_training_validation,
+    validate_and_normalize_inference_points,
+    verify_and_deserialize_model_artifact,
 )
 from apps.scientific.app.domains.execution.model_execution import (
+    download_model_artifact_from_storage,
     fetch_training_file,
     find_scientific_job_in_db,
     get_dataset_version_for_training,
+    get_registered_model_artifact_ref,
     has_active_organization_membership,
     insert_scientific_job_in_db,
     update_scientific_job_in_db,
@@ -61,7 +66,7 @@ def _persist_job_failure(job_id: str, error_message: str, correlation_id: str) -
             job_id,
             build_failure_update_payload(error_message, _utc_now_iso()),
         )
-    except Exception:
+    except (APIError, KeyError, OSError, RuntimeError, TypeError, ValueError):
         logger.exception(
             "No se pudo persistir el estado fallido para el trabajo %s | correlation_id=%s.",
             job_id,
@@ -79,6 +84,52 @@ async def run_scientific_algorithm(
     requested_by: UUID | str | None = None,
 ) -> dict[str, Any]:
     """Orquesta la carga de datos y el procesamiento del trabajo científico."""
+    if job_type == "estimation":
+        model_id = config.get("model_id")
+        scene_id = config.get("scene_id")
+        points = config.get("points")
+        if not isinstance(model_id, str) or not model_id.strip():
+            raise ValueError("Falta model_id en la configuración.")
+        if not isinstance(scene_id, str) or not scene_id.strip():
+            raise ValueError("Falta scene_id en la configuración.")
+        normalized_model_id = model_id.strip()
+        normalized_scene_id = scene_id.strip()
+        if points is None:
+            await asyncio.sleep(1)
+            return {"message": "Tipo de trabajo 'estimation' no implementado aún."}
+        normalized_points = validate_and_normalize_inference_points(points)
+        if organization_id is None or not str(organization_id).strip():
+            raise ValueError("Falta organization_id para ejecutar la inferencia.")
+
+        artifact_ref = await asyncio.to_thread(
+            get_registered_model_artifact_ref,
+            client,
+            normalized_model_id,
+            organization_id,
+        )
+        artifact_bytes = await asyncio.to_thread(
+            download_model_artifact_from_storage,
+            client,
+            artifact_ref["bucket"],
+            artifact_ref["storage_path"],
+        )
+        artifact = verify_and_deserialize_model_artifact(
+            artifact_bytes, artifact_ref["checksum"]
+        )
+        predictions = execute_point_inference(artifact, normalized_points)
+        model_type = "baseline" if "prediction_value" in artifact else "linear"
+        result = {
+            "model_id": normalized_model_id,
+            "scene_id": normalized_scene_id,
+            "model_type": model_type,
+            "artifact_checksum": artifact_ref["checksum"],
+            "point_count": len(predictions),
+            "predictions": predictions,
+        }
+        if model_type == "baseline":
+            result["baseline"] = artifact.get("strategy", "baseline")
+        return result
+
     if job_type != "training":
         await asyncio.sleep(1)
         return {"message": f"Tipo de trabajo '{job_type}' no implementado aún."}
@@ -208,7 +259,15 @@ async def process_scientific_job(
         dataset_version_id = config.get("version_id") or config.get(
             "dataset_version_id"
         )
-        model_version_id = config.get("model_version_id")
+        model_version_candidate = config.get("model_version_id") or config.get(
+            "model_id"
+        )
+        model_version_id = None
+        if model_version_candidate:
+            try:
+                model_version_id = str(UUID(str(model_version_candidate)))
+            except (ValueError, TypeError):
+                pass
         if dataset_version_id:
             completed_payload["dataset_version_id"] = str(dataset_version_id)
         if model_version_id:
@@ -267,7 +326,7 @@ async def process_scientific_job(
         )
         raise
 
-    except Exception as exc:
+    except (APIError, KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.exception(
             "Fallo interno procesando el trabajo científico %s | correlation_id=%s",
             job_id,
