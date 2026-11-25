@@ -28,15 +28,32 @@ export interface BaselineInfo {
   validation_sample_count: number;
 }
 
+export interface PointPredictionItem {
+  point_id?: string;
+  station_name?: string | null;
+  station_code?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  predicted_value?: number | null;
+  value?: number | null;
+  unit?: string | null;
+  warning?: string | null;
+  warnings?: string[];
+}
+
 export interface TrainingJobResult {
   model?: string;
   baseline?: BaselineInfo;
   prediction_value?: number;
-  predictions?: number[];
+  predictions?: number[] | PointPredictionItem[];
   metrics?: TrainingMetrics;
   version?: string | null;
   dataset_version_id?: string | null;
   model_version_id?: string | null;
+  unit?: string | null;
+  point_count?: number;
+  model_id?: string;
+  artifact_checksum?: string;
   status?: 'queued' | 'running' | 'completed' | 'failed' | string;
   warnings?: string[];
   [key: string]: unknown;
