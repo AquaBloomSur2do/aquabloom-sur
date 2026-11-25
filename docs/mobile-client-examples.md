@@ -5,6 +5,9 @@ aplicación móvil (React Native). No existe una API paralela ni endpoints
 exclusivos para móvil: el cliente usa el API Gateway y los contratos publicados
 en `/openapi.json`.
 
+Para el recorrido piloto desde una escena registrada hasta la consulta de una
+estimación, consulta la [guía del recorrido piloto](./pilot-estimation-guide.md).
+
 ## Estado de validación móvil (S2-188)
 
 El repositorio no incluye actualmente una aplicación móvil ejecutable, por lo
