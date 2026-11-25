@@ -5,6 +5,23 @@ aplicación móvil (React Native). No existe una API paralela ni endpoints
 exclusivos para móvil: el cliente usa el API Gateway y los contratos publicados
 en `/openapi.json`.
 
+## Estado de validación móvil (S2-188)
+
+El repositorio no incluye actualmente una aplicación móvil ejecutable, por lo
+que no fue posible validar el flujo desde un cliente React Native real. Como
+alternativa, se ejecutaron las pruebas del consumidor de referencia
+`apps/scientific/app/dataset_consumer.py` desde `apps/scientific`:
+
+```bash
+python -m pytest tests/test_dataset_consumer.py -q
+```
+
+Resultado: **8 pruebas aprobadas**. Estas pruebas usan un transporte HTTP
+simulado; validan el consumo del manifiesto y del CSV, el encabezado de
+autorización, la integridad del checksum, el parseo de datos y casos de error,
+sin conectarse a un backend real. La integración y validación desde la
+aplicación móvil real quedan pendientes.
+
 - **Base URL de producción:** `https://api.aquabloomsur.cl`
 - **Base URL local de desarrollo:** `localhost:8000` (HTTP solo en local; nunca
   enviar JWT reales sin TLS).
