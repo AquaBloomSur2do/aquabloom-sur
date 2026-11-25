@@ -1,0 +1,56 @@
+services:
+  gateway:
+    environment:
+      ENVIRONMENT: staging
+      APP_VERSION: ${APP_VERSION:-staging-local}
+      SATELLITE_SERVICE_URL: http://satellite:8002
+      SCIENTIFIC_SERVICE_URL: http://scientific:8003
+      CORE_API_URL: http://core:8001
+
+  core:
+    environment:
+      ENVIRONMENT: staging
+      APP_VERSION: ${APP_VERSION:-staging-local}
+      SATELLITE_SERVICE_URL: http://satellite:8002
+      SCIENTIFIC_SERVICE_URL: http://scientific:8003
+
+  satellite:
+    environment:
+      SATELLITE_ENVIRONMENT: staging
+      SATELLITE_REDIS_URL: redis://redis:6379/0
+      APP_VERSION: ${APP_VERSION:-staging-local}
+
+  scientific:
+    environment:
+      ENVIRONMENT: staging
+      CORE_API_URL: http://core:8001
+      REDIS_URL: redis://redis:6379/0
+      APP_VERSION: ${APP_VERSION:-staging-local}
+
+  scientific-worker:
+    build:
+      context: ./apps/scientific
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: python -m apps.scientific.app.worker
+    env_file:
+      - path: ./apps/scientific/.env.example
+        required: true
+      - path: ./apps/scientific/.env
+        required: false
+    environment:
+      ENVIRONMENT: staging
+      REDIS_URL: redis://redis:6379/0
+      APP_VERSION: ${APP_VERSION:-staging-local}
+    networks:
+      - aquabloom-net
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; from redis import Redis; Redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379/0')).ping()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+
