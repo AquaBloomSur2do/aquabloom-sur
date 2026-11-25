@@ -25,6 +25,9 @@ from apps.api.app.domains.identity.controller_identity import (
 from apps.api.app.domains.ingestion.controller_ingestion import (
     router as ingestion_router,
 )
+from apps.api.app.domains.internal.controller_internal import (
+    router as internal_router,
+)
 from apps.api.app.gateway.controller_gateway import router as gateway_router
 from apps.api.app.gateway.executions_bridge import (
     router as executions_bridge_router,
@@ -135,6 +138,7 @@ app.include_router(dataset_router, responses=COMMON_RESPONSES)
 app.include_router(scenes_router)
 app.include_router(observations_router, responses=COMMON_RESPONSES)
 app.include_router(execution_router)
+app.include_router(internal_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -175,6 +179,3 @@ def health_check():
 )
 def test_permission_route() -> dict:
     return {"message": "Acceso permitido. Tienes el rol correcto."}
-
-
-

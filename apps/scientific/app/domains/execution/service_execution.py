@@ -62,7 +62,12 @@ def _persist_job_failure(job_id: str, error_message: str) -> None:
 
 
 async def run_scientific_algorithm(
-    client, job_type: str, config: dict[str, Any]
+    client,
+    job_type: str,
+    config: dict[str, Any],
+    *,
+    organization_id: UUID | str | None = None,
+    requested_by: UUID | str | None = None,
 ) -> dict[str, Any]:
     """Orquesta la carga de datos y el procesamiento del trabajo científico."""
     if job_type != "training":
@@ -72,10 +77,17 @@ async def run_scientific_algorithm(
     version_id = config.get("version_id") or config.get("dataset_version_id")
     if not version_id:
         raise ValueError("Falta version_id en la configuración.")
+    if organization_id is None or requested_by is None:
+        raise ValueError(
+            "organization_id y requested_by son necesarios para consultar Core."
+        )
     model_version_id = config.get("model_version_id")
 
     file_bytes, checksum = await asyncio.to_thread(
-        fetch_training_file, client, str(version_id)
+        fetch_training_file,
+        str(version_id),
+        organization_id,
+        requested_by,
     )
     raw_data = parse_training_csv(file_bytes, checksum)
     train_data, val_data = split_training_validation(raw_data, split_ratio=0.8)
@@ -91,13 +103,13 @@ async def run_scientific_algorithm(
 async def _update_scientific_job(
     client, job_id: str, update_payload: dict[str, Any]
 ) -> None:
-    await asyncio.to_thread(
-        update_scientific_job_in_db, client, job_id, update_payload
-    )
+    await asyncio.to_thread(update_scientific_job_in_db, client, job_id, update_payload)
 
 
-def validate_training_version_service(client, config: TrainingConfig) -> None:
-    version = get_dataset_version_for_training(client, config.version_id)
+def validate_training_version_service(
+    config: TrainingConfig, organization_id: UUID
+) -> None:
+    version = get_dataset_version_for_training(config.version_id, organization_id)
     if not version:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -124,6 +136,8 @@ async def process_scientific_job(
     config: dict[str, Any],
     *,
     timeout_seconds: float | None = None,
+    organization_id: UUID | str | None = None,
+    requested_by: UUID | str | None = None,
 ) -> None:
     """Trabajo asíncrono con control estricto de timeout, límites, fallos y persistencia (S2-150)."""
     if supabase is None:
@@ -140,7 +154,13 @@ async def process_scientific_job(
         )
 
         result = await asyncio.wait_for(
-            run_scientific_algorithm(supabase, job_type, config),
+            run_scientific_algorithm(
+                supabase,
+                job_type,
+                config,
+                organization_id=organization_id,
+                requested_by=requested_by,
+            ),
             timeout=effective_timeout,
         )
 
@@ -198,10 +218,8 @@ async def process_scientific_job(
         )
 
 
-def validate_job_organization_service(
-    client, user_id: UUID, organization_id: UUID
-) -> None:
-    if not has_active_organization_membership(client, user_id, organization_id):
+def validate_job_organization_service(user_id: UUID, organization_id: UUID) -> None:
+    if not has_active_organization_membership(user_id, organization_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No se encontró el trabajo.",
@@ -211,7 +229,7 @@ def validate_job_organization_service(
 def get_job_status_service(
     client, job_id: UUID, user_id: UUID, organization_id: UUID
 ) -> dict[str, Any]:
-    validate_job_organization_service(client, user_id, organization_id)
+    validate_job_organization_service(user_id, organization_id)
     job = find_scientific_job_in_db(
         client, job_id=str(job_id), organization_id=organization_id
     )
@@ -235,7 +253,7 @@ def create_execution_job_service(
     user_id: UUID,
     organization_id: UUID,
 ) -> dict[str, Any]:
-    validate_job_organization_service(client, user_id, organization_id)
+    validate_job_organization_service(user_id, organization_id)
     config = payload.config.model_dump(mode="json")
 
     if idempotency_key is not None:
@@ -253,7 +271,7 @@ def create_execution_job_service(
             )
 
     if payload.job_type == "training":
-        validate_training_version_service(client, payload.config)
+        validate_training_version_service(payload.config, organization_id)
 
     db_payload: dict[str, Any] = {
         "job_type": payload.job_type,
@@ -262,9 +280,7 @@ def create_execution_job_service(
         "organization_id": str(organization_id),
         "requested_by": str(user_id),
     }
-    if payload.job_type == "training" and isinstance(
-        payload.config, TrainingConfig
-    ):
+    if payload.job_type == "training" and isinstance(payload.config, TrainingConfig):
         db_payload["dataset_version_id"] = str(payload.config.version_id)
     if idempotency_key is not None:
         db_payload["idempotency_key"] = idempotency_key
@@ -301,5 +317,7 @@ def create_execution_job_service(
         str(inserted_job["id"]),
         payload.job_type,
         config,
+        organization_id=organization_id,
+        requested_by=user_id,
     )
     return build_job_accepted_response(inserted_job)

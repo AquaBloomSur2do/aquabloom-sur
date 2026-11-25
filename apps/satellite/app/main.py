@@ -18,6 +18,9 @@ try:
     from apps.satellite.app.domains.observations.controller_observations import (
         router as observations_router,
     )
+    from apps.satellite.app.domains.scenes.controller_internal import (
+        router as internal_scenes_router,
+    )
     from apps.satellite.app.domains.scenes.controller_scenes import (
         router as scenes_router,
     )
@@ -29,6 +32,9 @@ except ModuleNotFoundError:
     )
     from apps.satellite.app.domains.observations.controller_observations import (
         router as observations_router,
+    )
+    from apps.satellite.app.domains.scenes.controller_internal import (
+        router as internal_scenes_router,
     )
     from apps.satellite.app.domains.scenes.controller_scenes import (
         router as scenes_router,
@@ -65,6 +71,7 @@ class EnqueuedTaskResponse(BaseModel):
 
 
 app.include_router(scenes_router)
+app.include_router(internal_scenes_router)
 app.include_router(observations_router)
 
 
@@ -120,4 +127,3 @@ def enqueue_summary(
         ) from exc
 
     return EnqueuedTaskResponse(task_id=task_id, status="queued")
-

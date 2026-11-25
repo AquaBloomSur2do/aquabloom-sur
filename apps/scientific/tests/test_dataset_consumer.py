@@ -34,7 +34,10 @@ def test_fetch_and_verify_training_dataset_success():
                     "download_url": f"/api/v1/datasets/versions/{version_id}/training-file/download",
                 },
             )
-        if request.url.path == f"/api/v1/datasets/versions/{version_id}/training-file/download":
+        if (
+            request.url.path
+            == f"/api/v1/datasets/versions/{version_id}/training-file/download"
+        ):
             return httpx.Response(200, content=csv_bytes)
         return httpx.Response(404)
 
@@ -147,4 +150,52 @@ def test_fetch_dataset_rejects_mismatched_csv_columns():
         )
 
     assert exc_info.value.status_code == 422
-    
+
+
+def test_fetch_training_dataset_uses_internal_core_contract():
+    version_id = uuid4()
+    user_id = uuid4()
+    organization_id = uuid4()
+    manifest_id = uuid4()
+    csv_bytes = b"temperatura,clorofila_a,turbidez,ph\r\n15.5,2.1,0.5,7.2\r\n"
+    checksum = hashlib.sha256(csv_bytes).hexdigest()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers.get("X-Internal-Token") == "internal-secret"
+        assert "Authorization" not in request.headers
+        if request.url.path.endswith("/training-file"):
+            assert request.url.params["organization_id"] == str(organization_id)
+            assert request.url.params["user_id"] == str(user_id)
+            return httpx.Response(
+                200,
+                json={
+                    "version_id": str(version_id),
+                    "manifest_id": str(manifest_id),
+                    "variables": ["temperatura", "clorofila_a", "turbidez", "ph"],
+                    "checksum": checksum,
+                    "download_url": (
+                        f"/internal/v1/datasets/versions/{version_id}/"
+                        f"training-file/download?organization_id={organization_id}"
+                        f"&user_id={user_id}"
+                    ),
+                },
+            )
+        if request.url.path.endswith("/training-file/download"):
+            return httpx.Response(200, content=csv_bytes)
+        return httpx.Response(404)
+
+    mock_client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="http://core-api.local",
+    )
+
+    result = fetch_and_verify_training_dataset(
+        version_id=version_id,
+        internal_service_token="internal-secret",
+        organization_id=organization_id,
+        user_id=user_id,
+        client=mock_client,
+    )
+
+    assert result.manifest.version_id == version_id
+    assert result.raw_bytes == csv_bytes

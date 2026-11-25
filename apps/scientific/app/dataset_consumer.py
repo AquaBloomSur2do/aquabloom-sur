@@ -6,7 +6,7 @@ from uuid import UUID
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.config import settings
+from apps.scientific.app.core.config import settings
 
 MAX_TRAINING_FILE_SIZE = 1024 * 1024  # Límite por contrato: 1 MiB
 
@@ -40,9 +40,13 @@ class ConsumedDataset(BaseModel):
 
 def fetch_and_verify_training_dataset(
     version_id: UUID | str,
-    bearer_token: str,
+    bearer_token: str | None = None,
     base_url: str | None = None,
     client: httpx.Client | None = None,
+    *,
+    internal_service_token: str | None = None,
+    organization_id: UUID | str | None = None,
+    user_id: UUID | str | None = None,
 ) -> ConsumedDataset:
     """
     Consume una versión publicada del dataset por contrato HTTP:
@@ -51,14 +55,33 @@ def fetch_and_verify_training_dataset(
     3. Verifica que el checksum SHA-256 y las columnas coincidan con el manifiesto.
     """
     api_base = (base_url or settings.core_api_url).rstrip("/")
-    headers = {"Authorization": f"Bearer {bearer_token}"}
+    if internal_service_token:
+        if organization_id is None or user_id is None:
+            raise ValueError(
+                "organization_id y user_id son requeridos para la descarga interna."
+            )
+        headers = {"X-Internal-Token": internal_service_token}
+        request_params = {
+            "organization_id": str(organization_id),
+            "user_id": str(user_id),
+        }
+        meta_path = f"/internal/v1/datasets/versions/{version_id}/training-file"
+    elif bearer_token:
+        headers = {"Authorization": f"Bearer {bearer_token}"}
+        request_params = None
+        meta_path = f"/api/v1/datasets/versions/{version_id}/training-file"
+    else:
+        raise ValueError("Se requiere una credencial para consumir el contrato Core.")
 
     should_close = client is None
     http_client = client or httpx.Client(base_url=api_base, timeout=15.0)
 
     try:
-        meta_path = f"/api/v1/datasets/versions/{version_id}/training-file"
-        meta_resp = http_client.get(meta_path, headers=headers)
+        meta_resp = http_client.get(
+            meta_path,
+            headers=headers,
+            params=request_params,
+        )
 
         if meta_resp.status_code != 200:
             raise DatasetContractError(
@@ -124,7 +147,11 @@ def fetch_and_verify_training_dataset(
             rows=parsed_rows,
             raw_bytes=file_bytes,
         )
+    except httpx.RequestError as exc:
+        raise DatasetContractError(
+            "No se pudo contactar el contrato de datasets de Core.",
+            status_code=502,
+        ) from exc
     finally:
         if should_close:
             http_client.close()
-            

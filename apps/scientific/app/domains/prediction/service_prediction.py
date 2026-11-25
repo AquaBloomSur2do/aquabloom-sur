@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from postgrest.exceptions import APIError
 
+from apps.scientific.app.core.service_clients import ServiceContractError
 from apps.scientific.app.domains.prediction.domain_prediction import (
     build_prediction_detail,
     has_prediction_read_permission,
@@ -52,10 +53,8 @@ def get_prediction_detail_service(
     user_payload: dict[str, Any],
 ) -> PredictionDetailResponse:
     try:
-        membership = get_active_membership_for_organization(
-            client, user_id, organization_id
-        )
-    except APIError as exc:
+        membership = get_active_membership_for_organization(user_id, organization_id)
+    except (APIError, ServiceContractError) as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="No se pudieron verificar los permisos de la organización.",
@@ -74,9 +73,7 @@ def get_prediction_detail_service(
         )
 
     try:
-        prediction = get_prediction_by_id_in_db(
-            client, prediction_id, organization_id
-        )
+        prediction = get_prediction_by_id_in_db(client, prediction_id, organization_id)
     except APIError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -93,11 +90,16 @@ def get_prediction_detail_service(
     scene_id = prediction.get("scene_id")
     if scene_id is not None:
         try:
-            scene_metadata = get_scene_metadata_in_db(client, UUID(str(scene_id)))
-        except (APIError, ValueError):
-            scene_metadata = None
+            scene_metadata = get_scene_metadata_in_db(UUID(str(scene_id)))
+        except ServiceContractError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="No se pudo consultar la metadata de la escena en Satellite.",
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="El identificador de escena almacenado no es válido.",
+            ) from exc
 
     return build_prediction_detail(prediction, scene_row=scene_metadata)
-
-
-
