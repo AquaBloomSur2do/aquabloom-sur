@@ -6,6 +6,7 @@ from fastapi import (
     Depends,
     Header,
     HTTPException,
+    Request,
     status,
 )
 
@@ -76,6 +77,7 @@ def get_job_status(
 def create_execution_job(
     payload: JobCreate,
     background_tasks: BackgroundTasks,
+    request: Request,
     organization_id: UUID = Header(alias="X-Organization-ID"),  # noqa: B008
     user: dict = Depends(require_authenticated_user),  # noqa: B008
     x_idempotency_key: str | None = Header(
@@ -106,4 +108,5 @@ def create_execution_job(
         idempotency_key=idempotency_key,
         user_id=user_id,
         organization_id=organization_id,
+        correlation_id=request.state.correlation_id,
     )

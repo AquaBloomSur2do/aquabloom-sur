@@ -283,6 +283,49 @@ def test_create_execution_job_returns_202(fake_database):
     assert data["status_url"] == f"/api/v1/executions/{data['job_id']}"
 
 
+def test_scientific_service_echoes_and_generates_correlation_id():
+    response = client.get(
+        "/",
+        headers={"X-Correlation-ID": "trace-scientific-123"},
+    )
+    generated_response = client.get("/")
+
+    assert response.headers["x-correlation-id"] == "trace-scientific-123"
+    assert generated_response.headers["x-correlation-id"]
+    uuid.UUID(generated_response.headers["x-correlation-id"])
+
+
+def test_scientific_cors_preserves_internal_headers_and_exposes_correlation_id():
+    preflight = client.options(
+        "/api/v1/executions/",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": (
+                "authorization,content-type,x-idempotency-key,"
+                "x-internal-token,x-organization-id,x-correlation-id,x-request-id"
+            ),
+        },
+    )
+
+    assert preflight.status_code == 200
+    allowed_headers = preflight.headers.get("access-control-allow-headers", "").lower()
+    assert "x-idempotency-key" in allowed_headers
+    assert "x-internal-token" in allowed_headers
+    assert "x-organization-id" in allowed_headers
+    assert "x-correlation-id" in allowed_headers
+    assert "x-request-id" in allowed_headers
+
+    response = client.get(
+        "/",
+        headers={"Origin": "http://localhost:5173"},
+    )
+    assert (
+        response.headers.get("access-control-expose-headers", "").lower()
+        == "x-correlation-id"
+    )
+
+
 def test_get_job_status_returns_200(fake_database):
     post_response = client.post(
         "/api/v1/executions/", json=estimation_payload(), headers=HEADERS

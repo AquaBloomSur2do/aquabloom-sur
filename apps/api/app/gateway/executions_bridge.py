@@ -1,7 +1,15 @@
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    status,
+)
 from pydantic import BaseModel, Field
 
 from apps.scientific.app.core.database import supabase
@@ -124,6 +132,7 @@ def _build_estimation_job_create(payload: WebExecutionJobCreate) -> JobCreate:
 def submit_web_execution_job(
     payload: WebExecutionJobCreate,
     background_tasks: BackgroundTasks,
+    request: Request,
     organization_id: Annotated[UUID, Header(alias="X-Organization-ID")],
     user: Annotated[dict[str, Any], Depends(require_authenticated_user)],
     x_idempotency_key: Annotated[
@@ -153,6 +162,5 @@ def submit_web_execution_job(
         idempotency_key=idempotency_key,
         user_id=user_id,
         organization_id=organization_id,
+        correlation_id=request.state.correlation_id,
     )
-
-
