@@ -805,6 +805,8 @@ def test_baseline_falla_con_particiones_vacias():
 def test_get_training_job_status_exposes_full_structured_result(
     fake_database, monkeypatch
 ):
+    monkeypatch.setattr(scientific_settings, "environment", "staging")
+    monkeypatch.setenv("APP_VERSION", "test-build-158")
     csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
     mock_training_file(monkeypatch, csv_data)
 
@@ -833,6 +835,30 @@ def test_get_training_job_status_exposes_full_structured_result(
     assert result["status"] == "completed"
     assert isinstance(result["warnings"], list)
     assert len(result["warnings"]) >= 1
+    assert result["reproducibility"] == {
+        "dataset_version_id": VERSION_ID,
+        "partition": {
+            "strategy": "sequential",
+            "split_ratio": 0.8,
+            "train_sample_count": 2,
+            "validation_sample_count": 1,
+        },
+        "seed": None,
+        "configuration": {
+            "algorithm": "baseline",
+            "baseline_strategy": "mean_clorofila_a",
+            "training_config": {
+                "dataset_id": DATASET_ID,
+                "version_id": VERSION_ID,
+                "epochs": 50,
+                "learning_rate": 0.01,
+            },
+            "split_strategy": "sequential",
+            "split_ratio": 0.8,
+        },
+        "code_version": "test-build-158",
+        "environment": "staging",
+    }
 
 # =========================================================
 # PRUEBA S2-167: PERSISTENCIA Y RECUPERACIÓN TRAS REINICIO

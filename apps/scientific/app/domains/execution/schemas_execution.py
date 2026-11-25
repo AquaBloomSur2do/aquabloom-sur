@@ -50,6 +50,22 @@ class BaselineInfo(BaseModel):
     validation_sample_count: int = Field(ge=1)
 
 
+class TrainingPartitionMetadata(BaseModel):
+    strategy: Literal["sequential"]
+    split_ratio: float = Field(gt=0, lt=1)
+    train_sample_count: int = Field(ge=1)
+    validation_sample_count: int = Field(ge=1)
+
+
+class ReproducibilityMetadata(BaseModel):
+    dataset_version_id: str
+    partition: TrainingPartitionMetadata
+    seed: int | None
+    configuration: dict[str, Any]
+    code_version: str = Field(min_length=1)
+    environment: str = Field(min_length=1)
+
+
 class TrainingResult(BaseModel):
     model: str = "baseline"
     baseline: BaselineInfo
@@ -59,6 +75,7 @@ class TrainingResult(BaseModel):
     version: str | None = None
     dataset_version_id: str | None = None
     model_version_id: str | None = None
+    reproducibility: ReproducibilityMetadata | None = None
     status: ScientificJobStatusEnum = ScientificJobStatusEnum.COMPLETED
     warnings: list[str] = Field(default_factory=list)
 

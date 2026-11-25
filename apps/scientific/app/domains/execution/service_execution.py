@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -34,11 +35,14 @@ from apps.scientific.app.domains.execution.model_execution import (
 )
 from apps.scientific.app.domains.execution.schemas_execution import (
     JobCreate,
+    ReproducibilityMetadata,
     TrainingConfig,
+    TrainingPartitionMetadata,
 )
 
 logger = logging.getLogger(__name__)
 JOB_TIMEOUT_SECONDS = settings.job_timeout_seconds
+TRAINING_SPLIT_RATIO = 0.8
 
 
 def _utc_now_iso() -> str:
@@ -78,14 +82,36 @@ async def run_scientific_algorithm(
         fetch_training_file, client, str(version_id)
     )
     raw_data = parse_training_csv(file_bytes, checksum)
-    train_data, val_data = split_training_validation(raw_data, split_ratio=0.8)
-    return calculate_baseline(
+    train_data, val_data = split_training_validation(
+        raw_data, split_ratio=TRAINING_SPLIT_RATIO
+    )
+    result = calculate_baseline(
         train_data,
         val_data,
         version=str(model_version_id or version_id),
         dataset_version_id=str(version_id),
         model_version_id=str(model_version_id) if model_version_id else None,
     )
+    result["reproducibility"] = ReproducibilityMetadata(
+        dataset_version_id=str(version_id),
+        partition=TrainingPartitionMetadata(
+            strategy="sequential",
+            split_ratio=TRAINING_SPLIT_RATIO,
+            train_sample_count=result["baseline"]["train_sample_count"],
+            validation_sample_count=result["baseline"]["validation_sample_count"],
+        ),
+        seed=None,
+        configuration={
+            "algorithm": result["model"],
+            "baseline_strategy": result["baseline"]["strategy"],
+            "training_config": config,
+            "split_strategy": "sequential",
+            "split_ratio": TRAINING_SPLIT_RATIO,
+        },
+        code_version=os.getenv("APP_VERSION") or "dev",
+        environment=settings.environment,
+    ).model_dump(mode="json")
+    return result
 
 
 async def _update_scientific_job(
