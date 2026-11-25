@@ -14,20 +14,28 @@ interface UserProfile {
 interface CurrentUserResponse {
   id: string;
   email: string | null;
-  memberships: Array<{
+  memberships?: Array<{
     id: string;
     role: string;
     status: string;
-    organization: {
+    organization?: {
       id: string;
       name: string;
       status: string;
-    };
-  }>;
+    } | null;
+  }> | null;
 }
 
 export default function Profile() {
   const { user } = useAuth();
+  const fullName = user?.user_metadata?.full_name;
+  const displayName = user?.user_metadata?.name;
+  const metadataName = [fullName, displayName].find(
+    (value): value is string => typeof value === 'string' && value.trim().length > 0
+  )?.trim();
+  const metadataRole = user?.user_metadata?.role;
+  const fallbackRole = typeof metadataRole === 'string' ? metadataRole : '';
+  const fallbackEmail = user?.email ?? '';
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -41,10 +49,10 @@ export default function Profile() {
         if (isMounted) setError('');
 
         const data = await apiClient.get<CurrentUserResponse>('auth/me');
-        const membership = data.memberships[0];
-        const metadataName =
-          user?.user_metadata?.full_name ?? user?.user_metadata?.name;
-        const email = data.email ?? user?.email ?? '';
+        const membership = Array.isArray(data.memberships)
+          ? data.memberships[0]
+          : undefined;
+        const email = data.email ?? fallbackEmail;
 
         if (isMounted) {
           setProfile({
@@ -53,12 +61,11 @@ export default function Profile() {
               email.split('@')[0] ||
               'Usuario',
             email: email || 'Sin correo',
-            organization: membership?.organization.name || 'Sin organización',
+            organization: membership?.organization?.name || 'Sin organización',
             role:
               membership?.role ||
-              (typeof user?.user_metadata?.role === 'string'
-                ? user.user_metadata.role
-                : 'Sin rol'),
+              fallbackRole ||
+              'Sin rol',
             status: membership?.status || 'Activo',
           });
         }
@@ -80,7 +87,7 @@ export default function Profile() {
     return () => {
       isMounted = false;
     };
-  }, [user]);
+  }, [fallbackEmail, fallbackRole, metadataName]);
 
   if (isLoading) {
     return (
