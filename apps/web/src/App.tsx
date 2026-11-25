@@ -13,8 +13,10 @@ import { StationForm } from './pages/StationForm';
 import { LakeDetail } from './pages/LakeDetail';
 import { DatasetReview } from './pages/DatasetReview';
 import { NotFound } from './pages/NotFound';
+import { ScientificJobDetail } from './pages/ScientificJobDetail';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import LakeCreate from './pages/LakeCreate';
+import Profile from './pages/Profile';
 
 import Error401 from './pages/Error401';
 import Error403 from './pages/Error403';
@@ -35,10 +37,15 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<PrivateLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/profile" element={<Profile />} />
               <Route path="/lakes" element={<LakesList />} />
               <Route path="/stations" element={<StationsList />} />
               <Route path="/organizations" element={<OrganizationsList />} />
               <Route path="/datasets/review" element={<DatasetReview />} />
+              <Route
+                path="/scientific/jobs/:jobId"
+                element={<ScientificJobDetail />}
+              />
               <Route path="/admin" element={<OrganizationsList />} />
               <Route
                 path="/lakes/:lakeId/stations/new"

@@ -1,12 +1,16 @@
+import logging
+
 from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.requests import Request
 
 from apps.api.app.core.auth import AuthException
 from apps.api.app.core.auth import router as auth_router
 from apps.api.app.core.config import settings
+from apps.api.app.core.correlation import resolve_correlation_id
 from apps.api.app.core.database import check_supabase_connection
 from apps.api.app.core.dependencies import require_permission
 from apps.api.app.core.handlers import (
@@ -26,6 +30,9 @@ from apps.api.app.domains.ingestion.controller_ingestion import (
     router as ingestion_router,
 )
 from apps.api.app.gateway.controller_gateway import router as gateway_router
+from apps.api.app.gateway.executions_bridge import (
+    router as executions_bridge_router,
+)
 from apps.satellite.app.domains.observations.controller_observations import (
     router as observations_router,
 )
@@ -49,6 +56,8 @@ tags_metadata = [
     {"name": "Datasets", "description": "Versionado y manifiestos de datasets."},
     {"name": "Manifests", "description": "Trazabilidad y validación criptográfica."},
 ]
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="AquaBloom Sur API",
@@ -124,6 +133,7 @@ app.add_exception_handler(Exception, global_exception_handler)
 
 app.include_router(auth_router)
 app.include_router(gateway_router)
+app.include_router(executions_bridge_router)
 app.include_router(identity_router)
 app.include_router(catalog_router)
 app.include_router(ingestion_router)
@@ -143,8 +153,33 @@ app.add_middleware(
         "Accept",
         "X-Idempotency-Key",
         "X-Correlation-ID",
+        "X-Request-ID",
+        "X-Organization-ID",
     ],
+    expose_headers=["X-Correlation-ID"],
 )
+
+
+@app.middleware("http")
+async def correlation_middleware(request: Request, call_next):
+    correlation_id = resolve_correlation_id(
+        request.headers.get("X-Correlation-ID")
+        or request.headers.get("X-Request-ID")
+        or request.headers.get("correlation_id")
+    )
+    request.state.correlation_id = correlation_id
+    logger.info(
+        "Solicitud recibida por Gateway | correlation_id=%s",
+        correlation_id,
+        extra={
+            "correlation_id": correlation_id,
+            "request_method": request.method,
+            "request_path": request.url.path,
+        },
+    )
+    response = await call_next(request)
+    response.headers["X-Correlation-ID"] = correlation_id
+    return response
 
 
 @app.get("/")

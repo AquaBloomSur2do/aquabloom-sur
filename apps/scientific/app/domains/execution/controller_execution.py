@@ -1,9 +1,20 @@
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    status,
+)
 
 from apps.scientific.app.core.database import supabase
-from apps.scientific.app.core.dependencies import require_internal_service
+from apps.scientific.app.core.dependencies import (
+    require_authenticated_user,
+    require_internal_service,
+)
 from apps.scientific.app.domains.execution.domain_execution import (
     JOB_TIMEOUT_SECONDS,
 )
@@ -39,11 +50,22 @@ def _require_database():
     "/{job_id}",
     response_model=JobStatus,
     status_code=status.HTTP_200_OK,
-    dependencies=[Depends(require_internal_service)],
+    summary="Consultar estado y resultado de un trabajo científico",
 )
-def get_job_status(job_id: UUID):
+def get_job_status(
+    job_id: UUID,
+    organization_id: UUID = Header(alias="X-Organization-ID"),  # noqa: B008
+    user: dict = Depends(require_authenticated_user),  # noqa: B008
+):
     client = _require_database()
-    return get_job_status_service(client, job_id)
+    try:
+        user_id = UUID(str(user.get("sub")))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token sin identificador de usuario válido.",
+        ) from exc
+    return get_job_status_service(client, job_id, user_id, organization_id)
 
 
 @router.post(
@@ -55,16 +77,27 @@ def get_job_status(job_id: UUID):
 def create_execution_job(
     payload: JobCreate,
     background_tasks: BackgroundTasks,
+    request: Request,
+    organization_id: UUID = Header(alias="X-Organization-ID"),  # noqa: B008
+    user: dict = Depends(require_authenticated_user),  # noqa: B008
     x_idempotency_key: str | None = Header(
         default=None, alias="X-Idempotency-Key", max_length=255
     ),
 ):
     client = _require_database()
+    try:
+        user_id = UUID(str(user.get("sub")))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token sin identificador de usuario válido.",
+        ) from exc
+
     idempotency_key = x_idempotency_key.strip() if x_idempotency_key else None
 
     if idempotency_key == "":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="La clave de idempotencia no puede estar vacía.",
         )
 
@@ -73,5 +106,7 @@ def create_execution_job(
         payload=payload,
         background_tasks=background_tasks,
         idempotency_key=idempotency_key,
+        user_id=user_id,
+        organization_id=organization_id,
+        correlation_id=request.state.correlation_id,
     )
-

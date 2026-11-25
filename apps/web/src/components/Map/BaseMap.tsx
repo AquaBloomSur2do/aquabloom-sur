@@ -15,6 +15,7 @@ export interface BaseMapProps {
   center?: LngLatLike;
   zoom?: number;
   geometries?: FeatureCollection<Geometry> | Feature<Geometry | null>;
+  interactive?: boolean;
 }
 
 const initialCenter: LngLatLike = [-72.3316, -39.8142];
@@ -24,6 +25,7 @@ export default function BaseMap({
   center = initialCenter,
   zoom = 8,
   geometries,
+  interactive = true,
 }: BaseMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -32,6 +34,18 @@ export default function BaseMap({
 
   useEffect(() => {
     if (!containerRef.current) return;
+    const supportCanvas = document.createElement('canvas');
+    if (
+      typeof WebGL2RenderingContext === 'undefined' ||
+      !supportCanvas.getContext('webgl2')
+    ) {
+      const fallback = document.createElement('p');
+      fallback.setAttribute('role', 'status');
+      fallback.style.cssText = 'margin:0;padding:1rem;color:#475569';
+      fallback.textContent = 'El mapa no está disponible en este dispositivo.';
+      containerRef.current.append(fallback);
+      return () => fallback.remove();
+    }
 
     const map = new MapLibreMap({
       container: containerRef.current,
@@ -80,40 +94,41 @@ export default function BaseMap({
 
     if (existingSource) {
       (existingSource as GeoJSONSource).setData(mapData);
-      return;
+    } else {
+      map.addSource(sourceId, { type: 'geojson', data: mapData });
+
+      map.addLayer({
+        id: `${sourceId}-fill`,
+        type: 'fill',
+        source: sourceId,
+        paint: {
+          'fill-color': '#168a83',
+          'fill-opacity': 0.24,
+        },
+      });
+      map.addLayer({
+        id: `${sourceId}-line`,
+        type: 'line',
+        source: sourceId,
+        paint: {
+          'line-color': '#086c67',
+          'line-width': 2,
+        },
+      });
+      map.addLayer({
+        id: `${sourceId}-point`,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-radius': 5,
+          'circle-color': '#e76f51',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1.5,
+        },
+      });
     }
 
-    map.addSource(sourceId, { type: 'geojson', data: mapData });
-
-    map.addLayer({
-      id: `${sourceId}-fill`,
-      type: 'fill',
-      source: sourceId,
-      paint: {
-        'fill-color': '#168a83',
-        'fill-opacity': 0.24,
-      },
-    });
-    map.addLayer({
-      id: `${sourceId}-line`,
-      type: 'line',
-      source: sourceId,
-      paint: {
-        'line-color': '#086c67',
-        'line-width': 2,
-      },
-    });
-    map.addLayer({
-      id: `${sourceId}-point`,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-radius': 5,
-        'circle-color': '#e76f51',
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': 1.5,
-      },
-    });
+    if (!interactive) return;
 
     const handleFeatureClick = (e: MapLayerMouseEvent) => {
       if (!e.features || e.features.length === 0) return;
@@ -157,12 +172,21 @@ export default function BaseMap({
       map.on('mouseenter', layerId, setCursorPointer);
       map.on('mouseleave', layerId, resetCursor);
     });
-  }, [geometries, mapLoaded, navigate]);
+
+    return () => {
+      interactiveLayers.forEach((layerId) => {
+        map.off('click', layerId, handleFeatureClick);
+        map.off('mouseenter', layerId, setCursorPointer);
+        map.off('mouseleave', layerId, resetCursor);
+      });
+    };
+  }, [geometries, interactive, mapLoaded, navigate]);
 
   return (
     <div
       ref={containerRef}
-      className="w-full h-full min-h-[300px] md:min-h-[400px] z-0"
+      className="map-container"
+      style={{ height: '100%', width: '100%' }}
     />
   );
 }

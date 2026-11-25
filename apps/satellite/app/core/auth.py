@@ -1,5 +1,6 @@
 import os
 from functools import lru_cache
+from typing import Any
 from uuid import UUID
 
 import jwt
@@ -7,7 +8,6 @@ from fastapi import APIRouter, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
-from apps.api.app.domains.identity.service_identity import get_current_user_profile
 from apps.satellite.app.core.config import settings
 from apps.satellite.app.core.database import supabase
 from apps.satellite.app.core.permissions import CATALOG_ACTIONS, has_permission
@@ -47,6 +47,34 @@ class CurrentUserResponse(BaseModel):
 def get_supabase_jwks_client(project_url: str) -> jwt.PyJWKClient:
     jwks_url = f"{project_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
     return jwt.PyJWKClient(jwks_url)
+
+
+def get_current_user_profile(
+    client: Any,
+    user_id: UUID,
+    email: str | None,
+) -> dict[str, Any]:
+    """Obtiene el perfil y membresías activas sin acoplar Satellite al código de Core."""
+    client.table("profiles").upsert(
+        {"id": str(user_id), "email": email},
+        on_conflict="id",
+        ignore_duplicates=True,
+    ).execute()
+    response = (
+        client.table("memberships")
+        .select(
+            "id, role, status, organization:organizations!inner(id, name, status)"
+        )
+        .eq("user_id", str(user_id))
+        .eq("status", "active")
+        .eq("organizations.status", "active")
+        .execute()
+    )
+    return {
+        "id": str(user_id),
+        "email": email,
+        "memberships": response.data or [],
+    }
 
 
 def verify_supabase_jwt(
@@ -184,3 +212,6 @@ def require_catalog_disable_permission(
             detail="No tienes permisos para desactivar lagos.",
         )
     return payload
+
+
+

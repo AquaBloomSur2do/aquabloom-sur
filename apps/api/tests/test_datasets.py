@@ -12,6 +12,7 @@ from apps.api.app.domains.dataset.controller_dataset import router as datasets_r
 from apps.api.app.domains.dataset.model_dataset import APIError
 from apps.api.app.domains.dataset.schemas_dataset import (
     DatasetVersionStateUpdate,
+    PilotFixtureMetadata,
     VersionState,
 )
 from apps.api.app.domains.dataset.service_dataset import validate_state_transition
@@ -25,6 +26,7 @@ client = TestClient(app)
 # Pruebas S2-134: Ciclo de vida y estados
 # ==========================================
 
+
 def test_schema_accepts_all_five_states():
     for state in ["DRAFT", "IN_REVIEW", "APPROVED", "PUBLISHED", "ARCHIVED"]:
         model = DatasetVersionStateUpdate(state=VersionState(state))
@@ -34,6 +36,18 @@ def test_schema_accepts_all_five_states():
 def test_schema_rejects_invalid_state():
     with pytest.raises(ValidationError):
         DatasetVersionStateUpdate(state="INVALID_STATE")
+
+
+def test_pilot_fixture_metadata_rejects_non_boolean_provenance():
+    with pytest.raises(ValidationError):
+        PilotFixtureMetadata(
+            dataset_version="pilot-fixture-v1",
+            dataset_is_synthetic=True,
+            scene_identifier="SYNTHETIC_SENTINEL2_L2A_PILOT_20250115",
+            scene_is_synthetic="true",
+            random_seed=20250115,
+            inputs=[{"name": "B04", "is_synthetic": True}],
+        )
 
 
 def test_valid_version_state_transitions():
@@ -707,13 +721,39 @@ def test_get_training_file_denied_if_not_published(monkeypatch):
 def test_get_training_file_denied_wrong_org(monkeypatch):
     database = setup_request(monkeypatch, "admin")
     database.dataset_rows["versions"][0]["state"] = "PUBLISHED"
+    database.dataset_rows["training_manifests"] = [
+        {
+            "id": str(uuid4()),
+            "version_id": database.version_id,
+            "storage_path": f"versions/{database.version_id}/training.csv",
+            "checksum": "a" * 64,
+            "variables": ["temperatura", "clorofila_a", "turbidez", "ph"],
+        }
+    ]
+    downloaded_paths = []
+
+    class FakeBucket:
+        def download(self, path):
+            downloaded_paths.append(path)
+            return b"resultado del piloto"
+
+    class FakeStorage:
+        def from_(self, _bucket_name):
+            return FakeBucket()
+
+    database.storage = FakeStorage()
     database.organization_memberships[0]["organization_id"] = str(uuid4())
     try:
         res = client.get(f"/api/v1/datasets/versions/{database.version_id}/training-file")
+        res_down = client.get(
+            f"/api/v1/datasets/versions/{database.version_id}/training-file/download"
+        )
     finally:
         app.dependency_overrides.clear()
 
     assert res.status_code == 403
+    assert res_down.status_code == 403
+    assert downloaded_paths == []
 
 
 def test_get_training_file_denied_for_unapproved_role(monkeypatch):
@@ -802,7 +842,18 @@ def test_manifest_includes_version_sources_checksums_and_synthetic_flag(monkeypa
                 '{"id": "pilot_sentinel2_l2a", '
                 '"provider": "Sentinel-2", '
                 '"is_synthetic": true, '
-                '"sha256": "xyz789"}'
+                '"sha256": "xyz789", '
+                '"pilot_fixture": {'
+                '"dataset_version": "pilot-fixture-v1", '
+                '"dataset_is_synthetic": true, '
+                '"scene_identifier": "SYNTHETIC_SENTINEL2_L2A_PILOT_20250115", '
+                '"scene_is_synthetic": true, '
+                '"random_seed": 20250115, '
+                '"inputs": ['
+                '{"name": "B04", "is_synthetic": true}, '
+                '{"name": "B05", "is_synthetic": true}, '
+                '{"name": "water_mask", "is_synthetic": true}'
+                "]}}"
             )
             return io.StringIO(content)
         return original_open(self, *args, **kwargs)
@@ -816,14 +867,14 @@ def test_manifest_includes_version_sources_checksums_and_synthetic_flag(monkeypa
         )
     finally:
         app.dependency_overrides.clear()
-        
+
     assert response.status_code == 200
     data = response.json()
-    
+
     assert data["version_number"] == "1"
     assert "manifest_checksum" in data
     assert len(data["manifest_checksum"]) == 64
-    
+
     assert len(data["sources"]) == 2
     experimental_source, pilot_source = data["sources"]
 
@@ -838,5 +889,15 @@ def test_manifest_includes_version_sources_checksums_and_synthetic_flag(monkeypa
     assert pilot_source["is_synthetic"] is True
     assert pilot_source["is_experimental"] is False
     assert pilot_source["checksum"] == "xyz789"
-
-    
+    assert data["pilot_fixture"] == {
+        "dataset_version": "pilot-fixture-v1",
+        "dataset_is_synthetic": True,
+        "scene_identifier": "SYNTHETIC_SENTINEL2_L2A_PILOT_20250115",
+        "scene_is_synthetic": True,
+        "random_seed": 20250115,
+        "inputs": [
+            {"name": "B04", "is_synthetic": True},
+            {"name": "B05", "is_synthetic": True},
+            {"name": "water_mask", "is_synthetic": True},
+        ],
+    }

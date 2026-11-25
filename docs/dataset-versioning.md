@@ -39,6 +39,36 @@ esquemas expuestos por la API REST de Supabase. Si un servicio necesita acceder
 al esquema por PostgREST, debe añadirse explícitamente en la configuración de
 esquemas expuestos y usar el cliente con el esquema `dataset`.
 
+## Fixture científico reproducible
+
+El raster sintético Sentinel-2 del piloto se genera desde
+`apps/satellite/scripts/prepare_pilot_data.py`. Desde `apps/satellite`, ejecútalo
+con `python scripts/prepare_pilot_data.py --seed 20250115` para regenerar el
+raster y `data/metadata.json`. La metadata registra `pilot-fixture-v1`, el
+identificador de escena sintética, la semilla y el origen sintético de B04, B05
+y `water_mask`; la semilla determina los valores espectrales del raster.
+
+El endpoint existente
+`GET /api/v1/datasets/{dataset_id}/versions/{version_id}/manifest` incluye esos
+datos bajo `pilot_fixture` y los incorpora al checksum del manifiesto. La
+etiqueta `dataset_version` identifica la versión del fixture; `version_id` y
+`version_number` del manifiesto siguen identificando la versión persistida del
+dataset en PostgreSQL.
+
+## Metadatos de reproducibilidad de entrenamiento (S2-158)
+
+Al completar un trabajo de entrenamiento, `scientific_jobs.result` incluye un
+objeto `reproducibility` junto con las métricas y predicciones. Registra el
+`dataset_version_id`, la estrategia y proporción de partición, los tamaños de
+entrenamiento y validación, la configuración recibida, `APP_VERSION` y
+`ENVIRONMENT`. El baseline actual usa una partición secuencial 80/20 y no usa
+aleatoriedad, por lo que `seed` se guarda como `null`.
+
+El endpoint de estado del trabajo devuelve este objeto desde el resultado
+persistido. En desarrollo, `code_version` usa `dev` si `APP_VERSION` no está
+definida; en staging se recomienda configurar `APP_VERSION` con la versión o
+identificador de commit desplegado.
+
 ## Prueba de aislamiento
 
 Ejecuta `database/tests/014_dataset_rls_isolation.sql` en una base Supabase de

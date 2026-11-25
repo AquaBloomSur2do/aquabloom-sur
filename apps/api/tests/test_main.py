@@ -40,6 +40,35 @@ def test_validation_error_format():
     assert "details" in data
 
 
+def test_cors_allows_and_exposes_correlation_headers():
+    preflight = client.options(
+        "/api/v1/scientific/jobs",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": (
+                "authorization,content-type,x-organization-id,"
+                "x-idempotency-key,x-correlation-id,x-request-id"
+            ),
+        },
+    )
+
+    assert preflight.status_code == 200
+    allowed_headers = preflight.headers.get("access-control-allow-headers", "").lower()
+    assert "x-organization-id" in allowed_headers
+    assert "x-idempotency-key" in allowed_headers
+    assert "x-correlation-id" in allowed_headers
+    assert "x-request-id" in allowed_headers
+    response = client.get(
+        "/",
+        headers={"Origin": "http://localhost:5173"},
+    )
+    assert (
+        response.headers.get("access-control-expose-headers", "").lower()
+        == "x-correlation-id"
+    )
+
+
 def test_missing_configuration(monkeypatch):
     """Verifica que el sistema falle rápido si faltan variables de entorno."""
     monkeypatch.delenv("SUPABASE_URL", raising=False)
