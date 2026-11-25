@@ -233,6 +233,11 @@ aquabloom-sur/
 └── compose.yaml                # Orquestación Docker de la infraestructura
 ```
 
+## Documentación de servicios
+
+- [Worker científico y flujo de ejecuciones](./docs/scientific-worker.md)
+- [Formato de errores operativos del worker científico](./docs/formato-errores-operativos-worker.md)
+
 ## Configuración de Datos y Supabase
 
 La autenticación del cliente web usa Supabase Auth. La API valida y procesa las solicitudes del servicio y expone rutas de autenticación, organizaciones, lagos y estaciones. La API requiere las variables `SUPABASE_URL` y `SUPABASE_KEY` al iniciar; la clave de servicio solo debe existir en el entorno del backend y no se debe publicar ni enviar al repositorio.
