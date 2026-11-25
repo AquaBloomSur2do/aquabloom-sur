@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { executionsService } from '../services/executions';
@@ -15,6 +15,7 @@ describe('ScientificJobDetail', () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   it('muestra métricas MAE y RMSE, modelo baseline, versión, estado y advertencias en entrenamiento', async () => {
@@ -520,6 +521,43 @@ describe('ScientificJobDetail', () => {
     expect(screen.getByText('Fallido')).toBeInTheDocument();
   });
 
+  it('muestra fallos durante el sondeo sin ocultar el último estado recibido', async () => {
+    vi.mocked(executionsService.getJobStatus)
+      .mockResolvedValueOnce({
+        job_id: 'job-poll-error',
+        job_type: 'training',
+        status: 'queued',
+        config: {},
+        result: null,
+        dataset_version_id: null,
+        model_version_id: null,
+        requested_by: null,
+        error_message: null,
+        created_at: '2026-11-22T12:00:00Z',
+        started_at: null,
+        completed_at: null,
+        updated_at: null,
+      })
+      .mockRejectedValueOnce(new Error('No se pudo actualizar el estado.'));
+
+    render(
+      <MemoryRouter initialEntries={['/scientific/jobs/job-poll-error']}>
+        <Routes>
+          <Route
+            path="/scientific/jobs/:jobId"
+            element={<ScientificJobDetail pollIntervalMs={1} />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No se pudo actualizar el estado.'
+    );
+    expect(screen.getByText('En cola')).toBeInTheDocument();
+    expect(executionsService.getJobStatus).toHaveBeenCalledTimes(2);
+  });
+
   it('consulta periódicamente el estado del worker hasta mostrar el resultado persistido', async () => {
     vi.mocked(executionsService.getJobStatus)
       .mockResolvedValueOnce({
@@ -595,5 +633,74 @@ describe('ScientificJobDetail', () => {
     expect(screen.getAllByText('15').length).toBeGreaterThanOrEqual(3);
     expect(screen.getAllByText('ver-1').length).toBeGreaterThanOrEqual(1);
     expect(executionsService.getJobStatus).toHaveBeenCalledTimes(3);
+  });
+
+  it('detiene el sondeo después del límite y conserva el último estado conocido', async () => {
+    vi.useFakeTimers();
+    vi.mocked(executionsService.getJobStatus).mockResolvedValue({
+      job_id: 'job-still-running',
+      job_type: 'training',
+      status: 'running',
+      config: {},
+      result: null,
+      dataset_version_id: null,
+      model_version_id: null,
+      requested_by: null,
+      error_message: null,
+      created_at: '2026-11-22T12:00:00Z',
+      started_at: '2026-11-22T12:00:01Z',
+      completed_at: null,
+      updated_at: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/scientific/jobs/job-still-running']}>
+        <Routes>
+          <Route
+            path="/scientific/jobs/:jobId"
+            element={<ScientificJobDetail />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500 * 39);
+    });
+
+    expect(executionsService.getJobStatus).toHaveBeenCalledTimes(40);
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'El sondeo automático se detuvo después de 40 consultas.'
+    );
+    expect(screen.getByText('En ejecución')).toBeInTheDocument();
+  });
+
+  it('cancela la consulta activa al salir de la vista', () => {
+    let requestSignal: AbortSignal | undefined;
+    vi.mocked(executionsService.getJobStatus).mockImplementation(
+      (_jobId, signal) => {
+        requestSignal = signal;
+        return new Promise(() => {});
+      }
+    );
+
+    const { unmount } = render(
+      <MemoryRouter initialEntries={['/scientific/jobs/job-cancelled']}>
+        <Routes>
+          <Route
+            path="/scientific/jobs/:jobId"
+            element={<ScientificJobDetail />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(requestSignal).toBeInstanceOf(AbortSignal);
+    unmount();
+    expect(requestSignal?.aborted).toBe(true);
   });
 });
