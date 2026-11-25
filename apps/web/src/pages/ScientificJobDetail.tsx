@@ -8,6 +8,7 @@ import type {
 } from '../services/executions';
 
 const DEFAULT_POLL_INTERVAL_MS = 1500;
+const MAX_POLL_ATTEMPTS = 40;
 
 const statusPresentation: Record<
   JobStatusResponse['status'],
@@ -150,8 +151,12 @@ export function ScientificJobDetail({
     let active = true;
     let activeController = new AbortController();
     let pollTimer: number | null = null;
+    let pollAttempts = 0;
 
     const loadJob = async (isInitialLoad: boolean) => {
+      if (!active) return;
+      pollAttempts += 1;
+
       if (isInitialLoad) {
         setLoading(true);
         setError(null);
@@ -170,6 +175,13 @@ export function ScientificJobDetail({
         setError(null);
 
         if (isInProgressStatus(response.status)) {
+          if (pollAttempts >= MAX_POLL_ATTEMPTS) {
+            setError(
+              'El sondeo automático se detuvo después de 40 consultas. Vuelve a cargar la vista para consultar el estado actualizado.'
+            );
+            return;
+          }
+
           pollTimer = window.setTimeout(() => {
             void loadJob(false);
           }, pollIntervalMs);
@@ -251,12 +263,17 @@ export function ScientificJobDetail({
         </div>
       ) : loading ? (
         <p role="status">Cargando detalle del trabajo...</p>
-      ) : error ? (
+      ) : error && !job ? (
         <div className="status-banner danger" role="alert">
           {error}
         </div>
       ) : job ? (
         <main className="grid">
+          {error && (
+            <div className="status-banner danger detail-full" role="alert">
+              {error}
+            </div>
+          )}
           <section className="card">
             <div className="card-head">
               <h2>Estado del experimento</h2>
