@@ -5,6 +5,23 @@ aplicación móvil (React Native). No existe una API paralela ni endpoints
 exclusivos para móvil: el cliente usa el API Gateway y los contratos publicados
 en `/openapi.json`.
 
+## Estado de validación móvil (S2-188)
+
+El repositorio no incluye actualmente una aplicación móvil ejecutable, por lo
+que no fue posible validar el flujo desde un cliente React Native real. Como
+alternativa, se ejecutaron las pruebas del consumidor de referencia
+`apps/scientific/app/dataset_consumer.py` desde `apps/scientific`:
+
+```bash
+python -m pytest tests/test_dataset_consumer.py -q
+```
+
+Resultado: **8 pruebas aprobadas**. Estas pruebas usan un transporte HTTP
+simulado; validan el consumo del manifiesto y del CSV, el encabezado de
+autorización, la integridad del checksum, el parseo de datos y casos de error,
+sin conectarse a un backend real. La integración y validación desde la
+aplicación móvil real quedan pendientes.
+
 - **Base URL de producción:** `https://api.aquabloomsur.cl`
 - **Base URL local de desarrollo:** `localhost:8000` (HTTP solo en local; nunca
   enviar JWT reales sin TLS).
@@ -324,7 +341,10 @@ En `POST /api/v1/executions/jobs` solo se aceptan `training` y `estimation`
 (también `TRAINING` y `ESTIMATION` por compatibilidad). El tipo `modeling` no
 está implementado en esta ruta, aunque el enum de `JobStatus.job_type` sí lo
 incluya. Para `training`, la versión puede enviarse en `config.version_id` o en
-el campo superior `dataset_version_id`.
+el campo superior `dataset_version_id`. Para `estimation`, `config.model_id`
+debe ser el UUID de la versión del modelo seleccionada; el trabajo registra esa
+referencia en `model_version_id`, el `scene_id` y el usuario autenticado en
+`requested_by`.
 
 ### 3.2 Consultar el estado (polling)
 
@@ -367,7 +387,8 @@ curl -X GET "https://api.aquabloomsur.cl/api/v1/executions/99999999-9999-4999-89
   },
   "result": null,
   "dataset_version_id": null,
-  "model_version_id": null,
+  "model_version_id": "55555555-5555-4555-8555-555555555555",
+  "scene_id": "66666666-6666-4666-8666-666666666666",
   "requested_by": "11111111-1111-4111-8111-111111111111",
   "error_message": null,
   "created_at": "2026-10-29T14:30:00Z",
@@ -390,7 +411,8 @@ curl -X GET "https://api.aquabloomsur.cl/api/v1/executions/99999999-9999-4999-89
   },
   "result": null,
   "dataset_version_id": null,
-  "model_version_id": null,
+  "model_version_id": "55555555-5555-4555-8555-555555555555",
+  "scene_id": "66666666-6666-4666-8666-666666666666",
   "requested_by": "11111111-1111-4111-8111-111111111111",
   "error_message": null,
   "created_at": "2026-10-29T14:30:00Z",
@@ -460,7 +482,8 @@ curl -X GET "https://api.aquabloomsur.cl/api/v1/executions/99999999-9999-4999-89
   },
   "result": null,
   "dataset_version_id": null,
-  "model_version_id": null,
+  "model_version_id": "55555555-5555-4555-8555-555555555555",
+  "scene_id": "66666666-6666-4666-8666-666666666666",
   "requested_by": "11111111-1111-4111-8111-111111111111",
   "error_message": "Tiempo máximo de ejecución excedido (Timeout de 10.0s).",
   "created_at": "2026-10-29T14:30:00Z",

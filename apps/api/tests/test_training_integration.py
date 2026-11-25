@@ -1,10 +1,12 @@
 import hashlib
+import logging
 import os
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
 from fastapi import Header, HTTPException, status
 from fastapi.testclient import TestClient
@@ -13,8 +15,13 @@ os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test-secret-token")
 
+from apps.api.app.gateway import controller_gateway, service_gateway
 from apps.api.app.main import app
-from apps.scientific.app.core.dependencies import require_authenticated_user
+from apps.scientific.app.core.dependencies import (
+    require_authenticated_user,
+    require_internal_service,
+)
+from apps.scientific.app.main import app as scientific_app
 
 client = TestClient(app)
 
@@ -232,9 +239,17 @@ def fake_staging_db(monkeypatch):
     return database
 
 
+@pytest.mark.parametrize(
+    "incoming_correlation_id",
+    ["trace-training-123", None],
+)
 def test_web_training_bridge_dispatches_worker_and_persists_result(
-    fake_staging_db, monkeypatch
+    fake_staging_db,
+    monkeypatch,
+    caplog,
+    incoming_correlation_id,
 ):
+    caplog.set_level(logging.INFO)
     csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
     checksum = hashlib.sha256(csv_data).hexdigest()
     fetch_file = MagicMock(return_value=(csv_data, checksum))
@@ -242,6 +257,10 @@ def test_web_training_bridge_dispatches_worker_and_persists_result(
         "apps.scientific.app.domains.execution.service_execution.fetch_training_file",
         fetch_file,
     )
+
+    request_headers = dict(AUTH_HEADERS)
+    if incoming_correlation_id:
+        request_headers["X-Correlation-ID"] = incoming_correlation_id
 
     submit_response = client.post(
         "/api/v1/executions/jobs",
@@ -253,10 +272,27 @@ def test_web_training_bridge_dispatches_worker_and_persists_result(
                 "required_index": "NDCI",
             },
         },
-        headers=AUTH_HEADERS,
+        headers=request_headers,
     )
 
     assert submit_response.status_code == 202
+    correlation_id = submit_response.headers["x-correlation-id"]
+    if incoming_correlation_id:
+        assert correlation_id == incoming_correlation_id
+    else:
+        uuid.UUID(correlation_id)
+    assert any(
+        record.name == "apps.api.app.main"
+        and getattr(record, "correlation_id", None) == correlation_id
+        for record in caplog.records
+    )
+    assert any(
+        record.name == "apps.scientific.app.domains.execution.service_execution"
+        and getattr(record, "correlation_id", None) == correlation_id
+        and "Ejecución científica iniciada" in record.getMessage()
+        for record in caplog.records
+    )
+
     accepted = submit_response.json()
     job_id = accepted["job_id"]
     assert accepted["status"] == "queued"
@@ -292,6 +328,132 @@ def test_web_training_bridge_dispatches_worker_and_persists_result(
         uuid.UUID(ORGANIZATION_ID),
         uuid.UUID(USER_ID),
     )
+
+
+@pytest.mark.parametrize(
+    "incoming_correlation_id",
+    ["trace-scientific-job-789", None],
+)
+def test_gateway_scientific_worker_execution_keeps_correlation_id(
+    fake_staging_db,
+    monkeypatch,
+    caplog,
+    incoming_correlation_id,
+):
+    caplog.set_level(logging.INFO)
+    monkeypatch.setitem(
+        scientific_app.dependency_overrides,
+        require_authenticated_user,
+        fake_authenticated_user,
+    )
+    monkeypatch.setitem(
+        scientific_app.dependency_overrides,
+        require_internal_service,
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        controller_gateway.settings,
+        "scientific_service_url",
+        "http://scientific",
+    )
+    async_client_type = httpx.AsyncClient
+    monkeypatch.setattr(
+        service_gateway.httpx,
+        "AsyncClient",
+        lambda: async_client_type(
+            transport=httpx.ASGITransport(app=scientific_app),
+            base_url="http://scientific",
+        ),
+    )
+
+    request_headers = {
+        **AUTH_HEADERS,
+        "X-Internal-Token": "test-secret-token",
+    }
+    if incoming_correlation_id:
+        request_headers["X-Correlation-ID"] = incoming_correlation_id
+
+    response = client.post(
+        "/api/v1/scientific/api/v1/executions/",
+        json={
+            "job_type": "estimation",
+            "config": {
+                "model_id": "88888888-8888-4888-8888-888888888888",
+                "scene_id": "44444444-4444-4444-8444-444444444444",
+            },
+        },
+        headers=request_headers,
+    )
+
+    assert response.status_code == 202
+    correlation_id = response.headers["x-correlation-id"]
+    if incoming_correlation_id:
+        assert correlation_id == incoming_correlation_id
+    else:
+        uuid.UUID(correlation_id)
+
+    assert any(
+        record.name == "apps.api.app.main"
+        and getattr(record, "correlation_id", None) == correlation_id
+        for record in caplog.records
+    )
+    assert any(
+        record.name == "apps.scientific.app.main"
+        and getattr(record, "correlation_id", None) == correlation_id
+        for record in caplog.records
+    )
+    assert any(
+        record.name == "apps.scientific.app.domains.execution.service_execution"
+        and getattr(record, "correlation_id", None) == correlation_id
+        and "Ejecución científica iniciada" in record.getMessage()
+        for record in caplog.records
+    )
+    assert fake_staging_db.jobs[0]["status"] == "completed"
+
+
+def test_web_estimation_job_links_model_version_scene_and_requester(
+    fake_staging_db,
+):
+    model_version_id = "88888888-8888-4888-8888-888888888888"
+    scene_id = "44444444-4444-4444-8444-444444444444"
+    response = client.post(
+        "/api/v1/executions/jobs",
+        json={
+            "job_type": "ESTIMATION",
+            "config": {"model_id": model_version_id, "scene_id": scene_id},
+        },
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "queued"
+    assert fake_staging_db.jobs[0]["model_version_id"] == model_version_id
+    assert fake_staging_db.jobs[0]["scene_id"] == scene_id
+    assert fake_staging_db.jobs[0]["requested_by"] == USER_ID
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {
+            "model_id": "not-a-uuid",
+            "scene_id": "44444444-4444-4444-8444-444444444444",
+        },
+        {
+            "model_id": "88888888-8888-4888-8888-888888888888",
+            "scene_id": "not-a-uuid",
+        },
+    ],
+)
+def test_web_estimation_rejects_non_uuid_model_or_scene(config, fake_staging_db):
+    response = client.post(
+        "/api/v1/executions/jobs",
+        json={"job_type": "ESTIMATION", "config": config},
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 422
+    assert fake_staging_db.jobs == []
 
 
 def test_web_training_bridge_rejects_unpublished_version(fake_staging_db):

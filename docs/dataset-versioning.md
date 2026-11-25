@@ -55,6 +55,20 @@ etiqueta `dataset_version` identifica la versión del fixture; `version_id` y
 `version_number` del manifiesto siguen identificando la versión persistida del
 dataset en PostgreSQL.
 
+## Metadatos de reproducibilidad de entrenamiento (S2-158)
+
+Al completar un trabajo de entrenamiento, `scientific_jobs.result` incluye un
+objeto `reproducibility` junto con las métricas y predicciones. Registra el
+`dataset_version_id`, la estrategia y proporción de partición, los tamaños de
+entrenamiento y validación, la configuración recibida, `APP_VERSION` y
+`ENVIRONMENT`. El baseline actual usa una partición secuencial 80/20 y no usa
+aleatoriedad, por lo que `seed` se guarda como `null`.
+
+El endpoint de estado del trabajo devuelve este objeto desde el resultado
+persistido. En desarrollo, `code_version` usa `dev` si `APP_VERSION` no está
+definida; en staging se recomienda configurar `APP_VERSION` con la versión o
+identificador de commit desplegado.
+
 ## Prueba de aislamiento
 
 Ejecuta `database/tests/014_dataset_rls_isolation.sql` en una base Supabase de

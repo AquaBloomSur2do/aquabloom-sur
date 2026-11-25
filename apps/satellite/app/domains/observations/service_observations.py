@@ -97,7 +97,10 @@ def execute_task(message: str) -> dict:
         raise ValueError("Tipo de tarea científica no reconocido.")
 
     result = summarize_measurements(task["measurements"])
-    return {"task_id": task["task_id"], **result}
+    task_result = {"task_id": task["task_id"], **result}
+    if "correlation_id" in task:
+        task_result["correlation_id"] = task["correlation_id"]
+    return task_result
 
 
 def consume_once(redis_client: QueueClient) -> bool:

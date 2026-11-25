@@ -1,7 +1,11 @@
-from uuid import uuid4
+import logging
 
 import httpx
 from fastapi import Request, Response
+
+from apps.api.app.core.correlation import resolve_correlation_id
+
+logger = logging.getLogger(__name__)
 
 PROXY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
 HOP_BY_HOP_HEADERS = {
@@ -24,11 +28,12 @@ async def forward_proxy_request(
     service_url: str,
     path: str = "",
 ) -> Response:
-    correlation_id = (
+    correlation_id = getattr(request.state, "correlation_id", None) or (
         request.headers.get("x-correlation-id")
+        or request.headers.get("x-request-id")
         or request.headers.get("correlation_id")
-        or str(uuid4())
     )
+    correlation_id = resolve_correlation_id(correlation_id)
     headers = {
         name: value
         for name, value in request.headers.items()
@@ -47,6 +52,16 @@ async def forward_proxy_request(
             headers=headers,
             content=await request.body(),
         )
+
+    logger.info(
+        "Solicitud reenviada por Gateway | correlation_id=%s",
+        correlation_id,
+        extra={
+            "correlation_id": correlation_id,
+            "upstream_service": service_url,
+            "request_method": request.method,
+        },
+    )
 
     response_headers = {
         name: value

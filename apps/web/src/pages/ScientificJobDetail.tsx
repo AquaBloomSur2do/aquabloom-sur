@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import type { FeatureCollection, Geometry } from 'geojson';
+import BaseMap from '../components/Map/BaseMap';
 import { executionsService } from '../services/executions';
 import type {
   JobStatusResponse,
@@ -8,6 +10,7 @@ import type {
 } from '../services/executions';
 
 const DEFAULT_POLL_INTERVAL_MS = 1500;
+const MAX_POLL_ATTEMPTS = 40;
 
 const statusPresentation: Record<
   JobStatusResponse['status'],
@@ -120,10 +123,33 @@ function formatCoordinates(
   latitude: number | null | undefined,
   longitude: number | null | undefined
 ): string | null {
-  if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+  if (
+    typeof latitude !== 'number' ||
+    !Number.isFinite(latitude) ||
+    typeof longitude !== 'number' ||
+    !Number.isFinite(longitude)
+  ) {
     return null;
   }
   return `${latitude}, ${longitude}`;
+}
+
+function hasValidCoordinates(
+  prediction: PointPredictionItem
+): prediction is PointPredictionItem & {
+  latitude: number;
+  longitude: number;
+} {
+  return (
+    typeof prediction.latitude === 'number' &&
+    Number.isFinite(prediction.latitude) &&
+    prediction.latitude >= -90 &&
+    prediction.latitude <= 90 &&
+    typeof prediction.longitude === 'number' &&
+    Number.isFinite(prediction.longitude) &&
+    prediction.longitude >= -180 &&
+    prediction.longitude <= 180
+  );
 }
 
 function getExperimentalCondition(result: TrainingJobResult): string {
@@ -150,8 +176,12 @@ export function ScientificJobDetail({
     let active = true;
     let activeController = new AbortController();
     let pollTimer: number | null = null;
+    let pollAttempts = 0;
 
     const loadJob = async (isInitialLoad: boolean) => {
+      if (!active) return;
+      pollAttempts += 1;
+
       if (isInitialLoad) {
         setLoading(true);
         setError(null);
@@ -170,6 +200,13 @@ export function ScientificJobDetail({
         setError(null);
 
         if (isInProgressStatus(response.status)) {
+          if (pollAttempts >= MAX_POLL_ATTEMPTS) {
+            setError(
+              'El sondeo automático se detuvo después de 40 consultas. Vuelve a cargar la vista para consultar el estado actualizado.'
+            );
+            return;
+          }
+
           pollTimer = window.setTimeout(() => {
             void loadJob(false);
           }, pollIntervalMs);
@@ -210,12 +247,76 @@ export function ScientificJobDetail({
   const baselinePrediction =
     job?.result?.baseline?.prediction_value ?? job?.result?.prediction_value;
   const pointPredictionSource = job?.result?.predictions;
-  const pointPredictions = isPointPredictionList(pointPredictionSource)
-    ? pointPredictionSource.filter(
-        (prediction): prediction is PointPredictionItem =>
-          typeof prediction === 'object' && prediction !== null
-      )
-    : [];
+  const pointPredictions = useMemo(
+    () =>
+      isPointPredictionList(pointPredictionSource)
+        ? pointPredictionSource.filter(
+            (prediction): prediction is PointPredictionItem =>
+              typeof prediction === 'object' && prediction !== null
+          )
+        : [],
+    [pointPredictionSource]
+  );
+  const mappedPredictions = useMemo(
+    () => pointPredictions.filter(hasValidCoordinates),
+    [pointPredictions]
+  );
+  const pointGeometries = useMemo<FeatureCollection<Geometry> | null>(() => {
+    if (mappedPredictions.length === 0) return null;
+    return {
+      type: 'FeatureCollection',
+      features: mappedPredictions.map((prediction) => ({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [prediction.longitude, prediction.latitude],
+        },
+        properties: {
+          point_id: prediction.point_id ?? null,
+          station_name:
+            prediction.station_name ?? prediction.station_code ?? null,
+        },
+      })),
+    };
+  }, [mappedPredictions]);
+  const mapCenter = useMemo<[number, number] | null>(() => {
+    if (mappedPredictions.length === 0) return null;
+    const coordinateTotals = mappedPredictions.reduce(
+      (totals, prediction) => ({
+        longitude: totals.longitude + prediction.longitude,
+        latitude: totals.latitude + prediction.latitude,
+      }),
+      { longitude: 0, latitude: 0 }
+    );
+    return [
+      coordinateTotals.longitude / mappedPredictions.length,
+      coordinateTotals.latitude / mappedPredictions.length,
+    ];
+  }, [mappedPredictions]);
+  const mapZoom = useMemo(() => {
+    if (mappedPredictions.length < 2) return 12;
+    const bounds = mappedPredictions.reduce(
+      (current, prediction) => ({
+        minLatitude: Math.min(current.minLatitude, prediction.latitude),
+        maxLatitude: Math.max(current.maxLatitude, prediction.latitude),
+        minLongitude: Math.min(current.minLongitude, prediction.longitude),
+        maxLongitude: Math.max(current.maxLongitude, prediction.longitude),
+      }),
+      {
+        minLatitude: mappedPredictions[0].latitude,
+        maxLatitude: mappedPredictions[0].latitude,
+        minLongitude: mappedPredictions[0].longitude,
+        maxLongitude: mappedPredictions[0].longitude,
+      }
+    );
+    const span = Math.max(
+      bounds.maxLatitude - bounds.minLatitude,
+      bounds.maxLongitude - bounds.minLongitude
+    );
+    return span === 0
+      ? 12
+      : Math.max(3, Math.min(12, Math.floor(Math.log2(360 / span)) - 1));
+  }, [mappedPredictions]);
 
   const resolvedVersion =
     job?.result?.version ??
@@ -251,12 +352,17 @@ export function ScientificJobDetail({
         </div>
       ) : loading ? (
         <p role="status">Cargando detalle del trabajo...</p>
-      ) : error ? (
+      ) : error && !job ? (
         <div className="status-banner danger" role="alert">
           {error}
         </div>
       ) : job ? (
         <main className="grid">
+          {error && (
+            <div className="status-banner danger detail-full" role="alert">
+              {error}
+            </div>
+          )}
           <section className="card">
             <div className="card-head">
               <h2>Estado del experimento</h2>
@@ -470,71 +576,109 @@ export function ScientificJobDetail({
               </div>
             </section>
           )}
-          {job.job_type === 'estimation' && pointPredictions.length > 0 && (
+          {job.job_type === 'estimation' && job.status === 'completed' && (
             <section className="card">
               <div className="card-head">
                 <h2>Resultados por punto</h2>
               </div>
               <div className="card-body">
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <caption className="sr-only">
-                    Estimaciones puntuales de la escena
-                  </caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Estación / Coordenada</th>
-                      <th scope="col">Valor</th>
-                      <th scope="col">Unidad</th>
-                      <th scope="col">Advertencia</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pointPredictions.map((item, index) => {
-                      const stationLabel =
-                        item.station_name ??
-                        item.station_code ??
-                        item.point_id ??
-                        null;
-                      const coordinates = formatCoordinates(
-                        item.latitude,
-                        item.longitude
-                      );
-                      const rawValue = item.predicted_value ?? item.value;
-                      const unit =
-                        item.unit?.trim() ||
-                        job.result?.unit?.trim() ||
-                        'Sin unidad';
-                      const warning =
-                        item.warning?.trim() ||
-                        (item.warnings?.length
-                          ? item.warnings.join('; ')
-                          : null) ||
-                        (job.result?.warnings?.length
-                          ? job.result.warnings.join('; ')
-                          : null) ||
-                        'Sin advertencias';
-                      const rowKey =
-                        item.point_id ??
-                        item.station_code ??
-                        item.station_name ??
-                        `${item.latitude ?? 'na'}-${item.longitude ?? 'na'}-${index}`;
+                {pointGeometries && mapCenter ? (
+                  <>
+                    <h3 id="estimation-map-heading">
+                      Mapa de puntos de estimación
+                    </h3>
+                    <p className="card-note">
+                      El mapa muestra los puntos con coordenadas válidas. La
+                      tabla incluye todas las predicciones recibidas.
+                    </p>
+                    <div
+                      className="estimation-map"
+                      role="region"
+                      aria-labelledby="estimation-map-heading"
+                    >
+                      <BaseMap
+                        center={mapCenter}
+                        zoom={mapZoom}
+                        geometries={pointGeometries}
+                        interactive={false}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <p className="card-note" role="status">
+                    No hay coordenadas válidas para mostrar en el mapa.
+                  </p>
+                )}
 
-                      return (
-                        <tr key={rowKey}>
-                          <td>
-                            <div>{stationLabel ?? 'No disponible'}</div>
-                            {coordinates && (
-                              <div className="lake-meta">{coordinates}</div>
-                            )}
-                          </td>
-                          <td>{formatPointValue(rawValue)}</td>
-                          <td>{unit}</td>
-                          <td>{warning}</td>
+                {pointPredictions.length === 0 ? (
+                  <p className="card-note" role="status">
+                    La estimación no contiene resultados por punto.
+                  </p>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <caption className="sr-only">
+                        Estimaciones puntuales de la escena
+                      </caption>
+                      <thead>
+                        <tr>
+                          <th scope="col">Estación / Coordenada</th>
+                          <th scope="col">Valor</th>
+                          <th scope="col">Unidad</th>
+                          <th scope="col">Advertencia</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {pointPredictions.map((item, index) => {
+                          const stationLabel =
+                            item.station_name ??
+                            item.station_code ??
+                            item.point_id ??
+                            null;
+                          const coordinates = formatCoordinates(
+                            item.latitude,
+                            item.longitude
+                          );
+                          const rawValue = item.predicted_value ?? item.value;
+                          const unit =
+                            item.unit?.trim() ||
+                            job.result?.unit?.trim() ||
+                            'Sin unidad';
+                          const warning =
+                            item.warning?.trim() ||
+                            (item.warnings?.length
+                              ? item.warnings.join('; ')
+                              : null) ||
+                            (job.result?.warnings?.length
+                              ? job.result.warnings.join('; ')
+                              : null) ||
+                            'Sin advertencias';
+                          const rowKey =
+                            item.point_id ??
+                            item.station_code ??
+                            item.station_name ??
+                            `${item.latitude ?? 'na'}-${item.longitude ?? 'na'}-${index}`;
+
+                          return (
+                            <tr key={rowKey}>
+                              <td>
+                                <div>{stationLabel ?? 'No disponible'}</div>
+                                {coordinates && (
+                                  <div className="cell-sub">
+                                    {coordinates}
+                                  </div>
+                                )}
+                              </td>
+                              <td>{formatPointValue(rawValue)}</td>
+                              <td>{unit}</td>
+                              <td>{warning}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </section>
           )}

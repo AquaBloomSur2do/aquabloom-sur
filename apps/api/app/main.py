@@ -1,12 +1,16 @@
+import logging
+
 from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.requests import Request
 
 from apps.api.app.core.auth import AuthException
 from apps.api.app.core.auth import router as auth_router
 from apps.api.app.core.config import settings
+from apps.api.app.core.correlation import resolve_correlation_id
 from apps.api.app.core.database import check_supabase_connection
 from apps.api.app.core.dependencies import require_permission
 from apps.api.app.core.handlers import (
@@ -55,6 +59,8 @@ tags_metadata = [
     {"name": "Datasets", "description": "Versionado y manifiestos de datasets."},
     {"name": "Manifests", "description": "Trazabilidad y validación criptográfica."},
 ]
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="AquaBloom Sur API",
@@ -151,9 +157,33 @@ app.add_middleware(
         "Accept",
         "X-Idempotency-Key",
         "X-Correlation-ID",
+        "X-Request-ID",
         "X-Organization-ID",
     ],
+    expose_headers=["X-Correlation-ID"],
 )
+
+
+@app.middleware("http")
+async def correlation_middleware(request: Request, call_next):
+    correlation_id = resolve_correlation_id(
+        request.headers.get("X-Correlation-ID")
+        or request.headers.get("X-Request-ID")
+        or request.headers.get("correlation_id")
+    )
+    request.state.correlation_id = correlation_id
+    logger.info(
+        "Solicitud recibida por Gateway | correlation_id=%s",
+        correlation_id,
+        extra={
+            "correlation_id": correlation_id,
+            "request_method": request.method,
+            "request_path": request.url.path,
+        },
+    )
+    response = await call_next(request)
+    response.headers["X-Correlation-ID"] = correlation_id
+    return response
 
 
 @app.get("/")

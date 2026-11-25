@@ -53,6 +53,10 @@ AUTH_HEADERS = {
 HEADERS = {**AUTH_HEADERS, "X-Internal-Token": "test-secret-token"}
 DATASET_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 VERSION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+MODEL_VERSION_ID = "11111111-2222-4333-8444-555555555555"
+OTHER_MODEL_VERSION_ID = "22222222-3333-4444-8555-666666666666"
+SCENE_ID = "33333333-4444-4555-8666-777777777777"
+OTHER_SCENE_ID = "44444444-5555-4666-8777-888888888888"
 
 
 def fake_authenticated_user(
@@ -271,7 +275,7 @@ def fake_database(monkeypatch):
     return database
 
 
-def estimation_payload(model_id="model_v1", scene_id="scene_001"):
+def estimation_payload(model_id=MODEL_VERSION_ID, scene_id=SCENE_ID):
     return {
         "job_type": "estimation",
         "config": {"model_id": model_id, "scene_id": scene_id},
@@ -304,6 +308,53 @@ def test_create_execution_job_returns_202(fake_database):
     assert "job_id" in data
     assert data["status"] == "queued"
     assert data["status_url"] == f"/api/v1/executions/{data['job_id']}"
+    job = fake_database.rows[0]
+    assert job["model_version_id"] == MODEL_VERSION_ID
+    assert job["scene_id"] == SCENE_ID
+    assert job["requested_by"] == USER_ID
+
+
+def test_scientific_service_echoes_and_generates_correlation_id():
+    response = client.get(
+        "/",
+        headers={"X-Correlation-ID": "trace-scientific-123"},
+    )
+    generated_response = client.get("/")
+
+    assert response.headers["x-correlation-id"] == "trace-scientific-123"
+    assert generated_response.headers["x-correlation-id"]
+    uuid.UUID(generated_response.headers["x-correlation-id"])
+
+
+def test_scientific_cors_preserves_internal_headers_and_exposes_correlation_id():
+    preflight = client.options(
+        "/api/v1/executions/",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": (
+                "authorization,content-type,x-idempotency-key,"
+                "x-internal-token,x-organization-id,x-correlation-id,x-request-id"
+            ),
+        },
+    )
+
+    assert preflight.status_code == 200
+    allowed_headers = preflight.headers.get("access-control-allow-headers", "").lower()
+    assert "x-idempotency-key" in allowed_headers
+    assert "x-internal-token" in allowed_headers
+    assert "x-organization-id" in allowed_headers
+    assert "x-correlation-id" in allowed_headers
+    assert "x-request-id" in allowed_headers
+
+    response = client.get(
+        "/",
+        headers={"Origin": "http://localhost:5173"},
+    )
+    assert (
+        response.headers.get("access-control-expose-headers", "").lower()
+        == "x-correlation-id"
+    )
 
 
 def test_get_job_status_returns_200(fake_database):
@@ -318,6 +369,9 @@ def test_get_job_status_returns_200(fake_database):
     data = response.json()
     assert data["job_id"] == job_id
     assert data["status"] == "completed"
+    assert data["model_version_id"] == MODEL_VERSION_ID
+    assert data["scene_id"] == SCENE_ID
+    assert data["requested_by"] == USER_ID
     assert fake_database.rows[0]["organization_id"] == ORGANIZATION_ID
     assert fake_database.rows[0]["requested_by"] == USER_ID
     assert len(fake_database.rows) == 1
@@ -335,6 +389,10 @@ def test_get_job_status_returns_404_for_another_organization(fake_database):
         "/api/v1/executions/", json=estimation_payload(), headers=HEADERS
     )
     job_id = create_response.json()["job_id"]
+    fake_database.rows[0]["result"] = {
+        "pilot_result": "resultado confidencial",
+        "predictions": [12.5],
+    }
 
     response = client.get(
         f"/api/v1/executions/{job_id}",
@@ -346,6 +404,7 @@ def test_get_job_status_returns_404_for_another_organization(fake_database):
 
     assert response.status_code == 404
     assert response.json()["message"] == "No se encontró el trabajo."
+    assert "resultado confidencial" not in response.text
 
 
 def test_get_job_status_requires_authentication(fake_database):
@@ -432,7 +491,10 @@ def test_reusing_idempotency_key_with_different_payload_returns_conflict(fake_da
     )
     second = client.post(
         "/api/v1/executions/",
-        json=estimation_payload(model_id="model_v2", scene_id="scene_002"),
+        json=estimation_payload(
+            model_id=OTHER_MODEL_VERSION_ID,
+            scene_id=OTHER_SCENE_ID,
+        ),
         headers=headers,
     )
 
@@ -454,7 +516,7 @@ def test_concurrent_idempotent_insert_returns_existing_job(fake_database):
 
 
 def test_requests_without_idempotency_key_create_distinct_jobs(fake_database):
-    payload = estimation_payload(scene_id="scene_003")
+    payload = estimation_payload(scene_id=OTHER_SCENE_ID)
     first = client.post("/api/v1/executions/", json=payload, headers=HEADERS)
     second = client.post("/api/v1/executions/", json=payload, headers=HEADERS)
 
@@ -489,7 +551,7 @@ def test_execution_job_handles_internal_exception(monkeypatch, fake_database):
         "apps.scientific.app.domains.execution.service_execution.run_scientific_algorithm",
         fail_internally,
     )
-    payload = estimation_payload(scene_id="scene_fail")
+    payload = estimation_payload()
 
     post_response = client.post("/api/v1/executions/", json=payload, headers=HEADERS)
     assert post_response.status_code == 202
@@ -518,7 +580,7 @@ def test_execution_job_handles_timeout_exceeded(monkeypatch, fake_database):
         0.1,
     )
 
-    payload = estimation_payload(scene_id="scene_timeout")
+    payload = estimation_payload()
     post_response = client.post("/api/v1/executions/", json=payload, headers=HEADERS)
     assert post_response.status_code == 202
     job_id = post_response.json()["job_id"]
@@ -611,7 +673,7 @@ def test_execution_job_persists_failed_state_on_cancellation(
 ):
     """Una cancelación del worker deja el trabajo en failed y relanza CancelledError."""
     job_id = str(uuid.uuid4())
-    config = {"model_id": "model_v1", "scene_id": "scene_001"}
+    config = {"model_id": MODEL_VERSION_ID, "scene_id": SCENE_ID}
     fake_database.rows.append(
         {
             "id": job_id,
@@ -657,7 +719,7 @@ def test_failed_job_error_is_isolated_by_organization(monkeypatch, fake_database
 
     post_response = client.post(
         "/api/v1/executions/",
-        json=estimation_payload(scene_id="scene_fail"),
+        json=estimation_payload(),
         headers=HEADERS,
     )
     job_id = post_response.json()["job_id"]
@@ -827,6 +889,8 @@ def test_baseline_falla_con_particiones_vacias():
 def test_get_training_job_status_exposes_full_structured_result(
     fake_database, monkeypatch
 ):
+    monkeypatch.setattr(scientific_settings, "environment", "staging")
+    monkeypatch.setenv("APP_VERSION", "test-build-158")
     csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
     mock_training_file(monkeypatch, csv_data)
 
@@ -855,6 +919,30 @@ def test_get_training_job_status_exposes_full_structured_result(
     assert result["status"] == "completed"
     assert isinstance(result["warnings"], list)
     assert len(result["warnings"]) >= 1
+    assert result["reproducibility"] == {
+        "dataset_version_id": VERSION_ID,
+        "partition": {
+            "strategy": "sequential",
+            "split_ratio": 0.8,
+            "train_sample_count": 2,
+            "validation_sample_count": 1,
+        },
+        "seed": None,
+        "configuration": {
+            "algorithm": "baseline",
+            "baseline_strategy": "mean_clorofila_a",
+            "training_config": {
+                "dataset_id": DATASET_ID,
+                "version_id": VERSION_ID,
+                "epochs": 50,
+                "learning_rate": 0.01,
+            },
+            "split_strategy": "sequential",
+            "split_ratio": 0.8,
+        },
+        "code_version": "test-build-158",
+        "environment": "staging",
+    }
 
 
 # =========================================================
@@ -863,7 +951,7 @@ def test_get_training_job_status_exposes_full_structured_result(
 
 
 def _init_persistent_sqlite_db(db_path: Path) -> None:
-    """Inicializa en disco el esquema de scientific_jobs (migraciones 022 y 023)."""
+    """Inicializa en disco el esquema de scientific_jobs (migraciones 022, 023 y 027)."""
     with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.executescript(
             """
@@ -879,6 +967,7 @@ def _init_persistent_sqlite_db(db_path: Path) -> None:
                 requested_by TEXT,
                 dataset_version_id TEXT,
                 model_version_id TEXT,
+                scene_id TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT,
                 started_at TEXT,

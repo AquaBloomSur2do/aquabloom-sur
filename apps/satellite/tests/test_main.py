@@ -103,6 +103,7 @@ def test_enqueue_returns_task_id_and_pushes_message_to_redis():
     assert task["task_id"] == response.json()["task_id"]
     assert task["task_type"] == "summarize_measurements"
     assert task["measurements"] == [1.0, 2.0, 6.0]
+    assert task["correlation_id"] == response.headers["x-correlation-id"]
     assert "results" not in task
 
 
@@ -149,6 +150,7 @@ def test_worker_executes_enqueued_task_from_separate_queue(caplog):
         "task_id": "task-456",
         "task_type": "summarize_measurements",
         "measurements": [1.0, 3.0, 5.0],
+        "correlation_id": "trace-worker-456",
     }
     assert execute_task(json.dumps(task)) == {
         "task_id": "task-456",
@@ -156,6 +158,7 @@ def test_worker_executes_enqueued_task_from_separate_queue(caplog):
         "minimum": 1.0,
         "maximum": 5.0,
         "mean": 3.0,
+        "correlation_id": "trace-worker-456",
     }
 
     class Queue:

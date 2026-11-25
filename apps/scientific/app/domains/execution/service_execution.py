@@ -1,13 +1,12 @@
 import asyncio
 import logging
+import os
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import BackgroundTasks, HTTPException, status
-from postgrest.exceptions import APIError
-
 from apps.scientific.app.core.config import settings
+from apps.scientific.app.core.correlation import resolve_correlation_id
 from apps.scientific.app.core.database import supabase
 from apps.scientific.app.domains.execution.domain_execution import (
     JobLimitExceededError,
@@ -33,19 +32,25 @@ from apps.scientific.app.domains.execution.model_execution import (
     update_scientific_job_in_db,
 )
 from apps.scientific.app.domains.execution.schemas_execution import (
+    EstimationConfig,
     JobCreate,
+    ReproducibilityMetadata,
     TrainingConfig,
+    TrainingPartitionMetadata,
 )
+from fastapi import BackgroundTasks, HTTPException, status
+from postgrest.exceptions import APIError
 
 logger = logging.getLogger(__name__)
 JOB_TIMEOUT_SECONDS = settings.job_timeout_seconds
+TRAINING_SPLIT_RATIO = 0.8
 
 
 def _utc_now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _persist_job_failure(job_id: str, error_message: str) -> None:
+def _persist_job_failure(job_id: str, error_message: str, correlation_id: str) -> None:
     """Persiste el estado fallido del trabajo sin propagar fallos secundarios de BD."""
     if supabase is None:
         return
@@ -57,7 +62,10 @@ def _persist_job_failure(job_id: str, error_message: str) -> None:
         )
     except Exception:
         logger.exception(
-            "No se pudo persistir el estado fallido para el trabajo %s.", job_id
+            "No se pudo persistir el estado fallido para el trabajo %s | correlation_id=%s.",
+            job_id,
+            correlation_id,
+            extra={"correlation_id": correlation_id, "job_id": job_id},
         )
 
 
@@ -90,14 +98,36 @@ async def run_scientific_algorithm(
         requested_by,
     )
     raw_data = parse_training_csv(file_bytes, checksum)
-    train_data, val_data = split_training_validation(raw_data, split_ratio=0.8)
-    return calculate_baseline(
+    train_data, val_data = split_training_validation(
+        raw_data, split_ratio=TRAINING_SPLIT_RATIO
+    )
+    result = calculate_baseline(
         train_data,
         val_data,
         version=str(model_version_id or version_id),
         dataset_version_id=str(version_id),
         model_version_id=str(model_version_id) if model_version_id else None,
     )
+    result["reproducibility"] = ReproducibilityMetadata(
+        dataset_version_id=str(version_id),
+        partition=TrainingPartitionMetadata(
+            strategy="sequential",
+            split_ratio=TRAINING_SPLIT_RATIO,
+            train_sample_count=result["baseline"]["train_sample_count"],
+            validation_sample_count=result["baseline"]["validation_sample_count"],
+        ),
+        seed=None,
+        configuration={
+            "algorithm": result["model"],
+            "baseline_strategy": result["baseline"]["strategy"],
+            "training_config": config,
+            "split_strategy": "sequential",
+            "split_ratio": TRAINING_SPLIT_RATIO,
+        },
+        code_version=os.getenv("APP_VERSION") or "dev",
+        environment=settings.environment,
+    ).model_dump(mode="json")
+    return result
 
 
 async def _update_scientific_job(
@@ -135,6 +165,7 @@ async def process_scientific_job(
     job_type: str,
     config: dict[str, Any],
     *,
+    correlation_id: str | None = None,
     timeout_seconds: float | None = None,
     organization_id: UUID | str | None = None,
     requested_by: UUID | str | None = None,
@@ -142,6 +173,14 @@ async def process_scientific_job(
     """Trabajo asíncrono con control estricto de timeout, límites, fallos y persistencia (S2-150)."""
     if supabase is None:
         return
+
+    correlation_id = resolve_correlation_id(correlation_id)
+    log_context = {"correlation_id": correlation_id, "job_id": job_id}
+    logger.info(
+        "Ejecución científica iniciada | correlation_id=%s",
+        correlation_id,
+        extra=log_context,
+    )
 
     try:
         effective_timeout = resolve_job_timeout(
@@ -179,42 +218,65 @@ async def process_scientific_job(
             job_id,
             completed_payload,
         )
+        logger.info(
+            "Ejecución científica completada | correlation_id=%s",
+            correlation_id,
+            extra=log_context,
+        )
 
     except TimeoutError:
         logger.warning(
-            "Trabajo científico %s excedió el tiempo máximo de %ss.",
+            "Trabajo científico %s excedió el tiempo máximo de %ss | correlation_id=%s",
             job_id,
             effective_timeout,
+            correlation_id,
+            extra=log_context,
         )
         _persist_job_failure(
             job_id,
             build_timeout_error_message(effective_timeout),
+            correlation_id,
         )
 
     except JobLimitExceededError as exc:
         logger.warning(
-            "Trabajo científico %s excedió un límite operativo: %s",
+            "Trabajo científico %s excedió un límite operativo: %s | correlation_id=%s",
             job_id,
             exc,
+            correlation_id,
+            extra=log_context,
         )
         _persist_job_failure(
             job_id,
             format_limit_exceeded_error_message(exc),
+            correlation_id,
         )
 
     except asyncio.CancelledError:
-        logger.warning("Trabajo científico %s cancelado durante ejecución.", job_id)
+        logger.warning(
+            "Trabajo científico %s cancelado durante ejecución | correlation_id=%s",
+            job_id,
+            correlation_id,
+            extra=log_context,
+        )
         _persist_job_failure(
             job_id,
             "La ejecución del trabajo fue cancelada antes de completarse.",
+            correlation_id,
         )
         raise
 
     except Exception as exc:
-        logger.exception("Fallo interno procesando el trabajo científico %s.", job_id)
+        logger.exception(
+            "Fallo interno procesando el trabajo científico %s | correlation_id=%s",
+            job_id,
+            correlation_id,
+            extra=log_context,
+        )
         _persist_job_failure(
             job_id,
             format_exception_error_message(exc),
+            correlation_id,
         )
 
 
@@ -252,7 +314,10 @@ def create_execution_job_service(
     idempotency_key: str | None,
     user_id: UUID,
     organization_id: UUID,
+    correlation_id: str | None = None,
 ) -> dict[str, Any]:
+correlation_id = resolve_correlation_id(correlation_id)
+    log_context = {"correlation_id": correlation_id}
     validate_job_organization_service(user_id, organization_id)
     config = payload.config.model_dump(mode="json")
 
@@ -264,6 +329,16 @@ def create_execution_job_service(
         )
         if existing_job is not None:
             if job_matches_request(existing_job, payload, config):
+                logger.info(
+                    "Trabajo científico ya existente reutilizado | correlation_id=%s",
+                    correlation_id,
+                    extra={
+                        **log_context,
+                        "job_id": str(
+                            existing_job.get("id") or existing_job.get("job_id")
+                        ),
+                    },
+                )
                 return build_job_accepted_response(existing_job)
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -282,6 +357,11 @@ def create_execution_job_service(
     }
     if payload.job_type == "training" and isinstance(payload.config, TrainingConfig):
         db_payload["dataset_version_id"] = str(payload.config.version_id)
+    if payload.job_type == "estimation" and isinstance(
+        payload.config, EstimationConfig
+    ):
+        db_payload["model_version_id"] = str(payload.config.model_id)
+        db_payload["scene_id"] = str(payload.config.scene_id)
     if idempotency_key is not None:
         db_payload["idempotency_key"] = idempotency_key
 
@@ -312,12 +392,19 @@ def create_execution_job_service(
             detail="No se pudo persistir el trabajo.",
         )
 
-    background_tasks.add_task(
+   background_tasks.add_task(
         process_scientific_job,
         str(inserted_job["id"]),
         payload.job_type,
         config,
         organization_id=organization_id,
         requested_by=user_id,
+        correlation_id=correlation_id,
+    )
+    logger.info(
+        "Trabajo científico aceptado y enviado a BackgroundTasks | correlation_id=%s",
+        correlation_id,
+        extra={**log_context, "job_id": str(inserted_job["id"])},
     )
     return build_job_accepted_response(inserted_job)
+  

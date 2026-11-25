@@ -1,7 +1,15 @@
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    status,
+)
 from pydantic import BaseModel, Field
 
 from apps.api.app.domains.dataset.service_dataset import (
@@ -121,9 +129,21 @@ def _build_estimation_job_create(payload: WebExecutionJobCreate) -> JobCreate:
             detail="La estimación requiere model_id y scene_id en config.",
         )
 
+    try:
+        model_version_id = UUID(str(model_id))
+        normalized_scene_id = UUID(str(scene_id))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="model_id y scene_id deben ser UUID válidos.",
+        ) from exc
+
     return JobCreate(
         job_type="estimation",
-        config=EstimationConfig(model_id=str(model_id), scene_id=str(scene_id)),
+        config=EstimationConfig(
+            model_id=model_version_id,
+            scene_id=normalized_scene_id,
+        ),
     )
 
 
@@ -135,6 +155,7 @@ def _build_estimation_job_create(payload: WebExecutionJobCreate) -> JobCreate:
 def submit_web_execution_job(
     payload: WebExecutionJobCreate,
     background_tasks: BackgroundTasks,
+    request: Request,
     organization_id: Annotated[UUID, Header(alias="X-Organization-ID")],
     user: Annotated[dict[str, Any], Depends(require_authenticated_user)],
     x_idempotency_key: Annotated[
@@ -168,6 +189,5 @@ def submit_web_execution_job(
         idempotency_key=idempotency_key,
         user_id=user_id,
         organization_id=organization_id,
+        correlation_id=request.state.correlation_id,
     )
-
-

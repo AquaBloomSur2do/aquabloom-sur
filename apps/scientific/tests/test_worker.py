@@ -23,6 +23,21 @@ def test_process_raw_task_computes_summary():
     assert result.mean == pytest.approx(2.0)
 
 
+def test_process_raw_task_preserves_correlation_id():
+    raw_payload = json.dumps(
+        {
+            "task_id": "task-correlation",
+            "task_type": "summarize_measurements",
+            "measurements": [1.0, 2.0],
+            "correlation_id": "trace-worker-123",
+        }
+    )
+
+    result = process_raw_task(raw_payload)
+
+    assert result.correlation_id == "trace-worker-123"
+
+
 @pytest.mark.parametrize(
     ("bad_payload", "expected_exc"),
     [
@@ -76,4 +91,3 @@ def test_process_raw_task_rejects_invalid_payloads(
 ):
     with pytest.raises(expected_exc):
         process_raw_task(bad_payload)
-
