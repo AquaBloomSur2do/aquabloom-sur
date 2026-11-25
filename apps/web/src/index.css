@@ -142,6 +142,10 @@ p {
   justify-items: start;
 }
 
+.detail-full {
+  grid-column: 1 / -1;
+}
+
 .detail > span:first-child {
   color: var(--muted);
   font-size: 11px;

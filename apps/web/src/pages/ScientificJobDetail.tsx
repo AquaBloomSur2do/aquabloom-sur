@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { executionsService } from '../services/executions';
 import type {
   JobStatusResponse,
-PointPredictionItem,
+  PointPredictionItem,
   TrainingJobResult,
 } from '../services/executions';
 
@@ -61,10 +61,25 @@ function displayValue(value: unknown): string {
 }
 
 function formatMetric(value: number | undefined): string {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
     return 'No disponible';
   }
   return Number.isInteger(value) ? String(value) : value.toFixed(4);
+}
+
+function formatSampleCount(value: number | undefined): string {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+    ? String(value)
+    : 'No disponible';
+}
+
+function normalizeWarnings(warnings: string[] | undefined): string[] {
+  if (!Array.isArray(warnings)) {
+    return [];
+  }
+  return warnings
+    .map((warning) => warning.trim())
+    .filter((warning) => warning.length > 0);
 }
 
 function formatPointValue(value: number | null | undefined): string {
@@ -77,8 +92,11 @@ function formatPointValue(value: number | null | undefined): string {
 function isPointPredictionList(
   predictions: number[] | PointPredictionItem[] | undefined
 ): predictions is PointPredictionItem[] {
-  return Array.isArray(predictions) && predictions.some(
-    (prediction) => typeof prediction === 'object' && prediction !== null
+  return (
+    Array.isArray(predictions) &&
+    predictions.some(
+      (prediction) => typeof prediction === 'object' && prediction !== null
+    )
   );
 }
 
@@ -86,14 +104,18 @@ function isStructuredTrainingResult(result: TrainingJobResult): boolean {
   if (isPointPredictionList(result.predictions)) {
     return false;
   }
+  const normalizedWarnings = normalizeWarnings(result.warnings);
   return Boolean(
     result.metrics ||
       result.model ||
       result.baseline ||
       result.version ||
-      result.warnings
+      result.model_version_id ||
+      result.dataset_version_id ||
+      normalizedWarnings.length > 0
   );
 }
+
 function formatCoordinates(
   latitude: number | null | undefined,
   longitude: number | null | undefined
@@ -102,6 +124,16 @@ function formatCoordinates(
     return null;
   }
   return `${latitude}, ${longitude}`;
+}
+
+function getExperimentalCondition(result: TrainingJobResult): string {
+  const normalizedWarnings = normalizeWarnings(result.warnings);
+  if (normalizedWarnings.length > 0) {
+    return 'Resultado piloto preliminar.';
+  }
+  return result.model === 'baseline'
+    ? 'Modelo piloto preliminar basado en un baseline de referencia.'
+    : 'Resultado piloto preliminar.';
 }
 
 export function ScientificJobDetail({
@@ -174,6 +206,9 @@ export function ScientificJobDetail({
         ([key]) => !STRUCTURED_RESULT_KEYS.has(key)
       )
     : [];
+  const normalizedWarnings = normalizeWarnings(job?.result?.warnings);
+  const baselinePrediction =
+    job?.result?.baseline?.prediction_value ?? job?.result?.prediction_value;
   const pointPredictionSource = job?.result?.predictions;
   const pointPredictions = isPointPredictionList(pointPredictionSource)
     ? pointPredictionSource.filter(
@@ -190,12 +225,12 @@ export function ScientificJobDetail({
     job?.dataset_version_id;
 
   const resultStatusKey = job?.result?.status as
-    | JobStatusResponse['status']
-    | undefined;
+    JobStatusResponse['status'] | undefined;
   const resultStatusLabel =
     resultStatusKey && resultStatusKey in statusPresentation
       ? statusPresentation[resultStatusKey].label
-      : job?.result?.status ?? statusPresentation[job?.status ?? 'queued'].label;
+      : (job?.result?.status ??
+        statusPresentation[job?.status ?? 'queued'].label);
 
   return (
     <div className="content-container">
@@ -280,11 +315,7 @@ export function ScientificJobDetail({
                   <b>No informada por la API</b>
                 )}
                 {resolvedDatasetVersionId && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    disabled
-                  >
+                  <button type="button" className="btn btn-secondary" disabled>
                     Abrir manifiesto
                   </button>
                 )}
@@ -317,11 +348,7 @@ export function ScientificJobDetail({
                   <b>No informada por la API</b>
                 )}
                 {job.model_version_id && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    disabled
-                  >
+                  <button type="button" className="btn btn-secondary" disabled>
                     Abrir artefacto
                   </button>
                 )}
@@ -339,63 +366,100 @@ export function ScientificJobDetail({
                 <h2>Resultado</h2>
               </div>
               <div className="card-body grid">
-                {isStructuredTrainingResult(job.result) && (
-                  <>
-                    <div className="detail">
-                      <span>Modelo baseline</span>
-                      <b>
-                        {job.result.model ?? 'baseline'}
-                        {job.result.baseline?.strategy
-                          ? ` (${job.result.baseline.strategy})`
-                          : ''}
-                      </b>
-                    </div>
+                {job.job_type === 'training' &&
+                  isStructuredTrainingResult(job.result) && (
+                    <>
+                      <h3 className="detail-full">
+                        Métricas frente al baseline
+                      </h3>
 
-                    <div className="detail">
-                      <span>Versión</span>
-                      {resolvedVersion ? (
-                        <span className="code-pill">{resolvedVersion}</span>
-                      ) : (
-                        <b>No informada</b>
-                      )}
-                    </div>
-
-                    <div className="detail">
-                      <span>Estado del resultado</span>
-                      <b>{resultStatusLabel}</b>
-                    </div>
-
-                    <div className="detail">
-                      <span>MAE</span>
-                      <b>{formatMetric(job.result.metrics?.mae)}</b>
-                    </div>
-
-                    <div className="detail">
-                      <span>RMSE</span>
-                      <b>{formatMetric(job.result.metrics?.rmse)}</b>
-                    </div>
-
-                    {typeof job.result.prediction_value === 'number' && (
                       <div className="detail">
-                        <span>Predicción baseline</span>
-                        <b>{formatMetric(job.result.prediction_value)}</b>
+                        <span>Modelo evaluado</span>
+                        <b>{job.result.model ?? 'baseline'}</b>
                       </div>
-                    )}
 
-                    <div className="detail">
-                      <span>Advertencias</span>
-                      {job.result.warnings && job.result.warnings.length > 0 ? (
-                        <ul className="traceability-list">
-                          {job.result.warnings.map((warning) => (
-                            <li key={warning}>{warning}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <b>Sin advertencias</b>
+                      {job.result.baseline?.strategy && (
+                        <div className="detail">
+                          <span>Estrategia baseline</span>
+                          <b>{job.result.baseline.strategy}</b>
+                        </div>
                       )}
-                    </div>
-                  </>
-                )}
+
+                      {job.result.baseline?.target_variable && (
+                        <div className="detail">
+                          <span>Variable objetivo baseline</span>
+                          <b>{job.result.baseline.target_variable}</b>
+                        </div>
+                      )}
+
+                      <div className="detail">
+                        <span>Versión</span>
+                        {resolvedVersion ? (
+                          <span className="code-pill">{resolvedVersion}</span>
+                        ) : (
+                          <b>No informada</b>
+                        )}
+                      </div>
+
+                      <div className="detail">
+                        <span>Estado del resultado</span>
+                        <b>{resultStatusLabel}</b>
+                      </div>
+
+                      <div className="detail">
+                        <span>MAE</span>
+                        <b>{formatMetric(job.result.metrics?.mae)}</b>
+                      </div>
+
+                      <div className="detail">
+                        <span>RMSE</span>
+                        <b>{formatMetric(job.result.metrics?.rmse)}</b>
+                      </div>
+
+                      {typeof baselinePrediction === 'number' && (
+                        <div className="detail">
+                          <span>Predicción baseline</span>
+                          <b>{formatMetric(baselinePrediction)}</b>
+                        </div>
+                      )}
+
+                      <div className="detail">
+                        <span>Tamaño de entrenamiento</span>
+                        <b>
+                          {formatSampleCount(
+                            job.result.baseline?.train_sample_count
+                          )}
+                        </b>
+                      </div>
+
+                      <div className="detail">
+                        <span>Tamaño de evaluación</span>
+                        <b>
+                          {formatSampleCount(
+                            job.result.baseline?.validation_sample_count
+                          )}
+                        </b>
+                      </div>
+
+                      <div className="detail detail-full">
+                        <span>Condición experimental</span>
+                        <b>{getExperimentalCondition(job.result)}</b>
+                      </div>
+
+                      <div className="detail">
+                        <span>Advertencias</span>
+                        {normalizedWarnings.length > 0 ? (
+                          <ul className="traceability-list">
+                            {normalizedWarnings.map((warning) => (
+                              <li key={warning}>{warning}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <b>Sin advertencias</b>
+                        )}
+                      </div>
+                    </>
+                  )}
 
                 {extraResultEntries.map(([key, value]) => (
                   <div className="detail" key={key}>
@@ -435,8 +499,7 @@ export function ScientificJobDetail({
                         item.latitude,
                         item.longitude
                       );
-                      const rawValue =
-                        item.predicted_value ?? item.value;
+                      const rawValue = item.predicted_value ?? item.value;
                       const unit =
                         item.unit?.trim() ||
                         job.result?.unit?.trim() ||
@@ -480,4 +543,3 @@ export function ScientificJobDetail({
     </div>
   );
 }
-
