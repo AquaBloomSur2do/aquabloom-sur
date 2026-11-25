@@ -1,6 +1,17 @@
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    status,
+)
+from pydantic import BaseModel, Field
+
 from apps.scientific.app.core.database import supabase
 from apps.scientific.app.core.dependencies import require_authenticated_user
 from apps.scientific.app.domains.execution.model_execution import (
@@ -15,16 +26,6 @@ from apps.scientific.app.domains.execution.schemas_execution import (
 from apps.scientific.app.domains.execution.service_execution import (
     create_execution_job_service,
 )
-from fastapi import (
-    APIRouter,
-    BackgroundTasks,
-    Depends,
-    Header,
-    HTTPException,
-    Request,
-    status,
-)
-from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/v1/executions", tags=["Gateway"])
 
