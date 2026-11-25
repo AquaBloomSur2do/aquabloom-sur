@@ -5,9 +5,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import BackgroundTasks, HTTPException, status
-from postgrest.exceptions import APIError
-
 from apps.scientific.app.core.config import settings
 from apps.scientific.app.core.correlation import resolve_correlation_id
 from apps.scientific.app.core.database import supabase
@@ -35,11 +32,14 @@ from apps.scientific.app.domains.execution.model_execution import (
     update_scientific_job_in_db,
 )
 from apps.scientific.app.domains.execution.schemas_execution import (
+    EstimationConfig,
     JobCreate,
     ReproducibilityMetadata,
     TrainingConfig,
     TrainingPartitionMetadata,
 )
+from fastapi import BackgroundTasks, HTTPException, status
+from postgrest.exceptions import APIError
 
 logger = logging.getLogger(__name__)
 JOB_TIMEOUT_SECONDS = settings.job_timeout_seconds
@@ -341,6 +341,11 @@ def create_execution_job_service(
         payload.config, TrainingConfig
     ):
         db_payload["dataset_version_id"] = str(payload.config.version_id)
+    if payload.job_type == "estimation" and isinstance(
+        payload.config, EstimationConfig
+    ):
+        db_payload["model_version_id"] = str(payload.config.model_id)
+        db_payload["scene_id"] = str(payload.config.scene_id)
     if idempotency_key is not None:
         db_payload["idempotency_key"] = idempotency_key
 

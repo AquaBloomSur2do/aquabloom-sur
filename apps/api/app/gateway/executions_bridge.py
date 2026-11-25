@@ -118,9 +118,21 @@ def _build_estimation_job_create(payload: WebExecutionJobCreate) -> JobCreate:
             detail="La estimación requiere model_id y scene_id en config.",
         )
 
+    try:
+        model_version_id = UUID(str(model_id))
+        normalized_scene_id = UUID(str(scene_id))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="model_id y scene_id deben ser UUID válidos.",
+        ) from exc
+
     return JobCreate(
         job_type="estimation",
-        config=EstimationConfig(model_id=str(model_id), scene_id=str(scene_id)),
+        config=EstimationConfig(
+            model_id=model_version_id,
+            scene_id=normalized_scene_id,
+        ),
     )
 
 
