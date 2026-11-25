@@ -357,6 +357,115 @@ describe('ScientificJobDetail', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('muestra una tabla accesible de resultados por punto con sus advertencias', async () => {
+    vi.mocked(executionsService.getJobStatus).mockResolvedValue({
+      job_id: 'job-est-177',
+      job_type: 'estimation',
+      status: 'completed',
+      config: { model_id: 'model-1', scene_id: 'scene-1' },
+      result: {
+        model_id: 'model-1',
+        artifact_checksum: 'checksum-1',
+        point_count: 2,
+        unit: 'ug/L',
+        warnings: ['Advertencia general'],
+        predictions: [
+          {
+            point_id: 'p1',
+            station_name: 'Estación Centro',
+            station_code: 'EST-01',
+            latitude: -38.7359,
+            longitude: -72.5904,
+            predicted_value: 12.345,
+            unit: 'ug/L',
+            warning: 'Valor cercano al límite',
+          },
+          {
+            point_id: 'p2',
+            predicted_value: null,
+            value: 8,
+          },
+        ],
+      },
+      dataset_version_id: null,
+      model_version_id: 'model-version-1',
+      requested_by: 'user-1',
+      error_message: null,
+      created_at: '2026-11-24T12:00:00Z',
+      started_at: '2026-11-24T12:00:01Z',
+      completed_at: '2026-11-24T12:00:02Z',
+      updated_at: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/scientific/jobs/job-est-177']}>
+        <Routes>
+          <Route
+            path="/scientific/jobs/:jobId"
+            element={<ScientificJobDetail />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole('heading', {
+      name: 'Resultados por punto',
+    })).toBeInTheDocument();
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', {
+      name: 'Estación / Coordenada',
+    })).toBeInTheDocument();
+    expect(screen.getByText('Estación Centro')).toBeInTheDocument();
+    expect(screen.getByText('-38.7359, -72.5904')).toBeInTheDocument();
+    expect(screen.getByText('12.3450')).toBeInTheDocument();
+    expect(screen.getAllByText('ug/L').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Valor cercano al límite')).toBeInTheDocument();
+    expect(screen.getByText('p2')).toBeInTheDocument();
+    expect(screen.getByText('8')).toBeInTheDocument();
+    expect(screen.getAllByText('Advertencia general').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('no anuncia un mapa raster en los resultados por punto', async () => {
+    vi.mocked(executionsService.getJobStatus).mockResolvedValue({
+      job_id: 'job-est-178',
+      job_type: 'estimation',
+      status: 'completed',
+      config: { model_id: 'model-1', scene_id: 'scene-1' },
+      result: {
+        predictions: [
+          {
+            point_id: 'punto-sin-coordenadas',
+            latitude: null,
+            longitude: null,
+          },
+        ],
+      },
+      dataset_version_id: null,
+      model_version_id: null,
+      requested_by: null,
+      error_message: null,
+      created_at: '2026-11-24T12:00:00Z',
+      started_at: null,
+      completed_at: null,
+      updated_at: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/scientific/jobs/job-est-178']}>
+        <Routes>
+          <Route
+            path="/scientific/jobs/:jobId"
+            element={<ScientificJobDetail />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('punto-sin-coordenadas')).toBeInTheDocument();
+    expect(screen.queryByText(/mapa raster/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/mapa ráster/i)).not.toBeInTheDocument();
+  });
+
   it('muestra errores de carga y el mensaje de error del trabajo fallido', async () => {
     vi.mocked(executionsService.getJobStatus).mockRejectedValueOnce(
       new Error('No se pudo consultar el trabajo.')
