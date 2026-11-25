@@ -63,9 +63,7 @@ function formatMetric(value: number | undefined): string {
 }
 
 function formatSampleCount(value: number | undefined): string {
-  return typeof value === 'number' &&
-    Number.isInteger(value) &&
-    value >= 0
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
     ? String(value)
     : 'No disponible';
 }
@@ -83,10 +81,10 @@ function isStructuredTrainingResult(result: TrainingJobResult): boolean {
   const normalizedWarnings = normalizeWarnings(result.warnings);
   return Boolean(
     result.metrics ||
-      result.model ||
-      result.baseline ||
-      result.version ||
-      normalizedWarnings.length > 0
+    result.model ||
+    result.baseline ||
+    result.version ||
+    normalizedWarnings.length > 0
   );
 }
 
@@ -172,8 +170,7 @@ export function ScientificJobDetail({
     : [];
   const normalizedWarnings = normalizeWarnings(job?.result?.warnings);
   const baselinePrediction =
-    job?.result?.baseline?.prediction_value ??
-    job?.result?.prediction_value;
+    job?.result?.baseline?.prediction_value ?? job?.result?.prediction_value;
 
   const resolvedVersion =
     job?.result?.version ??
@@ -183,12 +180,12 @@ export function ScientificJobDetail({
     job?.dataset_version_id;
 
   const resultStatusKey = job?.result?.status as
-    | JobStatusResponse['status']
-    | undefined;
+    JobStatusResponse['status'] | undefined;
   const resultStatusLabel =
     resultStatusKey && resultStatusKey in statusPresentation
       ? statusPresentation[resultStatusKey].label
-      : job?.result?.status ?? statusPresentation[job?.status ?? 'queued'].label;
+      : (job?.result?.status ??
+        statusPresentation[job?.status ?? 'queued'].label);
 
   return (
     <div className="content-container">
@@ -273,11 +270,7 @@ export function ScientificJobDetail({
                   <b>No informada por la API</b>
                 )}
                 {resolvedDatasetVersionId && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    disabled
-                  >
+                  <button type="button" className="btn btn-secondary" disabled>
                     Abrir manifiesto
                   </button>
                 )}
@@ -310,11 +303,7 @@ export function ScientificJobDetail({
                   <b>No informada por la API</b>
                 )}
                 {job.model_version_id && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    disabled
-                  >
+                  <button type="button" className="btn btn-secondary" disabled>
                     Abrir artefacto
                   </button>
                 )}
@@ -332,99 +321,100 @@ export function ScientificJobDetail({
                 <h2>Resultado</h2>
               </div>
               <div className="card-body grid">
-                {isStructuredTrainingResult(job.result) && (
-                  <>
-                    <h3 className="detail-full">Métricas frente al baseline</h3>
+                {job.job_type === 'training' &&
+                  isStructuredTrainingResult(job.result) && (
+                    <>
+                      <h3 className="detail-full">
+                        Métricas frente al baseline
+                      </h3>
 
-                    <div className="detail">
-                      <span>Modelo evaluado</span>
-                      <b>
-                        {job.result.model ?? 'baseline'}
-                      </b>
-                    </div>
-
-                    {job.result.baseline?.strategy && (
                       <div className="detail">
-                        <span>Estrategia baseline</span>
-                        <b>{job.result.baseline.strategy}</b>
+                        <span>Modelo evaluado</span>
+                        <b>{job.result.model ?? 'baseline'}</b>
                       </div>
-                    )}
 
-                    {job.result.baseline?.target_variable && (
-                      <div className="detail">
-                        <span>Variable objetivo baseline</span>
-                        <b>{job.result.baseline.target_variable}</b>
-                      </div>
-                    )}
-
-                    <div className="detail">
-                      <span>Versión</span>
-                      {resolvedVersion ? (
-                        <span className="code-pill">{resolvedVersion}</span>
-                      ) : (
-                        <b>No informada</b>
+                      {job.result.baseline?.strategy && (
+                        <div className="detail">
+                          <span>Estrategia baseline</span>
+                          <b>{job.result.baseline.strategy}</b>
+                        </div>
                       )}
-                    </div>
 
-                    <div className="detail">
-                      <span>Estado del resultado</span>
-                      <b>{resultStatusLabel}</b>
-                    </div>
-
-                    <div className="detail">
-                      <span>MAE</span>
-                      <b>{formatMetric(job.result.metrics?.mae)}</b>
-                    </div>
-
-                    <div className="detail">
-                      <span>RMSE</span>
-                      <b>{formatMetric(job.result.metrics?.rmse)}</b>
-                    </div>
-
-                    {typeof baselinePrediction === 'number' && (
-                      <div className="detail">
-                        <span>Predicción baseline</span>
-                        <b>{formatMetric(baselinePrediction)}</b>
-                      </div>
-                    )}
-
-                    <div className="detail">
-                      <span>Tamaño de entrenamiento</span>
-                      <b>
-                        {formatSampleCount(
-                          job.result.baseline?.train_sample_count
-                        )}
-                      </b>
-                    </div>
-
-                    <div className="detail">
-                      <span>Tamaño de evaluación</span>
-                      <b>
-                        {formatSampleCount(
-                          job.result.baseline?.validation_sample_count
-                        )}
-                      </b>
-                    </div>
-
-                    <div className="detail detail-full">
-                      <span>Condición experimental</span>
-                      <b>{getExperimentalCondition(job.result)}</b>
-                    </div>
-
-                    <div className="detail">
-                      <span>Advertencias</span>
-                      {normalizedWarnings.length > 0 ? (
-                        <ul className="traceability-list">
-                          {normalizedWarnings.map((warning) => (
-                            <li key={warning}>{warning}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <b>Sin advertencias</b>
+                      {job.result.baseline?.target_variable && (
+                        <div className="detail">
+                          <span>Variable objetivo baseline</span>
+                          <b>{job.result.baseline.target_variable}</b>
+                        </div>
                       )}
-                    </div>
-                  </>
-                )}
+
+                      <div className="detail">
+                        <span>Versión</span>
+                        {resolvedVersion ? (
+                          <span className="code-pill">{resolvedVersion}</span>
+                        ) : (
+                          <b>No informada</b>
+                        )}
+                      </div>
+
+                      <div className="detail">
+                        <span>Estado del resultado</span>
+                        <b>{resultStatusLabel}</b>
+                      </div>
+
+                      <div className="detail">
+                        <span>MAE</span>
+                        <b>{formatMetric(job.result.metrics?.mae)}</b>
+                      </div>
+
+                      <div className="detail">
+                        <span>RMSE</span>
+                        <b>{formatMetric(job.result.metrics?.rmse)}</b>
+                      </div>
+
+                      {typeof baselinePrediction === 'number' && (
+                        <div className="detail">
+                          <span>Predicción baseline</span>
+                          <b>{formatMetric(baselinePrediction)}</b>
+                        </div>
+                      )}
+
+                      <div className="detail">
+                        <span>Tamaño de entrenamiento</span>
+                        <b>
+                          {formatSampleCount(
+                            job.result.baseline?.train_sample_count
+                          )}
+                        </b>
+                      </div>
+
+                      <div className="detail">
+                        <span>Tamaño de evaluación</span>
+                        <b>
+                          {formatSampleCount(
+                            job.result.baseline?.validation_sample_count
+                          )}
+                        </b>
+                      </div>
+
+                      <div className="detail detail-full">
+                        <span>Condición experimental</span>
+                        <b>{getExperimentalCondition(job.result)}</b>
+                      </div>
+
+                      <div className="detail">
+                        <span>Advertencias</span>
+                        {normalizedWarnings.length > 0 ? (
+                          <ul className="traceability-list">
+                            {normalizedWarnings.map((warning) => (
+                              <li key={warning}>{warning}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <b>Sin advertencias</b>
+                        )}
+                      </div>
+                    </>
+                  )}
 
                 {extraResultEntries.map(([key, value]) => (
                   <div className="detail" key={key}>
@@ -440,4 +430,3 @@ export function ScientificJobDetail({
     </div>
   );
 }
-
