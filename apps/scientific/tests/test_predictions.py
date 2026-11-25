@@ -386,7 +386,13 @@ def test_get_prediction_detail_returns_full_contract_with_verified_permissions(
             "parameters": {"max_cloud_pct": 15},
         }
     ]
-    assert data["warnings"] == ["Punto est-02 excede el rango observado del modelo."]
+    assert data["warnings"] == [
+        "Punto est-02 excede el rango observado del modelo."
+    ]
+    assert data["usage_limits"] == [
+        "Una o más estimaciones están fuera del rango observado por el modelo (extrapolación).",
+        "No se dispone de incertidumbre calibrada; el resultado no debe interpretarse como un intervalo de confianza.",
+    ]
 
 
 def test_get_prediction_detail_supports_scalar_result_and_flags_experimental_scene(
@@ -411,6 +417,34 @@ def test_get_prediction_detail_supports_scalar_result_and_flags_experimental_sce
     assert len(data["points"]) == 1
     assert data["points"][0]["value"] == 12.5
     assert any("experimental" in warning.lower() for warning in data["warnings"])
+    assert data["usage_limits"] == [
+        "No se dispone de incertidumbre calibrada; el resultado no debe interpretarse como un intervalo de confianza."
+    ]
+
+
+def test_get_prediction_detail_flags_synthetic_data_and_respects_calibrated_uncertainty(
+    monkeypatch,
+):
+    database = FakePredictionDatabase()
+    monkeypatch.setattr(controller_prediction, "supabase", database)
+    payload = {**prediction_payload(), "organization_id": ORGANIZATION_ID}
+    payload["result"].update(
+        {
+            "dataset_is_synthetic": True,
+            "uncertainty": {"calibrated": True},
+        }
+    )
+
+    created = client.post("/api/v1/predictions/", json=payload, headers=HEADERS)
+    prediction_id = created.json()["id"]
+    response = client.get(
+        f"/api/v1/predictions/{prediction_id}", headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 200
+    assert response.json()["usage_limits"] == [
+        "El resultado utiliza datos sintéticos y no representa mediciones observacionales reales."
+    ]
 
 
 def test_get_prediction_detail_requires_authentication(monkeypatch):
