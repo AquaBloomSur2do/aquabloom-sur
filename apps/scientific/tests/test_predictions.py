@@ -427,6 +427,7 @@ def test_get_prediction_detail_flags_synthetic_data_and_respects_calibrated_unce
 ):
     database = FakePredictionDatabase()
     monkeypatch.setattr(controller_prediction, "supabase", database)
+    mock_prediction_service_contracts(monkeypatch, database)
     payload = {**prediction_payload(), "organization_id": ORGANIZATION_ID}
     payload["result"].update(
         {

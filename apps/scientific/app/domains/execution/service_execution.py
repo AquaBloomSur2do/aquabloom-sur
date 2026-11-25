@@ -5,6 +5,9 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from fastapi import BackgroundTasks, HTTPException, status
+from postgrest.exceptions import APIError
+
 from apps.scientific.app.core.config import settings
 from apps.scientific.app.core.correlation import resolve_correlation_id
 from apps.scientific.app.core.database import supabase
@@ -38,8 +41,6 @@ from apps.scientific.app.domains.execution.schemas_execution import (
     TrainingConfig,
     TrainingPartitionMetadata,
 )
-from fastapi import BackgroundTasks, HTTPException, status
-from postgrest.exceptions import APIError
 
 logger = logging.getLogger(__name__)
 JOB_TIMEOUT_SECONDS = settings.job_timeout_seconds
@@ -316,7 +317,7 @@ def create_execution_job_service(
     organization_id: UUID,
     correlation_id: str | None = None,
 ) -> dict[str, Any]:
-correlation_id = resolve_correlation_id(correlation_id)
+    correlation_id = resolve_correlation_id(correlation_id)
     log_context = {"correlation_id": correlation_id}
     validate_job_organization_service(user_id, organization_id)
     config = payload.config.model_dump(mode="json")
@@ -392,7 +393,7 @@ correlation_id = resolve_correlation_id(correlation_id)
             detail="No se pudo persistir el trabajo.",
         )
 
-   background_tasks.add_task(
+    background_tasks.add_task(
         process_scientific_job,
         str(inserted_job["id"]),
         payload.job_type,
