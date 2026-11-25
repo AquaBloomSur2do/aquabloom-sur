@@ -20,8 +20,8 @@ class ModelConfig(BaseModel):
 
 
 class EstimationConfig(BaseModel):
-    model_id: str
-    scene_id: str
+    model_id: UUID
+    scene_id: UUID
 
 
 class ScientificJobType(str, Enum):
@@ -122,6 +122,7 @@ class JobStatus(BaseModel):
     result: TrainingResult | dict[str, Any] | None = None
     dataset_version_id: UUID | None = None
     model_version_id: UUID | None = None
+    scene_id: UUID | None = None
     requested_by: UUID | None = None
     error_message: str | None = None
     created_at: datetime

@@ -321,7 +321,10 @@ def test_gateway_scientific_worker_execution_keeps_correlation_id(
         "/api/v1/scientific/api/v1/executions/",
         json={
             "job_type": "estimation",
-            "config": {"model_id": "model-1", "scene_id": "scene-1"},
+            "config": {
+                "model_id": "88888888-8888-4888-8888-888888888888",
+                "scene_id": "44444444-4444-4444-8444-444444444444",
+            },
         },
         headers=request_headers,
     )
@@ -350,6 +353,51 @@ def test_gateway_scientific_worker_execution_keeps_correlation_id(
         for record in caplog.records
     )
     assert fake_staging_db.jobs[0]["status"] == "completed"
+
+
+def test_web_estimation_job_links_model_version_scene_and_requester(
+    fake_staging_db,
+):
+    model_version_id = "88888888-8888-4888-8888-888888888888"
+    scene_id = "44444444-4444-4444-8444-444444444444"
+    response = client.post(
+        "/api/v1/executions/jobs",
+        json={
+            "job_type": "ESTIMATION",
+            "config": {"model_id": model_version_id, "scene_id": scene_id},
+        },
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "queued"
+    assert fake_staging_db.jobs[0]["model_version_id"] == model_version_id
+    assert fake_staging_db.jobs[0]["scene_id"] == scene_id
+    assert fake_staging_db.jobs[0]["requested_by"] == USER_ID
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {
+            "model_id": "not-a-uuid",
+            "scene_id": "44444444-4444-4444-8444-444444444444",
+        },
+        {
+            "model_id": "88888888-8888-4888-8888-888888888888",
+            "scene_id": "not-a-uuid",
+        },
+    ],
+)
+def test_web_estimation_rejects_non_uuid_model_or_scene(config, fake_staging_db):
+    response = client.post(
+        "/api/v1/executions/jobs",
+        json={"job_type": "ESTIMATION", "config": config},
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 422
+    assert fake_staging_db.jobs == []
 
 
 def test_web_training_bridge_rejects_unpublished_version(fake_staging_db):

@@ -1,17 +1,6 @@
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import (
-    APIRouter,
-    BackgroundTasks,
-    Depends,
-    Header,
-    HTTPException,
-    Request,
-    status,
-)
-from pydantic import BaseModel, Field
-
 from apps.scientific.app.core.database import supabase
 from apps.scientific.app.core.dependencies import require_authenticated_user
 from apps.scientific.app.domains.execution.model_execution import (
@@ -26,6 +15,16 @@ from apps.scientific.app.domains.execution.schemas_execution import (
 from apps.scientific.app.domains.execution.service_execution import (
     create_execution_job_service,
 )
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    status,
+)
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/v1/executions", tags=["Gateway"])
 
@@ -118,9 +117,21 @@ def _build_estimation_job_create(payload: WebExecutionJobCreate) -> JobCreate:
             detail="La estimación requiere model_id y scene_id en config.",
         )
 
+    try:
+        model_version_id = UUID(str(model_id))
+        normalized_scene_id = UUID(str(scene_id))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="model_id y scene_id deben ser UUID válidos.",
+        ) from exc
+
     return JobCreate(
         job_type="estimation",
-        config=EstimationConfig(model_id=str(model_id), scene_id=str(scene_id)),
+        config=EstimationConfig(
+            model_id=model_version_id,
+            scene_id=normalized_scene_id,
+        ),
     )
 
 
