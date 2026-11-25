@@ -528,8 +528,14 @@ gateway. Si el despliegue la publica a través del proxy
 
 ## 4. Errores estándar
 
-La API responde con el sobre `{ "error", "message", "details" }`. El campo
-`details` es opcional (o una lista en errores de validación).
+La API responde mayoritariamente con el sobre `{ "error", "message", "details" }`.
+El campo `details` es opcional (o una lista en errores de validación). Algunos
+servicios (`satellite`) responden `{ "detail": "..." }`, por lo que el cliente
+debe aceptar ambos formatos. Toda respuesta incluye la cabecera
+`X-Correlation-ID` para trazabilidad.
+
+> Guía ampliada para web y móvil con los cuatro escenarios de S3-16:
+> [`docs/api-error-examples.md`](api-error-examples.md).
 
 | Código | Cuándo ocurre | Ejemplo de cuerpo |
 | --- | --- | --- |
@@ -538,6 +544,7 @@ La API responde con el sobre `{ "error", "message", "details" }`. El campo
 | `404` | Recurso o trabajo inexistente, o fuera de la organización | Ver ejemplo 404 |
 | `422` | Parámetros o encabezados inválidos/faltantes | Ver ejemplo 422 |
 | `500` | Error interno no controlado | `{"error":"InternalServerError","message":"..."}` |
+| `503` | Dependencia caída (base de datos, Redis u otro servicio) | `{"error":"HTTP Error","message":"El servicio de base de datos no está disponible"}` o `{"detail":"..."}` en Satellite |
 
 **401 Unauthorized:**
 
