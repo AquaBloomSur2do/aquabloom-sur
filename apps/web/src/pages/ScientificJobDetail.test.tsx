@@ -3,12 +3,17 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { executionsService } from '../services/executions';
+import BaseMap from '../components/Map/BaseMap';
 import { ScientificJobDetail } from './ScientificJobDetail';
 
 vi.mock('../services/executions', () => ({
   executionsService: {
     getJobStatus: vi.fn(),
   },
+}));
+
+vi.mock('../components/Map/BaseMap', () => ({
+  default: vi.fn(() => <div data-testid="base-map" />),
 }));
 
 describe('ScientificJobDetail', () => {
@@ -408,13 +413,13 @@ describe('ScientificJobDetail', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByRole('heading', {
-      name: 'Resultados por punto',
-    })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Resultados por punto' })
+    ).toBeInTheDocument();
     expect(screen.getByRole('table')).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', {
-      name: 'Estación / Coordenada',
-    })).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: 'Estación / Coordenada' })
+    ).toBeInTheDocument();
     expect(screen.getByText('Estación Centro')).toBeInTheDocument();
     expect(screen.getByText('-38.7359, -72.5904')).toBeInTheDocument();
     expect(screen.getByText('12.3450')).toBeInTheDocument();
@@ -422,10 +427,30 @@ describe('ScientificJobDetail', () => {
     expect(screen.getByText('Valor cercano al límite')).toBeInTheDocument();
     expect(screen.getByText('p2')).toBeInTheDocument();
     expect(screen.getByText('8')).toBeInTheDocument();
-    expect(screen.getAllByText('Advertencia general').length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByText('Advertencia general').length
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getByRole('region', { name: 'Mapa de puntos de estimación' })
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('base-map')).toBeInTheDocument();
+    expect(vi.mocked(BaseMap).mock.calls[0]?.[0]).toMatchObject({
+      interactive: false,
+      geometries: {
+        type: 'FeatureCollection',
+        features: [
+          {
+            geometry: {
+              type: 'Point',
+              coordinates: [-72.5904, -38.7359],
+            },
+          },
+        ],
+      },
+    });
   });
 
-  it('no anuncia un mapa raster en los resultados por punto', async () => {
+  it('mantiene la tabla y avisa si los puntos no tienen coordenadas válidas', async () => {
     vi.mocked(executionsService.getJobStatus).mockResolvedValue({
       job_id: 'job-est-178',
       job_type: 'estimation',
@@ -461,9 +486,18 @@ describe('ScientificJobDetail', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText('punto-sin-coordenadas')).toBeInTheDocument();
-    expect(screen.queryByText(/mapa raster/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/mapa ráster/i)).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Resultados por punto' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('punto-sin-coordenadas')).toBeInTheDocument();
+    expect(
+      screen.getByText('No hay coordenadas válidas para mostrar en el mapa.')
+    ).toBeInTheDocument();
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('region', { name: 'Mapa de puntos de estimación' })
+    ).not.toBeInTheDocument();
+    expect(BaseMap).not.toHaveBeenCalled();
   });
 
   it('muestra errores de carga y el mensaje de error del trabajo fallido', async () => {
