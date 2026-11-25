@@ -67,12 +67,25 @@ export function EstimationForm({ lakeId, sceneId }: EstimationFormProps) {
     setError(null);
 
     try {
+      const model = models.find(({ id }) => id === selectedModel);
+      const config = {
+        model_id: selectedModel,
+        scene_id: sceneId,
+        ...(model?.name ? { model_name: model.name } : {}),
+        ...(model?.model_version_id
+          ? { model_version_id: model.model_version_id }
+          : {}),
+        ...(model?.training_job_id
+          ? { training_job_id: model.training_job_id }
+          : {}),
+        ...(model?.dataset_id ? { dataset_id: model.dataset_id } : {}),
+        ...(model?.dataset_version_id
+          ? { dataset_version_id: model.dataset_version_id }
+          : {}),
+      };
       const response = await executionsService.createJob({
         job_type: 'ESTIMATION',
-        config: {
-          model_id: selectedModel,
-          scene_id: sceneId,
-        },
+        config,
       });
       navigate(`/scientific/jobs/${response.job_id}`);
     } catch (err: unknown) {

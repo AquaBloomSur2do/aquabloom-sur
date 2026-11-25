@@ -271,6 +271,7 @@ def _extract_usage_limits(
 def build_prediction_detail(
     prediction_row: dict[str, Any],
     scene_row: dict[str, Any] | None = None,
+    training_job_row: dict[str, Any] | None = None,
 ) -> PredictionDetailResponse:
     """Construye la vista detallada de una estimación con trazabilidad y advertencias."""
     result = prediction_row.get("result")
@@ -313,13 +314,55 @@ def build_prediction_detail(
         str(raw_acquisition_date) if raw_acquisition_date is not None else None
     )
 
+    job_config = (
+        training_job_row.get("config")
+        if isinstance(training_job_row, dict)
+        and isinstance(training_job_row.get("config"), dict)
+        else {}
+    )
+    job_result = (
+        training_job_row.get("result")
+        if isinstance(training_job_row, dict)
+        and isinstance(training_job_row.get("result"), dict)
+        else {}
+    )
+
+    training_job_id = _to_optional_uuid(
+        result.get("training_job_id")
+        or (training_job_row.get("id") if training_job_row else None)
+    )
+    dataset_id = _to_optional_uuid(
+        result.get("dataset_id")
+        or job_config.get("dataset_id")
+        or job_result.get("dataset_id")
+    )
+    dataset_version_id = _to_optional_uuid(
+        result.get("dataset_version_id")
+        or (
+            training_job_row.get("dataset_version_id")
+            if training_job_row
+            else None
+        )
+        or job_config.get("version_id")
+        or job_result.get("dataset_version_id")
+    )
+    raw_model_name = result.get("model_name") or job_result.get("model")
+    model_name = (
+        str(raw_model_name).strip()
+        if isinstance(raw_model_name, str) and raw_model_name.strip()
+        else None
+    )
+
     provenance = EstimationProvenance(
         model_version_id=prediction_row["model_version_id"],
+        model_name=model_name,
+        training_job_id=training_job_id,
         scene_id=prediction_row["scene_id"],
         lake_id=lake_id,
         scene_identifier=scene_identifier,
         acquisition_date=acquisition_date,
-        dataset_version_id=_to_optional_uuid(result.get("dataset_version_id")),
+        dataset_id=dataset_id,
+        dataset_version_id=dataset_version_id,
         rules=rules,
         generated_at=prediction_row["created_at"],
     )
@@ -336,5 +379,3 @@ def build_prediction_detail(
         usage_limits=usage_limits,
         created_at=prediction_row["created_at"],
     )
-
-

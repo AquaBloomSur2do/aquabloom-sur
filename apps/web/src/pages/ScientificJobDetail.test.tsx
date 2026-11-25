@@ -302,7 +302,7 @@ describe('ScientificJobDetail', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText('dataset-version-1')).toBeInTheDocument();
+    expect(await screen.findAllByText('dataset-version-1')).not.toHaveLength(0);
     expect(screen.getByText('model-version-1')).toBeInTheDocument();
     expect(screen.getByText('model-1')).toBeInTheDocument();
     expect(screen.getByText('scene-1')).toBeInTheDocument();
@@ -423,6 +423,49 @@ describe('ScientificJobDetail', () => {
     expect(screen.getByText('p2')).toBeInTheDocument();
     expect(screen.getByText('8')).toBeInTheDocument();
     expect(screen.getAllByText('Advertencia general').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('enlaza el modelo, entrenamiento y dataset de origen de la estimación', async () => {
+    vi.mocked(executionsService.getJobStatus).mockResolvedValue({
+      job_id: 'job-estimation',
+      job_type: 'estimation',
+      status: 'completed',
+      config: { model_id: 'model-config', scene_id: 'scene-1' },
+      result: {
+        model_name: 'random_forest',
+        model_id: 'model-1',
+        training_job_id: 'job-training-1',
+        dataset_id: 'dataset-1',
+        dataset_version_id: 'dataset-version-1',
+        predictions: [],
+      },
+      dataset_version_id: null,
+      model_version_id: null,
+      requested_by: 'user-1',
+      error_message: null,
+      created_at: '2026-11-24T12:00:00Z',
+      started_at: '2026-11-24T12:00:01Z',
+      completed_at: '2026-11-24T12:00:02Z',
+      updated_at: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/scientific/jobs/job-estimation']}>
+        <Routes>
+          <Route
+            path="/scientific/jobs/:jobId"
+            element={<ScientificJobDetail />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('random_forest (model-1)')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Ver entrenamiento job-training-1' })
+    ).toHaveAttribute('href', '/scientific/jobs/job-training-1');
+    expect(screen.getByText('dataset-1')).toBeInTheDocument();
+    expect(screen.getAllByText('dataset-version-1').length).toBeGreaterThan(0);
   });
 
   it('no anuncia un mapa raster en los resultados por punto', async () => {

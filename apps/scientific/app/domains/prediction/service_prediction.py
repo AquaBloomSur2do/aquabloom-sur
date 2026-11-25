@@ -12,6 +12,7 @@ from apps.scientific.app.domains.prediction.model_prediction import (
     get_active_membership_for_organization,
     get_prediction_by_id_in_db,
     get_scene_metadata_in_db,
+    get_training_job_origin_in_db,
     insert_prediction_in_db,
 )
 from apps.scientific.app.domains.prediction.schemas_prediction import (
@@ -97,7 +98,38 @@ def get_prediction_detail_service(
         except (APIError, ValueError):
             scene_metadata = None
 
-    return build_prediction_detail(prediction, scene_row=scene_metadata)
+    result_payload = (
+        prediction.get("result")
+        if isinstance(prediction.get("result"), dict)
+        else {}
+    )
+    training_job_row = None
+    try:
+        raw_training_id = result_payload.get("training_job_id")
+        raw_model_version_id = prediction.get("model_version_id")
+        raw_dataset_version_id = result_payload.get("dataset_version_id")
+        training_job_row = get_training_job_origin_in_db(
+            client,
+            organization_id=organization_id,
+            training_job_id=(
+                UUID(str(raw_training_id)) if raw_training_id else None
+            ),
+            model_version_id=(
+                UUID(str(raw_model_version_id))
+                if raw_model_version_id
+                else None
+            ),
+            dataset_version_id=(
+                UUID(str(raw_dataset_version_id))
+                if raw_dataset_version_id
+                else None
+            ),
+        )
+    except (APIError, AssertionError, AttributeError, KeyError, TypeError, ValueError):
+        training_job_row = None
 
-
-
+    return build_prediction_detail(
+        prediction,
+        scene_row=scene_metadata,
+        training_job_row=training_job_row,
+    )

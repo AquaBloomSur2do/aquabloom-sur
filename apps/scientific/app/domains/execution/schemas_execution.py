@@ -22,6 +22,11 @@ class ModelConfig(BaseModel):
 class EstimationConfig(BaseModel):
     model_id: str
     scene_id: str
+    model_name: str | None = None
+    model_version_id: UUID | None = None
+    training_job_id: UUID | None = None
+    dataset_id: UUID | None = None
+    dataset_version_id: UUID | None = None
 
 
 class ScientificJobType(str, Enum):
@@ -167,4 +172,3 @@ class PilotMetricsResult(BaseModel):
     r2_computable: bool
     r2: float | None = None
     limitations: list[str] = Field(default_factory=list)
-    

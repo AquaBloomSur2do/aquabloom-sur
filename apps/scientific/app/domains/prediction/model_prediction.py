@@ -57,3 +57,29 @@ def get_scene_metadata_in_db(client, scene_id: UUID) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
+def get_training_job_origin_in_db(
+    client,
+    *,
+    organization_id: UUID,
+    training_job_id: UUID | None = None,
+    model_version_id: UUID | None = None,
+    dataset_version_id: UUID | None = None,
+) -> dict[str, Any] | None:
+    query = (
+        client.table("scientific_jobs")
+        .select("id, config, result, dataset_version_id, model_version_id")
+        .eq("organization_id", str(organization_id))
+        .eq("job_type", "training")
+    )
+    if training_job_id is not None:
+        query = query.eq("id", str(training_job_id))
+    elif model_version_id is not None:
+        query = query.eq("model_version_id", str(model_version_id))
+    elif dataset_version_id is not None:
+        query = query.eq("dataset_version_id", str(dataset_version_id))
+    else:
+        return None
+
+    result = query.limit(1).execute()
+    rows = getattr(result, "data", None) or []
+    return rows[0] if rows else None

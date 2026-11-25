@@ -110,9 +110,27 @@ def _build_estimation_job_create(payload: WebExecutionJobCreate) -> JobCreate:
             detail="La estimación requiere model_id y scene_id en config.",
         )
 
+    provenance: dict[str, str] = {}
+    for field in (
+        "model_name",
+        "model_version_id",
+        "training_job_id",
+        "dataset_id",
+        "dataset_version_id",
+    ):
+        value = payload.config.get(field)
+        if value is not None:
+            provenance[field] = str(value)
+    if "dataset_version_id" not in provenance and payload.dataset_version_id:
+        provenance["dataset_version_id"] = str(payload.dataset_version_id)
+
     return JobCreate(
         job_type="estimation",
-        config=EstimationConfig(model_id=str(model_id), scene_id=str(scene_id)),
+        config=EstimationConfig(
+            model_id=str(model_id),
+            scene_id=str(scene_id),
+            **provenance,
+        ),
     )
 
 

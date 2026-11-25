@@ -294,7 +294,10 @@ def test_get_job_status_returns_200(fake_database):
     assert response.status_code == 200
     data = response.json()
     assert data["job_id"] == job_id
-    assert data["status"] == "completed"
+    assert data["status"] == "failed"
+    assert data["error_message"] == (
+        "No se encontró el trabajo de entrenamiento de origen del modelo."
+    )
     assert fake_database.rows[0]["organization_id"] == ORGANIZATION_ID
     assert fake_database.rows[0]["requested_by"] == USER_ID
     assert len(fake_database.rows) == 1
