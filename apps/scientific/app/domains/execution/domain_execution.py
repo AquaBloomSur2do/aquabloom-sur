@@ -444,12 +444,16 @@ def build_job_accepted_response(job: dict[str, Any]) -> dict[str, Any]:
         "status_url": f"/api/v1/executions/{job_id}",
     }
 
-
 PILOT_ALLOWED_VARIABLES = {
     "chlorophyll_a": "chlorophyll_a",
     "clorofila_a": "chlorophyll_a",
 }
-PILOT_ALLOWED_UNITS = {"ug/l": "ug/L", "µg/l": "ug/L", "μg/l": "ug/L", "mg/m3": "mg/m3"}
+PILOT_ALLOWED_UNITS = {
+    "ug/l": "ug/L",
+    "µg/l": "ug/L",
+    "μg/l": "ug/L",
+    "mg/m3": "ug/L",
+}
 PILOT_ALLOWED_INDICES = {"ndci": "NDCI"}
 INVALID_QUALITY_FLAGS = {"CLOUDY", "INVALID", "MASKED", "QUARANTINED", "REJECTED"}
 

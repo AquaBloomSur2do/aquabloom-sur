@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/useAuth';
 
 const MENU_ITEMS = [
@@ -70,50 +70,59 @@ export const PrivateLayout = () => {
   }
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <aside className="w-64 bg-white shadow-md flex flex-col">
-        <div className="p-6 border-b">
-          <h2 className="text-xl font-bold text-blue-800">AquaBloom Sur</h2>
-          <p className="text-sm text-gray-500 mt-1 capitalize">
-            Rol: {userRole === 'sin_asignar' ? 'No asignado' : userRole}
-          </p>
-        </div>
+    <div className="app-shell">
+      <header className="app-header">
+        <Link className="app-brand" to="/dashboard" aria-label="AquaBloom Sur, inicio">
+          <span className="app-brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none">
+              <path d="M16 3C12 9 7 14.2 7 20a9 9 0 0 0 18 0c0-5.8-5-11-9-17Z" />
+              <path d="M11 20a5 5 0 0 0 5 5" />
+            </svg>
+          </span>
+          <span className="app-brand-copy">
+            <strong>AquaBloom Sur</strong>
+            <small>Ciencia colaborativa de lagos</small>
+          </span>
+        </Link>
 
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="app-nav" aria-label="Navegación principal">
           {visibleMenuItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
               className={({ isActive }) =>
-                `block px-4 py-3 rounded-md transition-all ${
-                  isActive
-                    ? 'bg-blue-50 text-blue-700 font-semibold border-l-4 border-blue-700'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-blue-600'
-                }`
+                `app-nav-link${isActive ? ' is-active' : ''}`
               }
             >
               {item.label}
             </NavLink>
           ))}
-
+          <NavLink
+            to="/profile"
+            className={({ isActive }) =>
+              `app-nav-link${isActive ? ' is-active' : ''}`
+            }
+          >
+            Mi perfil
+          </NavLink>
           {visibleMenuItems.length === 0 && (
-            <p className="text-sm text-red-500 px-4">
+            <p className="app-nav-help">
               Contacte a soporte para solicitar permisos.
             </p>
           )}
         </nav>
 
-        <div className="p-4 border-t">
-          <button
-            onClick={handleLogout}
-            className="w-full px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
-          >
+        <div className="app-account">
+          <span className="app-role-badge">
+            Rol: {userRole === 'sin_asignar' ? 'No asignado' : userRole || 'No asignado'}
+          </span>
+          <button className="app-logout" onClick={handleLogout}>
             Cerrar Sesión
           </button>
         </div>
-      </aside>
+      </header>
 
-      <main className="flex-1 p-8 overflow-y-auto">
+      <main className="app-content">
         <Outlet />
       </main>
     </div>

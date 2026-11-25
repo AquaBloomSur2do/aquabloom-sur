@@ -57,6 +57,23 @@ def test_validate_estimation_inputs_accepts_compatible_request():
     assert result.warnings == []
 
 
+def test_validate_estimation_inputs_normalizes_equivalent_pilot_units():
+    lake_id, scene_id, model_spec, obs = _make_base_fixtures()
+    request = EstimationRequestInput(
+        lake_id=lake_id,
+        scene_id=scene_id,
+        target_variable="clorofila_a",
+        unit="mg/m3",
+        required_index="NDCI",
+        observations=[obs],
+    )
+
+    result = validate_estimation_inputs(model_spec, request)
+
+    assert result.target_variable == "chlorophyll_a"
+    assert result.unit == "ug/L"
+
+
 def test_validate_estimation_rejects_incompatible_variable():
     lake_id, scene_id, model_spec, obs = _make_base_fixtures()
     request = EstimationRequestInput(

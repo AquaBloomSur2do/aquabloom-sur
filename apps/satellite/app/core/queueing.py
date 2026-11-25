@@ -20,18 +20,19 @@ def get_redis_client() -> Redis:
 def enqueue_measurement_summary(
     measurements: list[float],
     redis_client: Redis,
+    correlation_id: str | None = None,
 ) -> str:
     task_id = str(uuid4())
+    task = {
+        "task_id": task_id,
+        "task_type": "summarize_measurements",
+        "measurements": measurements,
+    }
+    if correlation_id:
+        task["correlation_id"] = correlation_id
+
     redis_client.lpush(
         TASK_QUEUE,
-        json.dumps(
-            {
-                "task_id": task_id,
-                "task_type": "summarize_measurements",
-                "measurements": measurements,
-            },
-            separators=(",", ":"),
-        ),
+        json.dumps(task, separators=(",", ":")),
     )
     return task_id
-

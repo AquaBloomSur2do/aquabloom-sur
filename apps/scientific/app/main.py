@@ -1,11 +1,15 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.requests import Request
 
 from apps.scientific.app.core.config import settings
+from apps.scientific.app.core.correlation import resolve_correlation_id
 from apps.scientific.app.domains.execution.controller_execution import (
     router as execution_router,
 )
@@ -25,6 +29,8 @@ tags_metadata = [
     },
 ]
 
+logger = logging.getLogger(__name__)
+
 
 def create_app() -> FastAPI:
     application = FastAPI(
@@ -34,6 +40,27 @@ def create_app() -> FastAPI:
         servers=[{"url": "http://localhost:8003"}],
         openapi_tags=tags_metadata,
     )
+
+    @application.middleware("http")
+    async def correlation_middleware(request: Request, call_next):
+        correlation_id = resolve_correlation_id(
+            request.headers.get("X-Correlation-ID")
+            or request.headers.get("X-Request-ID")
+            or request.headers.get("correlation_id")
+        )
+        request.state.correlation_id = correlation_id
+        logger.info(
+            "Solicitud recibida por Scientific | correlation_id=%s",
+            correlation_id,
+            extra={
+                "correlation_id": correlation_id,
+                "request_method": request.method,
+                "request_path": request.url.path,
+            },
+        )
+        response = await call_next(request)
+        response.headers["X-Correlation-ID"] = correlation_id
+        return response
 
     @application.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request, exc):
@@ -72,7 +99,10 @@ def create_app() -> FastAPI:
             "X-Idempotency-Key",
             "X-Internal-Token",
             "X-Organization-ID",
+            "X-Correlation-ID",
+            "X-Request-ID",
         ],
+        expose_headers=["X-Correlation-ID"],
     )
 
     @application.get("/")
