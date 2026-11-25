@@ -125,7 +125,7 @@ def execute_point_inference(
         if isinstance(prediction_value, bool) or not isinstance(
             prediction_value, (int, float)
         ):
-            raise ValueError("prediction_value del artefacto no es numérico.")
+            raise TypeError("prediction_value del artefacto no es numérico.")
         prediction_value = float(prediction_value)
         if not math.isfinite(prediction_value):
             raise ValueError("prediction_value del artefacto no es finito.")
