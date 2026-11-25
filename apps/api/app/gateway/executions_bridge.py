@@ -1,7 +1,15 @@
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    status,
+)
 from pydantic import BaseModel, Field
 
 from apps.scientific.app.core.database import supabase
@@ -110,27 +118,60 @@ def _build_estimation_job_create(payload: WebExecutionJobCreate) -> JobCreate:
             detail="La estimación requiere model_id y scene_id en config.",
         )
 
-    provenance: dict[str, str] = {}
-    for field in (
-        "model_name",
+    try:
+        model_version_id = UUID(str(model_id))
+        normalized_scene_id = UUID(str(scene_id))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="model_id y scene_id deben ser UUID válidos.",
+        ) from exc
+
+    extra_config: dict[str, Any] = {}
+    if "points" in payload.config and payload.config["points"] is not None:
+        extra_config["points"] = payload.config["points"]
+
+    raw_model_name = payload.config.get("model_name")
+    if raw_model_name is not None:
+        extra_config["model_name"] = str(raw_model_name)
+
+    for uuid_field in (
         "model_version_id",
         "training_job_id",
         "dataset_id",
         "dataset_version_id",
     ):
-        value = payload.config.get(field)
-        if value is not None:
-            provenance[field] = str(value)
-    if "dataset_version_id" not in provenance and payload.dataset_version_id:
-        provenance["dataset_version_id"] = str(payload.dataset_version_id)
+        raw_value = payload.config.get(uuid_field)
+        if (
+            raw_value is None
+            and uuid_field == "dataset_version_id"
+            and payload.dataset_version_id is not None
+        ):
+            raw_value = payload.dataset_version_id
+        if raw_value is not None:
+            try:
+                extra_config[uuid_field] = UUID(str(raw_value))
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=f"{uuid_field} debe ser un UUID válido.",
+                ) from exc
+
+    try:
+        estimation_config = EstimationConfig(
+            model_id=model_version_id,
+            scene_id=normalized_scene_id,
+            **extra_config,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Configuración de estimación inválida: {exc}",
+        ) from exc
 
     return JobCreate(
         job_type="estimation",
-        config=EstimationConfig(
-            model_id=str(model_id),
-            scene_id=str(scene_id),
-            **provenance,
-        ),
+        config=estimation_config,
     )
 
 
@@ -142,6 +183,7 @@ def _build_estimation_job_create(payload: WebExecutionJobCreate) -> JobCreate:
 def submit_web_execution_job(
     payload: WebExecutionJobCreate,
     background_tasks: BackgroundTasks,
+    request: Request,
     organization_id: Annotated[UUID, Header(alias="X-Organization-ID")],
     user: Annotated[dict[str, Any], Depends(require_authenticated_user)],
     x_idempotency_key: Annotated[
@@ -171,6 +213,5 @@ def submit_web_execution_job(
         idempotency_key=idempotency_key,
         user_id=user_id,
         organization_id=organization_id,
+        correlation_id=request.state.correlation_id,
     )
-
-

@@ -76,6 +76,7 @@ export interface JobStatusResponse {
   result: TrainingJobResult | null;
   dataset_version_id: string | null;
   model_version_id: string | null;
+  scene_id?: string | null;
   requested_by: string | null;
   error_message: string | null;
   created_at: string;

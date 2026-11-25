@@ -1,7 +1,9 @@
 import csv
 import hashlib
 import io
+import json
 import math
+import secrets
 from collections.abc import Hashable, Iterable
 from typing import Any
 
@@ -19,13 +21,191 @@ from apps.scientific.app.domains.execution.schemas_execution import (
 
 JOB_TIMEOUT_SECONDS = 10.0
 MAX_ERROR_MESSAGE_LENGTH = 1000
-DEFAULT_JOB_ERROR_MESSAGE = (
-    "Error interno durante la ejecución del trabajo científico."
-)
+DEFAULT_JOB_ERROR_MESSAGE = "Error interno durante la ejecución del trabajo científico."
 
 
 class JobLimitExceededError(RuntimeError):
     """Error determinista cuando un trabajo excede un límite operativo permitido."""
+
+
+def verify_and_deserialize_model_artifact(
+    artifact_bytes: bytes, expected_checksum: str
+) -> dict[str, Any]:
+    """Verifica el SHA-256 y deserializa un artefacto JSON."""
+    if not isinstance(artifact_bytes, bytes):
+        raise TypeError("El artefacto del modelo debe ser bytes.")
+    if (
+        not isinstance(expected_checksum, str)
+        or len(expected_checksum) != 64
+        or any(
+            character not in "0123456789abcdefABCDEF" for character in expected_checksum
+        )
+    ):
+        raise ValueError("El checksum esperado del artefacto no es válido.")
+
+    actual_checksum = hashlib.sha256(artifact_bytes).hexdigest()
+    if not secrets.compare_digest(actual_checksum, expected_checksum.lower()):
+        raise ValueError("Checksum del artefacto del modelo incorrecto.")
+
+    try:
+        artifact = json.loads(artifact_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("El artefacto del modelo contiene JSON inválido.") from exc
+    if not isinstance(artifact, dict):
+        raise TypeError("El artefacto del modelo debe ser un objeto JSON.")
+    return artifact
+
+
+def validate_and_normalize_inference_points(
+    points: Any, max_points: int = 100
+) -> list[dict[str, Any]]:
+    """Valida y normaliza puntos de inferencia antes de realizar I/O."""
+    if not isinstance(points, list):
+        raise TypeError("points debe ser una lista.")
+    if not points:
+        raise ValueError("La lista de puntos no puede estar vacía.")
+    if not isinstance(max_points, int) or isinstance(max_points, bool):
+        raise TypeError("max_points debe ser un entero.")
+    if max_points < 1:
+        raise ValueError("max_points debe ser mayor a cero.")
+    if len(points) > max_points:
+        raise JobLimitExceededError(
+            f"Límite de ejecución excedido: máximo {max_points} puntos."
+        )
+
+    normalized_points: list[dict[str, Any]] = []
+    for point in points:
+        if not isinstance(point, dict):
+            raise TypeError("Cada punto debe ser un objeto.")
+        point_id = point.get("point_id")
+        if not isinstance(point_id, str) or not point_id.strip():
+            raise ValueError("Cada punto debe contener point_id.")
+
+        normalized_point = dict(point)
+        normalized_point["point_id"] = point_id.strip()
+        for coordinate, minimum, maximum in (
+            ("latitude", -90, 90),
+            ("longitude", -180, 180),
+        ):
+            value = point.get(coordinate)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TypeError(f"{coordinate} debe ser un número finito válido.")
+            if not math.isfinite(value) or not minimum <= value <= maximum:
+                raise ValueError(f"{coordinate} está fuera de rango o no es finito.")
+
+        features = point.get("features", {})
+        if not isinstance(features, dict):
+            raise TypeError("features del punto debe ser un objeto.")
+        for feature_name, feature_value in features.items():
+            if not isinstance(feature_name, str):
+                raise TypeError("Los nombres de features deben ser texto.")
+            if isinstance(feature_value, bool) or not isinstance(
+                feature_value, (int, float)
+            ):
+                raise TypeError(f"El feature '{feature_name}' debe ser numérico.")
+            if not math.isfinite(feature_value):
+                raise ValueError(f"El feature '{feature_name}' no es finito.")
+        normalized_point["features"] = dict(features)
+        normalized_points.append(normalized_point)
+    return normalized_points
+
+
+def execute_point_inference(
+    artifact: dict[str, Any],
+    points: list[dict[str, Any]],
+    max_points: int = 100,
+) -> list[dict[str, Any]]:
+    """Ejecuta inferencia por punto para artefactos baseline o de regresión lineal."""
+    normalized_points = validate_and_normalize_inference_points(points, max_points)
+
+    if "prediction_value" in artifact:
+        prediction_value = artifact["prediction_value"]
+        if isinstance(prediction_value, bool) or not isinstance(
+            prediction_value, (int, float)
+        ):
+            raise TypeError("prediction_value del artefacto no es numérico.")
+        prediction_value = float(prediction_value)
+        if not math.isfinite(prediction_value):
+            raise ValueError("prediction_value del artefacto no es finito.")
+        predictions: list[dict[str, Any]] = []
+        for point in normalized_points:
+            predictions.append(
+                {
+                    "point_id": point["point_id"],
+                    "latitude": point.get("latitude"),
+                    "longitude": point.get("longitude"),
+                    "predicted_value": prediction_value,
+                }
+            )
+        return predictions
+
+    intercept = artifact.get("intercept")
+    coefficients = artifact.get("coefficients")
+    if isinstance(intercept, bool) or not isinstance(intercept, (int, float)):
+        raise TypeError("El artefacto lineal no contiene un intercept válido.")
+    if not isinstance(coefficients, dict):
+        single_coefficient = artifact.get("coefficient")
+        if isinstance(single_coefficient, bool) or not isinstance(
+            single_coefficient, (int, float)
+        ):
+            raise TypeError("El artefacto lineal no contiene coefficients válidos.")
+        coefficients = {"ndci": single_coefficient}
+    if not coefficients:
+        raise ValueError("El artefacto lineal no contiene coefficients.")
+
+    intercept_value = float(intercept)
+    if not math.isfinite(intercept_value):
+        raise ValueError("El intercept del artefacto no es finito.")
+
+    validated_coefficients: dict[str, float] = {}
+    for feature_name, raw_coefficient in coefficients.items():
+        if isinstance(raw_coefficient, bool) or not isinstance(
+            raw_coefficient, (int, float)
+        ):
+            raise TypeError(
+                f"El coeficiente de {feature_name} del artefacto no es válido."
+            )
+        coefficient = float(raw_coefficient)
+        if not math.isfinite(coefficient):
+            raise ValueError(
+                f"El coeficiente de {feature_name} del artefacto no es finito."
+            )
+        validated_coefficients[str(feature_name)] = coefficient
+
+    predictions: list[dict[str, Any]] = []
+    for point in normalized_points:
+        point_id = point["point_id"]
+        features = point["features"]
+
+        predicted_value = intercept_value
+        for feature_name, coefficient in validated_coefficients.items():
+            raw_feature_value = features.get(feature_name)
+            if isinstance(raw_feature_value, bool) or not isinstance(
+                raw_feature_value, (int, float)
+            ):
+                raise TypeError(
+                    f"El punto {point_id} no contiene el feature '{feature_name}'."
+                )
+            feature_value = float(raw_feature_value)
+            if not math.isfinite(feature_value):
+                raise ValueError(
+                    f"El feature '{feature_name}' del punto {point_id} no es finito."
+                )
+            predicted_value += coefficient * feature_value
+        if not math.isfinite(predicted_value):
+            raise ValueError(f"La predicción del punto {point_id} no es finita.")
+
+        predictions.append(
+            {
+                "point_id": point_id,
+                "latitude": point.get("latitude"),
+                "longitude": point.get("longitude"),
+                "predicted_value": predicted_value,
+            }
+        )
+    return predictions
 
 
 def resolve_job_timeout(timeout_seconds: float | None) -> float:
@@ -108,7 +288,9 @@ def build_failure_update_payload(
     }
 
 
-def parse_training_csv(file_bytes: bytes, expected_checksum: str) -> list[dict[str, Any]]:
+def parse_training_csv(
+    file_bytes: bytes, expected_checksum: str
+) -> list[dict[str, Any]]:
     """Verifica y convierte el CSV de entrenamiento en filas numéricas."""
     if not file_bytes:
         raise ValueError("El archivo CSV está vacío.")
@@ -120,11 +302,15 @@ def parse_training_csv(file_bytes: bytes, expected_checksum: str) -> list[dict[s
     try:
         csv_text = file_bytes.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise ValueError("El archivo de entrenamiento no está codificado en UTF-8.") from exc
+        raise ValueError(
+            "El archivo de entrenamiento no está codificado en UTF-8."
+        ) from exc
 
     reader = csv.DictReader(io.StringIO(csv_text))
     if not reader.fieldnames or "clorofila_a" not in reader.fieldnames:
-        raise ValueError("El archivo CSV no contiene la columna objetivo 'clorofila_a'.")
+        raise ValueError(
+            "El archivo CSV no contiene la columna objetivo 'clorofila_a'."
+        )
 
     rows = list(reader)
     if not rows:
@@ -142,9 +328,7 @@ def parse_training_csv(file_bytes: bytes, expected_checksum: str) -> list[dict[s
                 f"Valor no numérico o inválido en 'clorofila_a': {value}"
             ) from exc
         if not math.isfinite(target):
-            raise ValueError(
-                f"Valor no numérico o inválido en 'clorofila_a': {value}"
-            )
+            raise ValueError(f"Valor no numérico o inválido en 'clorofila_a': {value}")
         row["clorofila_a"] = target
         validated_rows.append(row)
 
@@ -158,7 +342,9 @@ def split_training_validation(
     if not math.isfinite(split_ratio) or not 0 < split_ratio < 1:
         raise ValueError("La proporción de entrenamiento debe estar entre 0 y 1.")
     if len(data) < 2:
-        raise ValueError("Se requieren al menos 2 observaciones para evaluar el modelo.")
+        raise ValueError(
+            "Se requieren al menos 2 observaciones para evaluar el modelo."
+        )
 
     train_size = max(1, int(len(data) * split_ratio))
     if train_size == len(data):
@@ -174,7 +360,9 @@ def calculate_baseline(
     model_version_id: str | None = None,
 ) -> dict[str, Any]:
     if not train_data:
-        raise ValueError("Conjunto de entrenamiento vacío. Imposible calcular baseline.")
+        raise ValueError(
+            "Conjunto de entrenamiento vacío. Imposible calcular baseline."
+        )
     if not val_data:
         raise ValueError("Conjunto de evaluación vacío. Imposible calcular métricas.")
 
@@ -227,6 +415,7 @@ def calculate_baseline(
     )
     return result.model_dump(mode="json")
 
+
 def validate_group_partition_disjointness(
     training_groups: Iterable[Hashable],
     evaluation_groups: Iterable[Hashable],
@@ -255,8 +444,16 @@ def build_job_accepted_response(job: dict[str, Any]) -> dict[str, Any]:
         "status_url": f"/api/v1/executions/{job_id}",
     }
 
-PILOT_ALLOWED_VARIABLES = {"chlorophyll_a": "chlorophyll_a", "clorofila_a": "chlorophyll_a"}
-PILOT_ALLOWED_UNITS = {"ug/l": "ug/L", "µg/l": "ug/L", "μg/l": "ug/L", "mg/m3": "mg/m3"}
+PILOT_ALLOWED_VARIABLES = {
+    "chlorophyll_a": "chlorophyll_a",
+    "clorofila_a": "chlorophyll_a",
+}
+PILOT_ALLOWED_UNITS = {
+    "ug/l": "ug/L",
+    "µg/l": "ug/L",
+    "μg/l": "ug/L",
+    "mg/m3": "ug/L",
+}
 PILOT_ALLOWED_INDICES = {"ndci": "NDCI"}
 INVALID_QUALITY_FLAGS = {"CLOUDY", "INVALID", "MASKED", "QUARANTINED", "REJECTED"}
 
@@ -446,7 +643,9 @@ def calculate_pilot_metrics(
     elif n < 2:
         limitations.append("R² no calculable: se requieren al menos 2 observaciones.")
     else:
-        limitations.append("R² no calculable: varianza de observaciones reales es cero.")
+        limitations.append(
+            "R² no calculable: varianza de observaciones reales es cero."
+        )
 
     return PilotMetricsResult(
         sample_count=n,
@@ -457,7 +656,3 @@ def calculate_pilot_metrics(
         r2=r2_val,
         limitations=limitations,
     )
-
-
-
-

@@ -1,6 +1,7 @@
 import csv
 import hashlib
 import io
+import math
 from uuid import UUID
 
 import httpx
@@ -105,13 +106,31 @@ def fetch_and_verify_training_dataset(
 
         parsed_rows: list[dict[str, float]] = []
         for row in reader:
-            try:
-                parsed_rows.append({col: float(row[col]) for col in manifest.variables})
-            except (ValueError, TypeError, KeyError) as exc:
-                raise DatasetContractError(
-                    f"Fila con valores numéricos inválidos en el dataset de entrenamiento: {exc}",
-                    status_code=422,
-                ) from exc
+            parsed_row: dict[str, float] = {}
+            for column in manifest.variables:
+                raw_value = row.get(column)
+                if raw_value is None or not raw_value.strip():
+                    raise DatasetContractError(
+                        f"Valor faltante en la columna '{column}' del dataset de entrenamiento.",
+                        status_code=422,
+                    )
+
+                try:
+                    value = float(raw_value)
+                except ValueError as exc:
+                    raise DatasetContractError(
+                        f"Valor no numérico en la columna '{column}' del dataset de entrenamiento: {raw_value}",
+                        status_code=422,
+                    ) from exc
+
+                if not math.isfinite(value):
+                    raise DatasetContractError(
+                        f"Valor no finito en la columna '{column}' del dataset de entrenamiento.",
+                        status_code=422,
+                    )
+
+                parsed_row[column] = value
+            parsed_rows.append(parsed_row)
 
         if not parsed_rows:
             raise DatasetContractError(

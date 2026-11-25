@@ -721,13 +721,39 @@ def test_get_training_file_denied_if_not_published(monkeypatch):
 def test_get_training_file_denied_wrong_org(monkeypatch):
     database = setup_request(monkeypatch, "admin")
     database.dataset_rows["versions"][0]["state"] = "PUBLISHED"
+    database.dataset_rows["training_manifests"] = [
+        {
+            "id": str(uuid4()),
+            "version_id": database.version_id,
+            "storage_path": f"versions/{database.version_id}/training.csv",
+            "checksum": "a" * 64,
+            "variables": ["temperatura", "clorofila_a", "turbidez", "ph"],
+        }
+    ]
+    downloaded_paths = []
+
+    class FakeBucket:
+        def download(self, path):
+            downloaded_paths.append(path)
+            return b"resultado del piloto"
+
+    class FakeStorage:
+        def from_(self, _bucket_name):
+            return FakeBucket()
+
+    database.storage = FakeStorage()
     database.organization_memberships[0]["organization_id"] = str(uuid4())
     try:
         res = client.get(f"/api/v1/datasets/versions/{database.version_id}/training-file")
+        res_down = client.get(
+            f"/api/v1/datasets/versions/{database.version_id}/training-file/download"
+        )
     finally:
         app.dependency_overrides.clear()
 
     assert res.status_code == 403
+    assert res_down.status_code == 403
+    assert downloaded_paths == []
 
 
 def test_get_training_file_denied_for_unapproved_role(monkeypatch):

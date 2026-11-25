@@ -1,3 +1,4 @@
+import logging
 from math import isfinite
 from typing import Annotated
 
@@ -8,6 +9,8 @@ from redis import Redis
 from redis.exceptions import RedisError
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+
+from apps.satellite.app.core.correlation import resolve_correlation_id
 
 try:
     from apps.satellite.app.core.config import settings
@@ -39,6 +42,26 @@ app = FastAPI(
     description="Servicio Satellite para gestión de escenas, observaciones y encolamiento.",
     version="v1",
 )
+
+logger = logging.getLogger(__name__)
+
+
+@app.middleware("http")
+async def correlation_middleware(request: Request, call_next):
+    correlation_id = resolve_correlation_id(
+        request.headers.get("X-Correlation-ID")
+        or request.headers.get("X-Request-ID")
+        or request.headers.get("correlation_id")
+    )
+    request.state.correlation_id = correlation_id
+    logger.info(
+        "Solicitud recibida por Satellite | correlation_id=%s",
+        correlation_id,
+        extra={"correlation_id": correlation_id},
+    )
+    response = await call_next(request)
+    response.headers["X-Correlation-ID"] = correlation_id
+    return response
 
 
 @app.exception_handler(RequestValidationError)
@@ -104,6 +127,7 @@ def health_check(
 def enqueue_summary(
     request: MeasurementSummaryRequest,
     redis_client: Annotated[Redis, Depends(get_redis_client)],
+    http_request: Request,
 ) -> EnqueuedTaskResponse:
     if not all(isfinite(value) for value in request.measurements):
         raise HTTPException(
@@ -112,7 +136,11 @@ def enqueue_summary(
         )
 
     try:
-        task_id = enqueue_measurement_summary(request.measurements, redis_client)
+        task_id = enqueue_measurement_summary(
+            request.measurements,
+            redis_client,
+            correlation_id=http_request.state.correlation_id,
+        )
     except RedisError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -120,4 +148,3 @@ def enqueue_summary(
         ) from exc
 
     return EnqueuedTaskResponse(task_id=task_id, status="queued")
-
