@@ -43,6 +43,28 @@ worker retira la tarea al consumirla. Si el proceso falla después de retirarla,
 no hay reintento ni registro permanente, lo cual mantiene el alcance mínimo de
 esta integración.
 
+## Correlación entre Gateway, servicios y tareas
+
+El Gateway conserva un `X-Correlation-ID` válido recibido (también acepta
+`X-Request-ID` como alias) o genera uno. Lo registra y lo devuelve en la
+respuesta. Al usar sus rutas proxy, reenvía el mismo identificador a Satellite
+o Scientific. Ambos servicios independientes también lo devuelven en la
+respuesta y lo registran en sus logs.
+
+En la cola Redis de `measurement-summary`, Satellite incluye el identificador
+en el mensaje. El proceso `scientific-worker` lo conserva y lo escribe en el log
+de finalización. Esta cola corresponde al resumen de mediciones; no procesa los
+trabajos de `/api/v1/executions`.
+
+Los trabajos de ejecución científica usan `BackgroundTasks` dentro del proceso
+FastAPI que atiende la petición. El identificador se pasa al trabajo y aparece
+en sus logs de inicio, finalización o error. En particular, el endpoint web
+`/api/v1/executions/jobs` es un puente en el proceso Gateway que invoca el
+servicio de ejecución directamente; no hace una llamada HTTP al proceso
+Scientific ni encola ese trabajo en Redis. Por lo tanto, hay correlación
+extremo a extremo en logs para ese flujo, pero no un worker de ejecución
+Scientific independiente ni persistencia del identificador en la base de datos.
+
 ## Comprobaciones locales
 
 Desde `apps/satellite`:

@@ -31,6 +31,7 @@ class MeasurementSummary:
     minimum: float
     maximum: float
     mean: float
+    correlation_id: str | None = None
 
 
 def _handle_shutdown_signal(signum: int, _frame: Any) -> None:
@@ -45,6 +46,7 @@ def _handle_shutdown_signal(signum: int, _frame: Any) -> None:
 def summarize_measurements(
     task_id: str,
     measurements: Sequence[Any],
+    correlation_id: str | None = None,
 ) -> MeasurementSummary:
     """Calcula estadísticas básicas validando que todos los valores sean numéricos y finitos."""
     if not measurements:
@@ -66,6 +68,7 @@ def summarize_measurements(
         minimum=min(numeric_values),
         maximum=max(numeric_values),
         mean=math.fsum(numeric_values) / count,
+        correlation_id=correlation_id,
     )
 
 
@@ -82,15 +85,22 @@ def process_raw_task(raw_payload: str) -> MeasurementSummary:
     task_id = str(payload.get("task_id", "")).strip()
     task_type = payload.get("task_type")
     measurements = payload.get("measurements")
+    correlation_id = payload.get("correlation_id")
 
     if not task_id:
         raise ValueError("El campo 'task_id' es obligatorio.")
+    if correlation_id is not None and not isinstance(correlation_id, str):
+        raise TypeError("El campo 'correlation_id' debe ser texto.")
     if task_type != "summarize_measurements":
         raise ValueError(f"Tipo de tarea no soportado: {task_type!r}.")
     if not isinstance(measurements, list):
         raise TypeError("El campo 'measurements' debe ser una lista.")
 
-    return summarize_measurements(task_id=task_id, measurements=measurements)
+    return summarize_measurements(
+        task_id=task_id,
+        measurements=measurements,
+        correlation_id=correlation_id,
+    )
 
 
 def create_redis_client(redis_url: str | None = None) -> Redis:
@@ -116,8 +126,9 @@ def run_worker_loop(redis_client: Redis) -> None:
             _queue_name, raw_payload = item
             summary = process_raw_task(raw_payload)
             logger.info(
-                "Tarea completada | task_id=%s count=%d min=%.4f max=%.4f mean=%.4f",
+                "Tarea completada | task_id=%s correlation_id=%s count=%d min=%.4f max=%.4f mean=%.4f",
                 summary.task_id,
+                summary.correlation_id or "sin-correlation-id",
                 summary.count,
                 summary.minimum,
                 summary.maximum,
@@ -144,5 +155,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
-
