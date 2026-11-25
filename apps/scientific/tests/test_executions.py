@@ -355,6 +355,10 @@ def test_get_job_status_returns_404_for_another_organization(fake_database):
         "/api/v1/executions/", json=estimation_payload(), headers=HEADERS
     )
     job_id = create_response.json()["job_id"]
+    fake_database.rows[0]["result"] = {
+        "pilot_result": "resultado confidencial",
+        "predictions": [12.5],
+    }
 
     response = client.get(
         f"/api/v1/executions/{job_id}",
@@ -366,6 +370,7 @@ def test_get_job_status_returns_404_for_another_organization(fake_database):
 
     assert response.status_code == 404
     assert response.json()["message"] == "No se encontró el trabajo."
+    assert "resultado confidencial" not in response.text
 
 
 def test_get_job_status_requires_authentication(fake_database):
