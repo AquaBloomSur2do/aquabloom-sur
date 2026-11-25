@@ -64,6 +64,7 @@ class PredictionDetailResponse(BaseModel):
     points: list[EstimationPoint] = Field(default_factory=list)
     provenance: EstimationProvenance
     warnings: list[str] = Field(default_factory=list)
+    usage_limits: list[str] = Field(default_factory=list)
     created_at: datetime
 
     model_config = ConfigDict(extra="forbid")
