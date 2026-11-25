@@ -47,9 +47,13 @@ class EstimationConfig(BaseModel):
     scene_id: str = Field(min_length=1)
     points: list[InferencePoint] | None = Field(default=None, min_length=1)
 
-    @field_validator("model_id", "scene_id")
+    @field_validator("model_id", "scene_id", mode="before")
     @classmethod
-    def normalize_required_ids(cls, value: str) -> str:
+    def normalize_required_ids(cls, value: Any) -> str:
+        if isinstance(value, UUID):
+            return str(value)
+        if not isinstance(value, str):
+            return value
         normalized = value.strip()
         if not normalized:
             raise ValueError("El identificador no puede estar vacío.")
