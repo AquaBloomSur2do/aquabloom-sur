@@ -37,11 +37,12 @@ servicio Satellite, de acuerdo con `SATELLITE_SERVICE_URL`.
 
 ## Carácter temporal
 
-Redis se inicia con RDB y AOF desactivados y no tiene un volumen persistente.
-La cola solo actúa como transporte entre el servicio que encola y el worker; el
-worker retira la tarea al consumirla. Si el proceso falla después de retirarla,
-no hay reintento ni registro permanente, lo cual mantiene el alcance mínimo de
-esta integración.
+`compose.yaml` usa `redis:7-alpine` sin declarar opciones de persistencia ni un
+volumen para Redis; por eso el repositorio no garantiza persistencia durable de
+la cola ni configura una política de expiración. La cola solo actúa como
+transporte entre el servicio que encola y el worker; `BRPOP` retira la tarea al
+consumirla. Si el proceso falla después de retirarla, no hay reintento ni
+registro permanente.
 
 ## Correlación entre Gateway, servicios y tareas
 

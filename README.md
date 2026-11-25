@@ -241,6 +241,12 @@ Las migraciones SQL están numeradas en `database/migrations/` y las semillas en
 
 El archivo `compose.yaml` define servicios de API, web y PostGIS. Su configuración de variables todavía no coincide completamente con el backend: Compose entrega `SUPABASE_ANON_KEY`, mientras `apps/api/app/config.py` exige `SUPABASE_KEY`. Por este motivo, usa los pasos locales de esta guía como ruta de desarrollo verificada y no asumas que `docker compose up` iniciará correctamente la API sin ajustar primero esa configuración.
 
+## Documentación del piloto científico
+
+- [Retención de resultados piloto](docs/politica-retencion-resultados-piloto.md): datos persistidos, limpieza manual y referencias de auditoría.
+- [Worker científico en Redis](docs/scientific-worker.md): alcance de la cola y correlación.
+- [Versionado de datasets](docs/dataset-versioning.md): manifiestos y reproducibilidad del entrenamiento.
+
 ## Guía de Contribución
 
 1. Actualiza `main` y crea una rama por cada tarea. Usa el identificador de ticket y un nombre breve en minúsculas separado por guiones:
