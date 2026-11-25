@@ -349,12 +349,13 @@ def get_job_status_service(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No se encontró el trabajo.",
         )
-    if "id" in job:
-        job["job_id"] = job.pop("id")
-    result = job.get("result")
+    response_job = dict(job)
+    if "id" in response_job:
+        response_job["job_id"] = response_job.pop("id")
+    result = response_job.get("result")
     if isinstance(result, dict):
-        job["traceability_evidence"] = result.get("traceability_evidence")
-    return job
+        response_job["traceability_evidence"] = result.get("traceability_evidence")
+    return response_job
 
 
 def create_execution_job_service(

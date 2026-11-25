@@ -7,6 +7,8 @@ os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 
 
 JOB_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+USER_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+ORGANIZATION_ID = "99999999-9999-4999-8999-999999999999"
 EVIDENCE = {
     "job_id": JOB_ID,
     "scene_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
@@ -59,9 +61,13 @@ def test_job_status_exposes_validated_traceability_evidence():
         "created_at": "2026-11-17T00:00:00Z",
     }
 
-    status = get_job_status_service(FakeDatabase(row), UUID(JOB_ID))
+    status = get_job_status_service(
+        FakeDatabase(row), UUID(JOB_ID), UUID(USER_ID), UUID(ORGANIZATION_ID)
+    )
     response = JobStatus.model_validate(status)
 
     assert response.traceability_evidence == TraceabilityEvidence.model_validate(
         EVIDENCE
     )
+    assert "job_id" not in row
+    assert "traceability_evidence" not in row
