@@ -35,6 +35,7 @@ from apps.scientific.app.domains.execution.model_execution import (
     find_scientific_job_in_db,
     get_dataset_version_for_training,
     get_registered_model_artifact_ref,
+    get_training_origin_for_estimation,
     has_active_organization_membership,
     insert_scientific_job_in_db,
     update_scientific_job_in_db,
@@ -62,38 +63,6 @@ def _parse_optional_uuid_str(value: Any) -> str | None:
     try:
         return str(UUID(str(value)))
     except (TypeError, ValueError):
-        return None
-
-
-def _resolve_training_origin_for_estimation(
-    client,
-    *,
-    organization_id: str | None,
-    training_job_id: str | None,
-    model_version_id: str | None,
-) -> dict[str, Any] | None:
-    """Consulta el trabajo de entrenamiento de origen si está disponible en BD."""
-    if client is None or not organization_id:
-        return None
-    try:
-        query = (
-            client.table("scientific_jobs")
-            .select(
-                "id, status, config, result, dataset_version_id, model_version_id"
-            )
-            .eq("organization_id", str(organization_id))
-            .eq("job_type", "training")
-        )
-        if training_job_id:
-            query = query.eq("id", str(training_job_id))
-        elif model_version_id:
-            query = query.eq("model_version_id", str(model_version_id))
-        else:
-            return None
-
-        rows = getattr(query.limit(1).execute(), "data", None) or []
-        return rows[0] if rows else None
-    except (APIError, AssertionError, AttributeError, KeyError, TypeError, ValueError):
         return None
 
 
@@ -133,45 +102,64 @@ async def run_scientific_algorithm(
             raise ValueError("Falta scene_id en la configuración.")
         normalized_model_id = model_id.strip()
         normalized_scene_id = scene_id.strip()
-
-        effective_org_id = (
-            str(organization_id)
-            if organization_id is not None
-            else config.get("organization_id")
+        normalized_points = (
+            validate_and_normalize_inference_points(points)
+            if points is not None
+            else None
         )
+
+        effective_org_id = str(organization_id).strip() if organization_id else None
         raw_training_job_id = config.get("training_job_id")
         raw_model_version_id = config.get("model_version_id")
         explicit_origin_requested = bool(
             raw_training_job_id or raw_model_version_id
         )
-        lookup_model_version_id = _parse_optional_uuid_str(
-            raw_model_version_id or normalized_model_id
+        if normalized_points is not None and not effective_org_id:
+            raise ValueError("Falta organization_id para ejecutar la inferencia.")
+
+        lookup_model_version_id = (
+            _parse_optional_uuid_str(raw_model_version_id)
+            or _parse_optional_uuid_str(normalized_model_id)
         )
 
         origin_job = await asyncio.to_thread(
-            _resolve_training_origin_for_estimation,
+            get_training_origin_for_estimation,
             client,
-            organization_id=effective_org_id,
+            organization_id=effective_org_id or "",
             training_job_id=(
                 str(raw_training_job_id) if raw_training_job_id else None
             ),
             model_version_id=lookup_model_version_id,
+            lookup_model_id=_parse_optional_uuid_str(normalized_model_id),
         )
 
         provenance_result: dict[str, Any] = {}
-        if explicit_origin_requested or origin_job is not None:
-            if not origin_job:
-                raise ValueError(
-                    "No se encontró el trabajo de entrenamiento de origen del modelo."
-                )
+        if origin_job is None and (
+            explicit_origin_requested or normalized_points is not None
+        ):
+            raise ValueError(
+                "No se encontró el trabajo de entrenamiento de origen del modelo."
+            )
+
+        if origin_job is not None:
             if str(origin_job.get("status", "")).lower() != "completed":
                 raise ValueError(
                     "El trabajo de entrenamiento de origen aún no está completado."
                 )
 
-            origin_config = origin_job.get("config") or {}
-            origin_result = origin_job.get("result") or {}
-            resolved_training_job_id = str(origin_job.get("id"))
+            origin_config = (
+                origin_job.get("config")
+                if isinstance(origin_job.get("config"), dict)
+                else {}
+            )
+            origin_result = (
+                origin_job.get("result")
+                if isinstance(origin_job.get("result"), dict)
+                else {}
+            )
+            resolved_training_job_id = _parse_optional_uuid_str(
+                origin_job.get("id")
+            )
             dataset_id = (
                 origin_config.get("dataset_id")
                 or origin_result.get("dataset_id")
@@ -186,29 +174,63 @@ async def run_scientific_algorithm(
                 or origin_result.get("model_version_id")
                 or lookup_model_version_id
             )
-            resolved_model_name = config.get("model_name") or origin_result.get(
-                "model"
+            source_model_version_id = _parse_optional_uuid_str(
+                origin_job.get("model_version_id")
+                or origin_result.get("model_version_id")
             )
-            if not dataset_id or not dataset_version_id:
+            requested_model_version_id = _parse_optional_uuid_str(
+                raw_model_version_id
+            )
+            if requested_model_version_id is not None and (
+                source_model_version_id is not None
+                and source_model_version_id != requested_model_version_id
+            ):
+                raise ValueError(
+                    "El entrenamiento de origen no corresponde al modelo indicado."
+                )
+            if requested_model_version_id is not None and (
+                source_model_version_id is None
+                and resolved_training_job_id != requested_model_version_id
+            ):
+                raise ValueError(
+                    "El entrenamiento de origen no corresponde al modelo indicado."
+                )
+            if normalized_points is not None and (
+                resolved_training_job_id
+                != _parse_optional_uuid_str(normalized_model_id)
+            ):
+                raise ValueError(
+                    "El artefacto de inferencia no corresponde al entrenamiento de origen."
+                )
+
+            resolved_dataset_id = _parse_optional_uuid_str(dataset_id)
+            resolved_dataset_version_id = _parse_optional_uuid_str(
+                dataset_version_id
+            )
+            if (
+                resolved_training_job_id is None
+                or resolved_dataset_id is None
+                or resolved_dataset_version_id is None
+            ):
                 raise ValueError(
                     "El entrenamiento de origen no informa el dataset y su versión."
                 )
 
+            raw_model_name = config.get("model_name") or origin_result.get("model")
+            resolved_model_name = (
+                raw_model_name.strip()
+                if isinstance(raw_model_name, str) and raw_model_name.strip()
+                else None
+            )
             provenance_result = {
                 "model_id": normalized_model_id,
-                "model_name": (
-                    str(resolved_model_name)
-                    if resolved_model_name is not None
-                    else None
-                ),
-                "model_version_id": (
-                    str(resolved_model_version_id)
-                    if resolved_model_version_id is not None
-                    else None
+                "model_name": resolved_model_name,
+                "model_version_id": _parse_optional_uuid_str(
+                    resolved_model_version_id
                 ),
                 "training_job_id": resolved_training_job_id,
-                "dataset_id": str(dataset_id),
-                "dataset_version_id": str(dataset_version_id),
+                "dataset_id": resolved_dataset_id,
+                "dataset_version_id": resolved_dataset_version_id,
             }
 
         if points is None:
@@ -220,10 +242,6 @@ async def run_scientific_algorithm(
                     **provenance_result,
                 }
             return {"message": "Tipo de trabajo 'estimation' no implementado aún."}
-
-        normalized_points = validate_and_normalize_inference_points(points)
-        if effective_org_id is None or not str(effective_org_id).strip():
-            raise ValueError("Falta organization_id para ejecutar la inferencia.")
 
         artifact_ref = await asyncio.to_thread(
             get_registered_model_artifact_ref,
@@ -370,16 +388,24 @@ async def process_scientific_job(
         )
 
         completed_payload = build_completed_update_payload(result, _utc_now_iso())
-        dataset_version_id = _parse_optional_uuid_str(
-            result.get("dataset_version_id")
-            or config.get("version_id")
-            or config.get("dataset_version_id")
-        )
-        model_version_id = _parse_optional_uuid_str(
-            result.get("model_version_id")
-            or config.get("model_version_id")
-            or config.get("model_id")
-        )
+        if job_type == "estimation":
+            dataset_version_id = _parse_optional_uuid_str(
+                result.get("dataset_version_id")
+            )
+            model_version_id = _parse_optional_uuid_str(
+                result.get("model_version_id")
+            )
+        else:
+            dataset_version_id = _parse_optional_uuid_str(
+                result.get("dataset_version_id")
+                or config.get("version_id")
+                or config.get("dataset_version_id")
+            )
+            model_version_id = _parse_optional_uuid_str(
+                result.get("model_version_id")
+                or config.get("model_version_id")
+                or config.get("model_id")
+            )
         if dataset_version_id:
             completed_payload["dataset_version_id"] = dataset_version_id
         if model_version_id:
@@ -541,11 +567,6 @@ def create_execution_job_service(
             est_model_version or str(payload.config.model_id)
         )
         db_payload["scene_id"] = str(payload.config.scene_id)
-        est_dataset_version = _parse_optional_uuid_str(
-            config.get("dataset_version_id")
-        )
-        if est_dataset_version:
-            db_payload["dataset_version_id"] = est_dataset_version
     if idempotency_key is not None:
         db_payload["idempotency_key"] = idempotency_key
 

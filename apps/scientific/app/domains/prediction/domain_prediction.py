@@ -327,24 +327,23 @@ def build_prediction_detail(
         else {}
     )
 
-    training_job_id = _to_optional_uuid(
-        result.get("training_job_id")
-        or (training_job_row.get("id") if training_job_row else None)
+    training_job_id = _to_optional_uuid(result.get("training_job_id")) or (
+        _to_optional_uuid(training_job_row.get("id")) if training_job_row else None
     )
-    dataset_id = _to_optional_uuid(
-        result.get("dataset_id")
-        or job_config.get("dataset_id")
-        or job_result.get("dataset_id")
+    dataset_id = (
+        _to_optional_uuid(result.get("dataset_id"))
+        or _to_optional_uuid(job_config.get("dataset_id"))
+        or _to_optional_uuid(job_result.get("dataset_id"))
     )
-    dataset_version_id = _to_optional_uuid(
-        result.get("dataset_version_id")
+    dataset_version_id = (
+        _to_optional_uuid(result.get("dataset_version_id"))
         or (
-            training_job_row.get("dataset_version_id")
+            _to_optional_uuid(training_job_row.get("dataset_version_id"))
             if training_job_row
             else None
         )
-        or job_config.get("version_id")
-        or job_result.get("dataset_version_id")
+        or _to_optional_uuid(job_config.get("version_id"))
+        or _to_optional_uuid(job_result.get("dataset_version_id"))
     )
     raw_model_name = result.get("model_name") or job_result.get("model")
     model_name = (

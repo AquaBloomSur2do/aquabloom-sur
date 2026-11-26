@@ -3,12 +3,17 @@ import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { modelsService } from '../services/models';
 import { executionsService } from '../services/executions';
-import type { ModelConfig } from '../types/models';
+import type { EstimationConfig, ModelConfig } from '../types/models';
 import { ApiError } from '../services/apiClient';
 
 interface EstimationFormProps {
   lakeId: string;
   sceneId: string;
+}
+
+function normalizeOptionalMetadata(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized || undefined;
 }
 
 export function EstimationForm({ lakeId, sceneId }: EstimationFormProps) {
@@ -68,24 +73,25 @@ export function EstimationForm({ lakeId, sceneId }: EstimationFormProps) {
 
     try {
       const model = models.find(({ id }) => id === selectedModel);
-      const config = {
+      const modelName = normalizeOptionalMetadata(model?.name);
+      const modelVersionId = normalizeOptionalMetadata(model?.model_version_id);
+      const trainingJobId = normalizeOptionalMetadata(model?.training_job_id);
+      const datasetId = normalizeOptionalMetadata(model?.dataset_id);
+      const datasetVersionId = normalizeOptionalMetadata(
+        model?.dataset_version_id
+      );
+      const config: EstimationConfig = {
         model_id: selectedModel,
         scene_id: sceneId,
-        ...(model?.name ? { model_name: model.name } : {}),
-        ...(model?.model_version_id
-          ? { model_version_id: model.model_version_id }
-          : {}),
-        ...(model?.training_job_id
-          ? { training_job_id: model.training_job_id }
-          : {}),
-        ...(model?.dataset_id ? { dataset_id: model.dataset_id } : {}),
-        ...(model?.dataset_version_id
-          ? { dataset_version_id: model.dataset_version_id }
-          : {}),
+        ...(modelName ? { model_name: modelName } : {}),
+        ...(modelVersionId ? { model_version_id: modelVersionId } : {}),
+        ...(trainingJobId ? { training_job_id: trainingJobId } : {}),
+        ...(datasetId ? { dataset_id: datasetId } : {}),
+        ...(datasetVersionId ? { dataset_version_id: datasetVersionId } : {}),
       };
       const response = await executionsService.createJob({
         job_type: 'ESTIMATION',
-        config,
+        config: { ...config },
       });
       navigate(`/scientific/jobs/${response.job_id}`);
     } catch (err: unknown) {

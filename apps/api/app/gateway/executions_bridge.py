@@ -133,7 +133,12 @@ def _build_estimation_job_create(payload: WebExecutionJobCreate) -> JobCreate:
 
     raw_model_name = payload.config.get("model_name")
     if raw_model_name is not None:
-        extra_config["model_name"] = str(raw_model_name)
+        if not isinstance(raw_model_name, str) or not raw_model_name.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="model_name debe ser un texto no vacío.",
+            )
+        extra_config["model_name"] = raw_model_name.strip()
 
     for uuid_field in (
         "model_version_id",

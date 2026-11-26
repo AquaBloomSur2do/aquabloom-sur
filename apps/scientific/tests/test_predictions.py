@@ -26,6 +26,7 @@ ORGANIZATION_ID = "33333333-3333-4333-8333-333333333333"
 OTHER_ORGANIZATION_ID = "44444444-4444-4444-8444-444444444444"
 LAKE_ID = "55555555-5555-4555-8555-555555555555"
 DATASET_VERSION_ID = "66666666-6666-4666-8666-666666666666"
+DATASET_ID = "77777777-7777-4777-8777-777777777777"
 MODEL_VERSION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 SCENE_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 
@@ -112,6 +113,17 @@ class FakePredictionQuery:
             ]
             return SimpleNamespace(data=rows)
 
+        if self.table_name == "scientific_jobs":
+            rows = [
+                row
+                for row in self.database.training_jobs
+                if all(
+                    row.get(key) is not None and str(row.get(key)) == str(value)
+                    for key, value in self.filters.items()
+                )
+            ]
+            return SimpleNamespace(data=rows)
+
         if self.schema_name != "scientific" or self.table_name != "predictions":
             raise AssertionError(
                 f"Unexpected query: {self.schema_name}.{self.table_name}"
@@ -144,6 +156,7 @@ class FakePredictionQuery:
 class FakePredictionDatabase:
     def __init__(self):
         self.rows = []
+        self.training_jobs = []
         self.fail_on_insert = False
         self.memberships = [
             {
@@ -363,6 +376,99 @@ def test_get_prediction_detail_returns_full_contract_with_verified_permissions(
         "Una o más estimaciones están fuera del rango observado por el modelo (extrapolación).",
         "No se dispone de incertidumbre calibrada; el resultado no debe interpretarse como un intervalo de confianza.",
     ]
+
+
+def test_prediction_origin_skips_invalid_result_uuids_and_failed_trainings(
+    monkeypatch,
+):
+    database = FakePredictionDatabase()
+    database.training_jobs.extend(
+        [
+            {
+                "id": "77777777-7777-4777-8777-777777777777",
+                "organization_id": ORGANIZATION_ID,
+                "job_type": "training",
+                "status": "failed",
+                "model_version_id": MODEL_VERSION_ID,
+                "config": {"dataset_id": "88888888-8888-4888-8888-888888888888"},
+                "dataset_version_id": "99999999-9999-4999-8999-999999999999",
+            },
+            {
+                "id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                "organization_id": ORGANIZATION_ID,
+                "job_type": "training",
+                "status": "completed",
+                "model_version_id": MODEL_VERSION_ID,
+                "config": {"dataset_id": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"},
+                "dataset_version_id": DATASET_VERSION_ID,
+            },
+        ]
+    )
+    monkeypatch.setattr(controller_prediction, "supabase", database)
+    payload = detailed_prediction_payload()
+    payload["result"].update(
+        {
+            "training_job_id": "not-a-uuid",
+            "dataset_id": "not-a-uuid",
+            "dataset_version_id": "not-a-uuid",
+        }
+    )
+
+    created = client.post(
+        "/api/v1/predictions/",
+        json=payload,
+        headers=HEADERS,
+    )
+    response = client.get(
+        f"/api/v1/predictions/{created.json()['id']}",
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 200
+    provenance = response.json()["provenance"]
+    assert provenance["training_job_id"] == "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+    assert provenance["dataset_id"] == "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
+    assert provenance["dataset_version_id"] == DATASET_VERSION_ID
+
+
+def test_prediction_detail_does_not_link_an_explicit_failed_training(monkeypatch):
+    database = FakePredictionDatabase()
+    failed_training_id = "77777777-7777-4777-8777-777777777777"
+    database.training_jobs.append(
+        {
+            "id": failed_training_id,
+            "organization_id": ORGANIZATION_ID,
+            "job_type": "training",
+            "status": "failed",
+            "model_version_id": MODEL_VERSION_ID,
+            "config": {"dataset_id": DATASET_ID},
+            "dataset_version_id": DATASET_VERSION_ID,
+        }
+    )
+    monkeypatch.setattr(controller_prediction, "supabase", database)
+    payload = detailed_prediction_payload()
+    payload["result"].update(
+        {
+            "training_job_id": failed_training_id,
+            "dataset_id": DATASET_ID,
+        }
+    )
+
+    created = client.post(
+        "/api/v1/predictions/",
+        json=payload,
+        headers=HEADERS,
+    )
+    response = client.get(
+        f"/api/v1/predictions/{created.json()['id']}",
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 200
+    provenance = response.json()["provenance"]
+    assert provenance["training_job_id"] is None
+    assert provenance["dataset_id"] is None
+    assert provenance["dataset_version_id"] is None
 
 
 def test_get_prediction_detail_supports_scalar_result_and_flags_experimental_scene(

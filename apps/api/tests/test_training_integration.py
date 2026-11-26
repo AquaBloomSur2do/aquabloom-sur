@@ -452,6 +452,25 @@ def test_web_estimation_rejects_non_uuid_model_or_scene(config, fake_staging_db)
     assert fake_staging_db.jobs == []
 
 
+@pytest.mark.parametrize("model_name", [123, {}, "   "])
+def test_web_estimation_rejects_invalid_model_name(model_name, fake_staging_db):
+    response = client.post(
+        "/api/v1/executions/jobs",
+        json={
+            "job_type": "ESTIMATION",
+            "config": {
+                "model_id": "88888888-8888-4888-8888-888888888888",
+                "scene_id": "44444444-4444-4444-8444-444444444444",
+                "model_name": model_name,
+            },
+        },
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 422
+    assert fake_staging_db.jobs == []
+
+
 def test_web_training_bridge_rejects_unpublished_version(fake_staging_db):
     fake_staging_db.versions[0]["state"] = "DRAFT"
 

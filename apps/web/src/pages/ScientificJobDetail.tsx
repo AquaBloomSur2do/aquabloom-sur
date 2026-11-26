@@ -31,20 +31,28 @@ function isInProgressStatus(status: JobStatusResponse['status']): boolean {
 }
 
 function resolveDatasetVersionId(job: JobStatusResponse): string | null {
-  const resultVersionId = job.result?.dataset_version_id;
-  if (resultVersionId) return resultVersionId;
-  if (job.dataset_version_id) return job.dataset_version_id;
-  const configVersionId = job.config?.version_id;
-  return typeof configVersionId === 'string' && configVersionId.trim()
-    ? configVersionId
-    : null;
+  const candidates = [
+    job.result?.dataset_version_id,
+    job.dataset_version_id,
+    job.config?.dataset_version_id,
+    job.config?.version_id,
+  ];
+  return (
+    candidates.find(
+      (candidate): candidate is string =>
+        typeof candidate === 'string' && candidate.trim().length > 0
+    )?.trim() ?? null
+  );
 }
 
 function resolveEvidenceId(value: unknown, fallback: unknown): string | null {
-  const resolved = typeof value === 'string' ? value : fallback;
-  return typeof resolved === 'string' && resolved.trim()
-    ? resolved.trim()
-    : null;
+  const candidates = [value, fallback];
+  return (
+    candidates.find(
+      (candidate): candidate is string =>
+        typeof candidate === 'string' && candidate.trim().length > 0
+    )?.trim() ?? null
+  );
 }
 
 const STRUCTURED_RESULT_KEYS = new Set([
@@ -198,6 +206,7 @@ export function ScientificJobDetail({
       if (isInitialLoad) {
         setLoading(true);
         setError(null);
+        setJob(null);
       }
 
       activeController = new AbortController();

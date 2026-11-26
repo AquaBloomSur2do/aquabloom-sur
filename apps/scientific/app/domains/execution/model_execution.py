@@ -38,6 +38,68 @@ def get_dataset_version_for_training(
     return rows[0] if rows else None
 
 
+def get_training_origin_for_estimation(
+    client,
+    *,
+    organization_id: UUID | str,
+    training_job_id: UUID | str | None = None,
+    model_version_id: UUID | str | None = None,
+    lookup_model_id: UUID | str | None = None,
+) -> dict[str, Any] | None:
+    """Busca el entrenamiento de origen dentro de la organización solicitante."""
+    normalized_org_id = str(organization_id).strip()
+    if not normalized_org_id:
+        raise ValueError("organization_id no puede estar vacío.")
+
+    def origin_query():
+        return (
+            client.table("scientific_jobs")
+            .select(
+                "id, status, config, result, dataset_version_id, model_version_id"
+            )
+            .eq("organization_id", normalized_org_id)
+            .eq("job_type", "training")
+        )
+
+    if training_job_id is not None:
+        rows = (
+            getattr(
+                origin_query().eq("id", str(training_job_id)).limit(1).execute(),
+                "data",
+                None,
+            )
+            or []
+        )
+        return rows[0] if rows else None
+
+    if model_version_id is not None:
+        rows = (
+            origin_query()
+            .eq("model_version_id", str(model_version_id))
+            .eq("status", "completed")
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        if rows:
+            return rows[0]
+
+    if lookup_model_id is None:
+        return None
+
+    rows = (
+        origin_query()
+        .eq("id", str(lookup_model_id))
+        .eq("status", "completed")
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    return rows[0] if rows else None
+
+
 def fetch_training_file(client, version_id: UUID | str) -> tuple[bytes, str]:
     """Obtiene el archivo de entrenamiento y su checksum desde Supabase."""
     manifests = (

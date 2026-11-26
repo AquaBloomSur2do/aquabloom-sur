@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from postgrest.exceptions import APIError
 
 from apps.scientific.app.domains.prediction.domain_prediction import (
+    _to_optional_uuid,
     build_prediction_detail,
     has_prediction_read_permission,
 )
@@ -104,32 +105,39 @@ def get_prediction_detail_service(
         else {}
     )
     training_job_row = None
+    prediction_for_detail = prediction
+    training_job_id = _to_optional_uuid(result_payload.get("training_job_id"))
+    model_version_id = _to_optional_uuid(prediction.get("model_version_id"))
+    dataset_version_id = _to_optional_uuid(
+        result_payload.get("dataset_version_id")
+    )
     try:
-        raw_training_id = result_payload.get("training_job_id")
-        raw_model_version_id = prediction.get("model_version_id")
-        raw_dataset_version_id = result_payload.get("dataset_version_id")
         training_job_row = get_training_job_origin_in_db(
             client,
             organization_id=organization_id,
-            training_job_id=(
-                UUID(str(raw_training_id)) if raw_training_id else None
-            ),
-            model_version_id=(
-                UUID(str(raw_model_version_id))
-                if raw_model_version_id
-                else None
-            ),
-            dataset_version_id=(
-                UUID(str(raw_dataset_version_id))
-                if raw_dataset_version_id
-                else None
-            ),
+            training_job_id=training_job_id,
+            model_version_id=model_version_id,
+            dataset_version_id=dataset_version_id,
         )
-    except (APIError, AssertionError, AttributeError, KeyError, TypeError, ValueError):
+        if (
+            training_job_id is not None
+            and training_job_row is not None
+            and str(training_job_row.get("status", "")).lower() != "completed"
+        ):
+            training_job_row = None
+            sanitized_result = dict(result_payload)
+            sanitized_result.pop("training_job_id", None)
+            sanitized_result.pop("dataset_id", None)
+            sanitized_result.pop("dataset_version_id", None)
+            prediction_for_detail = {
+                **prediction,
+                "result": sanitized_result,
+            }
+    except (APIError, ValueError):
         training_job_row = None
 
     return build_prediction_detail(
-        prediction,
+        prediction_for_detail,
         scene_row=scene_metadata,
         training_job_row=training_job_row,
     )

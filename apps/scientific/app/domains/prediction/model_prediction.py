@@ -67,16 +67,22 @@ def get_training_job_origin_in_db(
 ) -> dict[str, Any] | None:
     query = (
         client.table("scientific_jobs")
-        .select("id, config, result, dataset_version_id, model_version_id")
+        .select(
+            "id, status, config, result, dataset_version_id, model_version_id"
+        )
         .eq("organization_id", str(organization_id))
         .eq("job_type", "training")
     )
     if training_job_id is not None:
         query = query.eq("id", str(training_job_id))
     elif model_version_id is not None:
-        query = query.eq("model_version_id", str(model_version_id))
+        query = query.eq("model_version_id", str(model_version_id)).eq(
+            "status", "completed"
+        )
     elif dataset_version_id is not None:
-        query = query.eq("dataset_version_id", str(dataset_version_id))
+        query = query.eq("dataset_version_id", str(dataset_version_id)).eq(
+            "status", "completed"
+        )
     else:
         return None
 
