@@ -185,8 +185,7 @@ class FakeQuery:
             row
             for row in self.database.rows
             if all(
-                str(row.get(column)) == value
-                for column, value in self.filters.items()
+                str(row.get(column)) == value for column, value in self.filters.items()
             )
         ]
         return FakeResponse(rows)
@@ -243,6 +242,30 @@ def fake_database(monkeypatch):
     monkeypatch.setattr(
         "apps.scientific.app.domains.execution.service_execution.supabase",
         database,
+    )
+    monkeypatch.setattr(
+        service_execution,
+        "has_active_organization_membership",
+        lambda user_id, organization_id: any(
+            membership["user_id"] == str(user_id)
+            and membership["organization_id"] == str(organization_id)
+            and membership["status"] == "active"
+            and membership["organization_status"] == "active"
+            for membership in database.memberships
+        ),
+    )
+    monkeypatch.setattr(
+        service_execution,
+        "get_dataset_version_for_training",
+        lambda version_id, organization_id: next(
+            (
+                version
+                for version in database.versions
+                if version["id"] == str(version_id)
+                and str(organization_id) == ORGANIZATION_ID
+            ),
+            None,
+        ),
     )
     monkeypatch.setitem(
         app.dependency_overrides,
@@ -760,9 +783,7 @@ def test_training_requires_version_to_belong_to_dataset(fake_database):
     payload = training_payload(dataset_id="cccccccc-cccc-4ccc-8ccc-cccccccccccc")
     response = client.post("/api/v1/executions/", json=payload, headers=HEADERS)
     assert response.status_code == 422
-    assert (
-        response.json()["message"] == "La versión no pertenece al dataset indicado."
-    )
+    assert response.json()["message"] == "La versión no pertenece al dataset indicado."
     assert fake_database.rows == []
 
 
@@ -781,31 +802,27 @@ def mock_training_file(monkeypatch, csv_content: bytes, valid_checksum: bool = T
     return fetch_file
 
 
-def test_model_fetches_training_file_for_version():
+def test_model_fetches_training_file_for_version(monkeypatch):
     mock_client = MagicMock()
     expected_checksum = "a" * 64
     csv_content = b"clorofila_a\n10.0\n"
-    (
-        mock_client.schema.return_value.table.return_value.select.return_value.eq.return_value
-        .limit.return_value.execute.return_value.data
-    ) = [
-        {
-            "storage_path": f"versions/{VERSION_ID}/training.csv",
-            "checksum": expected_checksum,
-        }
-    ]
-    mock_client.storage.from_.return_value.download.return_value = csv_content
-
-    assert fetch_training_file(mock_client, VERSION_ID) == (
+    mock_client.download_training_file.return_value = (
         csv_content,
         expected_checksum,
     )
-    mock_client.schema.return_value.table.return_value.select.return_value.eq.assert_called_once_with(
-        "version_id", VERSION_ID
+    monkeypatch.setattr(
+        "apps.scientific.app.domains.execution.model_execution.CoreServiceClient",
+        lambda: mock_client,
     )
-    mock_client.storage.from_.assert_called_once_with("training_files")
-    mock_client.storage.from_.return_value.download.assert_called_once_with(
-        f"versions/{VERSION_ID}/training.csv"
+
+    assert fetch_training_file(VERSION_ID, ORGANIZATION_ID, USER_ID) == (
+        csv_content,
+        expected_checksum,
+    )
+    mock_client.download_training_file.assert_called_once_with(
+        VERSION_ID,
+        ORGANIZATION_ID,
+        USER_ID,
     )
 
 
@@ -821,7 +838,11 @@ def test_training_is_persisted_as_queued_and_returns_202(fake_database, monkeypa
     assert result["prediction_value"] == 15.0
     assert result["predictions"] == [15.0]
     assert result["metrics"] == {"mae": 15.0, "rmse": 15.0}
-    fetch_file.assert_called_once_with(fake_database, VERSION_ID)
+    fetch_file.assert_called_once_with(
+        VERSION_ID,
+        uuid.UUID(ORGANIZATION_ID),
+        uuid.UUID(USER_ID),
+    )
 
 
 def test_parse_training_csv_rechaza_checksum_invalido():
@@ -858,6 +879,7 @@ def test_baseline_evaluacion_no_modifica_media():
     assert result["prediction_value"] == 15.0
     assert result["predictions"] == [15.0, 15.0]
     assert result["metrics"]["mae"] == 135.0
+
 
 def test_baseline_falla_con_particiones_vacias():
     with pytest.raises(ValueError, match="entrenamiento vacío"):
@@ -923,6 +945,7 @@ def test_get_training_job_status_exposes_full_structured_result(
         "code_version": "test-build-158",
         "environment": "staging",
     }
+
 
 # =========================================================
 # PRUEBA S2-167: PERSISTENCIA Y RECUPERACIÓN TRAS REINICIO
@@ -1025,11 +1048,7 @@ class _PersistentSqliteQuery:
             return "dataset_versions", dict(self.filters)
         if self.table_name == "memberships":
             mapped = {
-                (
-                    "organization_status"
-                    if key == "organizations.status"
-                    else key
-                ): value
+                ("organization_status" if key == "organizations.status" else key): value
                 for key, value in self.filters.items()
             }
             return "memberships", mapped
@@ -1061,9 +1080,7 @@ class _PersistentSqliteQuery:
                 row.setdefault("created_at", datetime.now(UTC).isoformat())
                 row.setdefault("result", None)
                 columns = list(row.keys())
-                values = [
-                    self._serialize_value(col, row[col]) for col in columns
-                ]
+                values = [self._serialize_value(col, row[col]) for col in columns]
                 placeholders = ", ".join("?" for _ in columns)
                 col_names = ", ".join(columns)
                 conn.execute(
@@ -1073,9 +1090,7 @@ class _PersistentSqliteQuery:
                 return FakeResponse([row])
 
             where_clauses = [f"{col} = ?" for col in mapped_filters]
-            where_sql = (
-                f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
-            )
+            where_sql = f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
             filter_values = list(mapped_filters.values())
 
             if self.update_payload is not None:
@@ -1105,9 +1120,7 @@ class _PersistentSqliteQuery:
                 f"SELECT * FROM {sql_table}{where_sql}{limit_sql}",
                 filter_values,
             )
-            return FakeResponse(
-                [self._deserialize_row(r) for r in cursor.fetchall()]
-            )
+            return FakeResponse([self._deserialize_row(r) for r in cursor.fetchall()])
 
 
 class PersistentSqliteClient:
@@ -1127,9 +1140,7 @@ class PersistentSqliteClient:
         return _PersistentSqliteQuery(self.db_path, None, table_name)
 
 
-def test_job_status_and_result_persist_across_api_restart(
-    tmp_path, monkeypatch
-):
+def test_job_status_and_result_persist_across_api_restart(tmp_path, monkeypatch):
     """Tras reiniciar la API, el estado y resultado completados siguen disponibles (S2-167)."""
     db_path = tmp_path / "scientific_persistent.db"
     _init_persistent_sqlite_db(db_path)
@@ -1153,7 +1164,10 @@ def test_job_status_and_result_persist_across_api_restart(
             mp.setattr(
                 service_execution,
                 "fetch_training_file",
-                lambda _client, _version_id: (csv_data, checksum),
+                lambda _version_id, _organization_id, _user_id: (
+                    csv_data,
+                    checksum,
+                ),
             )
             with TestClient(first_app) as first_api_client:
                 create_response = first_api_client.post(
@@ -1220,7 +1234,6 @@ def test_job_status_and_result_persist_across_api_restart(
     finally:
         first_app.dependency_overrides.clear()
         restarted_app.dependency_overrides.clear()
-
 def test_estimation_job_resolves_training_and_dataset_origin(fake_database):
     training_job_id = "aaaaaaaa-1111-4111-8111-111111111111"
     fake_database.rows.append(
@@ -1466,4 +1479,3 @@ def test_estimation_does_not_persist_unverified_dataset_version(
 
     assert response.status_code == 202
     assert "dataset_version_id" not in fake_database.rows[0]
-        

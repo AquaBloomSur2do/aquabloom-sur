@@ -17,6 +17,23 @@ def get_active_memberships(client: Client, user_id: UUID) -> list[dict]:
     return response.data or []
 
 
+def get_active_organization_membership(
+    client: Client, user_id: UUID, organization_id: UUID
+) -> dict | None:
+    response = (
+        client.table("memberships")
+        .select("organization_id, role, status, organizations!inner(id, status)")
+        .eq("user_id", str(user_id))
+        .eq("organization_id", str(organization_id))
+        .eq("status", "active")
+        .eq("organizations.status", "active")
+        .limit(1)
+        .execute()
+    )
+    rows = response.data or []
+    return rows[0] if rows else None
+
+
 def count_active_lakes(client: Client) -> int:
     response = (
         client.table("lakes")
@@ -63,14 +80,11 @@ def count_visible_organizations(client: Client, user_data: dict) -> int:
 
 
 def upsert_user_profile(client: Client, user_id: UUID, email: str | None) -> None:
-    try:
-        client.table("profiles").upsert(
-            {"id": str(user_id), "email": email},
-            on_conflict="id",
-            ignore_duplicates=True,
-        ).execute()
-    except Exception:  # noqa: BLE001, S110
-        pass
+    client.table("profiles").upsert(
+        {"id": str(user_id), "email": email},
+        on_conflict="id",
+        ignore_duplicates=True,
+    ).execute()
 
 
 def list_all_profiles_ordered(client: Client) -> list[dict]:
@@ -141,10 +155,7 @@ def get_profiles_by_ids(client: Client, user_ids: list[str]) -> list[dict]:
     if not user_ids:
         return []
     res = (
-        client.table("profiles")
-        .select("id, email, name")
-        .in_("id", user_ids)
-        .execute()
+        client.table("profiles").select("id, email, name").in_("id", user_ids).execute()
     )
     return res.data or []
 
@@ -222,4 +233,3 @@ def insert_audit_log(
         ).execute()
     except Exception as e:  # noqa: BLE001
         print(f"Alerta: Fallo silencioso en auditoría: {e}")
-        

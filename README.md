@@ -4,6 +4,9 @@ Plataforma científica colaborativa para apoyar el estudio de lagos del sur de C
 
 Este repositorio es un monorepo: el frontend y el backend se desarrollan y ejecutan desde sus propias carpetas, y comparten los contratos de la API y la configuración de los servicios de Supabase.
 
+Para comandos de operación, variables de entorno, consulta de fallos y
+recuperación básica, consulta la [guía de operación mínima](docs/operacion-minima.md).
+
 ## Stack Tecnológico
 
 | Área | Tecnologías |

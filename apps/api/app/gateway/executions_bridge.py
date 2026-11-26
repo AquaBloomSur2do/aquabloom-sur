@@ -12,11 +12,11 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field
 
-from apps.scientific.app.core.database import supabase
-from apps.scientific.app.core.dependencies import require_authenticated_user
-from apps.scientific.app.domains.execution.model_execution import (
+from apps.api.app.domains.dataset.service_dataset import (
     get_dataset_version_for_training,
 )
+from apps.scientific.app.core.database import supabase
+from apps.scientific.app.core.dependencies import require_authenticated_user
 from apps.scientific.app.domains.execution.schemas_execution import (
     EstimationConfig,
     JobCreate,
@@ -55,7 +55,11 @@ def _extract_user_id(user: dict[str, Any]) -> UUID:
         ) from exc
 
 
-def _build_training_job_create(client, payload: WebExecutionJobCreate) -> JobCreate:
+def _build_training_job_create(
+    client,
+    payload: WebExecutionJobCreate,
+    organization_id: UUID,
+) -> JobCreate:
     raw_version_id = payload.dataset_version_id or payload.config.get("version_id")
     if raw_version_id is None:
         raise HTTPException(
@@ -73,11 +77,18 @@ def _build_training_job_create(client, payload: WebExecutionJobCreate) -> JobCre
 
     raw_dataset_id = payload.config.get("dataset_id")
     if raw_dataset_id is None:
-        version_record = get_dataset_version_for_training(client, version_id)
+        version_record = get_dataset_version_for_training(
+            client, version_id, organization_id
+        )
         if not version_record:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="No se encontró la versión del dataset.",
+            )
+        if str(version_record.get("state", "")).upper() != "PUBLISHED":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Solo se pueden entrenar versiones publicadas.",
             )
         raw_dataset_id = version_record.get("dataset_id")
 
@@ -207,7 +218,11 @@ def submit_web_execution_job(
 
     normalized_type = payload.job_type.lower()
     if normalized_type == "training":
-        job_create = _build_training_job_create(client, payload)
+        job_create = _build_training_job_create(
+            client,
+            payload,
+            organization_id,
+        )
     else:
         job_create = _build_estimation_job_create(payload)
 

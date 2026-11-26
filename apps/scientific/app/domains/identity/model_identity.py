@@ -1,24 +1,8 @@
 from uuid import UUID
 
-from supabase import Client
+from apps.scientific.app.core.service_clients import CoreServiceClient
 
 
-def get_active_memberships(client: Client, user_id: UUID) -> list[dict]:
-    """Obtiene membresías activas de organizaciones activas."""
-    response = (
-        client.table("memberships")
-        .select("id, role, status, organization:organizations!inner(id, name, status)")
-        .eq("user_id", str(user_id))
-        .eq("status", "active")
-        .eq("organizations.status", "active")
-        .execute()
-    )
-    return response.data or []
-
-
-def upsert_user_profile(client: Client, user_id: UUID, email: str | None) -> None:
-    client.table("profiles").upsert(
-        {"id": str(user_id), "email": email},
-        on_conflict="id",
-        ignore_duplicates=True,
-    ).execute()
+def get_current_user_profile(user_id: UUID, email: str | None) -> dict:
+    """Obtiene el perfil y las membresías mediante el contrato interno de Core."""
+    return CoreServiceClient().get_current_user_profile(user_id, email)

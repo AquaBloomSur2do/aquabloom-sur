@@ -8,7 +8,6 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from apps.scientific.app.core.config import settings
-from apps.scientific.app.core.database import supabase
 from apps.scientific.app.core.permissions import CATALOG_ACTIONS, has_permission
 from apps.scientific.app.domains.identity.service_identity import (
     get_current_user_profile,
@@ -128,14 +127,8 @@ def read_current_user(payload: dict = Security(verify_supabase_jwt)):  # noqa: B
             "Token sin identificador de usuario (sub).", {"code": "MISSING_SUB"}
         )
 
-    if supabase is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="El servicio de base de datos no está disponible",
-        )
-
     try:
-        return get_current_user_profile(supabase, UUID(user_id), email)
+        return get_current_user_profile(UUID(user_id), email)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

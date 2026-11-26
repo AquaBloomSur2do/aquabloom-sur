@@ -103,6 +103,17 @@ class FakeQuery:
             ]
             return SimpleNamespace(data=rows)
 
+        if self.schema_name == "dataset" and self.table_name == "datasets":
+            rows = [
+                dataset
+                for dataset in self.database.datasets
+                if all(
+                    str(dataset.get(key)) == str(value)
+                    for key, value in self.filters.items()
+                )
+            ]
+            return SimpleNamespace(data=rows)
+
         if self.table_name != "scientific_jobs":
             raise AssertionError(f"Unexpected table: {self.table_name}")
 
@@ -148,6 +159,7 @@ class FakeStagingDatabase:
                 "status": "published",
             }
         ]
+        self.datasets = [{"id": DATASET_ID, "organization_id": ORGANIZATION_ID}]
         self.memberships = [
             {
                 "user_id": USER_ID,
@@ -170,6 +182,46 @@ class FakeStagingDatabase:
 @pytest.fixture(autouse=True)
 def fake_staging_db(monkeypatch):
     database = FakeStagingDatabase()
+    from apps.scientific.app.domains.execution import model_execution
+
+    class FakeCoreServiceClient:
+        def has_active_organization_membership(self, user_id, organization_id):
+            return any(
+                membership["user_id"] == str(user_id)
+                and membership["organization_id"] == str(organization_id)
+                and membership["status"] == "active"
+                and membership["organization_status"] == "active"
+                for membership in database.memberships
+            )
+
+        def get_dataset_version_for_training(self, version_id, organization_id):
+            version = next(
+                (
+                    row
+                    for row in database.versions
+                    if row["id"] == str(version_id)
+                    and row["state"] == "PUBLISHED"
+                ),
+                None,
+            )
+            if version is None:
+                return None
+            dataset = next(
+                (
+                    row
+                    for row in database.datasets
+                    if row["id"] == version["dataset_id"]
+                    and row["organization_id"] == str(organization_id)
+                ),
+                None,
+            )
+            return {**version, "dataset_id": dataset["id"]} if dataset else None
+
+    monkeypatch.setattr(
+        model_execution,
+        "CoreServiceClient",
+        lambda: FakeCoreServiceClient(),
+    )
     monkeypatch.setattr(
         "apps.api.app.gateway.executions_bridge.supabase", database
     )
@@ -273,7 +325,11 @@ def test_web_training_bridge_dispatches_worker_and_persists_result(
     assert isinstance(result["warnings"], list)
     assert len(result["warnings"]) >= 1
     assert status_data["completed_at"] is not None
-    fetch_file.assert_called_once_with(fake_staging_db, VERSION_ID)
+    fetch_file.assert_called_once_with(
+        VERSION_ID,
+        uuid.UUID(ORGANIZATION_ID),
+        uuid.UUID(USER_ID),
+    )
 
 
 def test_web_estimation_result_includes_its_training_and_dataset_origin(

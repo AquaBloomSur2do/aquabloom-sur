@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     cors_origins: str = "http://localhost:5173"
     core_api_url: str = "http://localhost:8000"
+    satellite_api_url: str = "http://localhost:8002"
     job_timeout_seconds: float = Field(default=10.0, gt=0)
     internal_service_token: SecretStr | None = None
 
@@ -25,4 +26,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
