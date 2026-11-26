@@ -128,3 +128,37 @@ def save_model_artifact(
         checksum=checksum,
         size_bytes=len(artifact_bytes),
     )
+
+ARTIFACT_URL_DEFAULT_TTL_SECONDS = 60
+ARTIFACT_URL_MAX_TTL_SECONDS = 300
+
+
+def create_model_artifact_signed_url(
+    client: Any,
+    reference: dict[str, Any],
+    expires_in: int = ARTIFACT_URL_DEFAULT_TTL_SECONDS,
+) -> str:
+    """Genera un enlace temporal firmado para un artefacto del bucket privado."""
+    if isinstance(expires_in, bool) or not isinstance(expires_in, int):
+        raise TypeError("expires_in debe ser un entero.")
+    if not 0 < expires_in <= ARTIFACT_URL_MAX_TTL_SECONDS:
+        raise ValueError("expires_in fuera del rango permitido.")
+    if not isinstance(reference, dict):
+        raise TypeError("La referencia del artefacto no es válida.")
+
+    bucket = reference.get("bucket")
+    storage_path = reference.get("storage_path")
+    job_id = reference.get("job_id")
+    if not all(isinstance(v, str) and v for v in (bucket, storage_path, job_id)):
+        raise ValueError("La referencia del artefacto está incompleta.")
+
+    # Confianza cero: la ruta debe vivir dentro de models/{job_id}/.
+    expected_prefix = build_model_artifact_storage_path(job_id, "x").removesuffix("x")
+    if not storage_path.startswith(expected_prefix) or ".." in storage_path:
+        raise ValueError("La ruta del artefacto no pertenece al trabajo.")
+
+    signed = client.storage.from_(bucket).create_signed_url(storage_path, expires_in)
+    url = signed.get("signedURL") or signed.get("signedUrl")
+    if not url:
+        raise ValueError("No se pudo firmar el artefacto.")
+    return url

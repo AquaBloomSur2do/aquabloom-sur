@@ -33,6 +33,9 @@ from apps.scientific.app.domains.execution.domain_execution import (
     parse_training_csv,
     resolve_job_timeout,
 )
+from apps.scientific.app.domains.execution.model_artifacts import (
+    save_model_artifact,
+)
 from apps.scientific.app.domains.execution.model_execution import (
     fetch_training_file,
 )
@@ -1234,6 +1237,152 @@ def test_job_status_and_result_persist_across_api_restart(tmp_path, monkeypatch)
     finally:
         first_app.dependency_overrides.clear()
         restarted_app.dependency_overrides.clear()
+
+class _FileSystemBucket:
+    """Bucket de Storage simulado que escribe archivos reales en disco."""
+
+    def __init__(self, root: Path):
+        self.root = root
+
+    def upload(self, path: str, data: bytes, _file_options: dict[str, str]):
+        target = self.root / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        return {"path": path}
+
+    def remove(self, paths: list[str]):
+        for path in paths:
+            (self.root / path).unlink(missing_ok=True)
+        return {"removed": paths}
+
+    def download(self, path: str) -> bytes:
+        return (self.root / path).read_bytes()
+
+    def create_signed_url(self, path: str, expires_in: int):
+        if not (self.root / path).is_file():
+            raise FileNotFoundError(path)
+        return {"signedURL": f"https://storage.test/sign/{path}?exp={expires_in}"}
+
+
+class _FileSystemStorage:
+    def __init__(self, root: Path):
+        self.root = root
+
+    def from_(self, bucket: str) -> _FileSystemBucket:
+        return _FileSystemBucket(self.root / bucket)
+
+
+class _PersistentArtifactClient(PersistentSqliteClient):
+    """SQLite en disco más Storage simulado sobre el sistema de archivos."""
+
+    def __init__(self, db_path: Path, storage_root: Path):
+        super().__init__(db_path)
+        self.storage = _FileSystemStorage(storage_root)
+
+
+def test_model_artifact_file_and_access_persist_across_api_restart(
+    tmp_path, monkeypatch
+):
+    """Tras reiniciar la API, el archivo y su acceso autorizado siguen vigentes (S2-185)."""
+    db_path = tmp_path / "scientific_persistent.db"
+    storage_root = tmp_path / "storage"
+    _init_persistent_sqlite_db(db_path)
+
+    job_id = str(uuid.uuid4())
+    artifact_bytes = b"\x80\x04modelo-entrenado\x00"
+    expected_checksum = hashlib.sha256(artifact_bytes).hexdigest()
+    expected_path = f"models/{job_id}/model.pkl"
+    expected_reference = {
+        "job_id": job_id,
+        "bucket": "model_artifacts",
+        "storage_path": expected_path,
+        "checksum": expected_checksum,
+        "size_bytes": len(artifact_bytes),
+    }
+
+    first_app = create_app()
+    restarted_app = create_app()
+
+    try:
+        # 1. Primera instancia: trabajo completado y artefacto guardado en disco
+        first_client = _PersistentArtifactClient(db_path, storage_root)
+        first_client.table("scientific_jobs").insert(
+            {
+                "id": job_id,
+                "job_type": "training",
+                "config": {"dataset_id": DATASET_ID, "version_id": VERSION_ID},
+                "status": "completed",
+                "organization_id": ORGANIZATION_ID,
+                "requested_by": USER_ID,
+            }
+        ).execute()
+        reference = save_model_artifact(first_client, job_id, artifact_bytes)
+        assert reference.storage_path == expected_path
+        assert reference.checksum == expected_checksum
+
+        # 2. Reinicio: clientes nuevos sobre los mismos archivos de disco
+        first_app.dependency_overrides.clear()
+        restarted_client = _PersistentArtifactClient(db_path, storage_root)
+        monkeypatch.setattr(controller_execution, "supabase", restarted_client)
+        monkeypatch.setattr(service_execution, "supabase", restarted_client)
+        restarted_app.dependency_overrides[require_authenticated_user] = (
+            fake_authenticated_user
+        )
+
+        # 3. El archivo en sí persiste, íntegro, y coincide con el checksum guardado
+        persisted = restarted_client.storage.from_("model_artifacts").download(
+            expected_path
+        )
+        assert persisted == artifact_bytes
+        assert hashlib.sha256(persisted).hexdigest() == expected_checksum
+
+        with TestClient(restarted_app) as api_client:
+            # 4. La referencia al artefacto sigue en el resultado del trabajo
+            status_response = api_client.get(
+                f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS
+            )
+            assert status_response.status_code == 200
+            assert status_response.json()["result"]["model_artifact"] == (
+                expected_reference
+            )
+
+            # 5. Acceso autorizado: enlace temporal al archivo privado
+            access_response = api_client.get(
+                f"/api/v1/executions/{job_id}/artifact", headers=AUTH_HEADERS
+            )
+            assert access_response.status_code == 200
+            access_body = access_response.json()
+            assert expected_path in access_body["download_url"]
+            assert access_body["checksum"] == expected_checksum
+            assert access_body["expires_in"] == 60
+
+            # 6. Otra organización (el usuario es miembro de ambas) no accede
+            foreign_headers = {
+                "Authorization": AUTH_HEADERS["Authorization"],
+                "X-Organization-ID": OTHER_ORGANIZATION_ID,
+            }
+            foreign_artifact = api_client.get(
+                f"/api/v1/executions/{job_id}/artifact", headers=foreign_headers
+            )
+            assert foreign_artifact.status_code == 404
+            assert "storage.test" not in foreign_artifact.text
+            assert expected_path not in foreign_artifact.text
+
+            foreign_status = api_client.get(
+                f"/api/v1/executions/{job_id}", headers=foreign_headers
+            )
+            assert foreign_status.status_code == 404
+
+            # 7. Sin autenticación no hay acceso
+            anonymous = api_client.get(
+                f"/api/v1/executions/{job_id}/artifact",
+                headers={"X-Organization-ID": ORGANIZATION_ID},
+            )
+            assert anonymous.status_code == 401
+    finally:
+        first_app.dependency_overrides.clear()
+        restarted_app.dependency_overrides.clear()
+             
 def test_estimation_job_resolves_training_and_dataset_origin(fake_database):
     training_job_id = "aaaaaaaa-1111-4111-8111-111111111111"
     fake_database.rows.append(

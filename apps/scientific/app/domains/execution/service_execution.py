@@ -29,6 +29,10 @@ from apps.scientific.app.domains.execution.domain_execution import (
     validate_and_normalize_inference_points,
     verify_and_deserialize_model_artifact,
 )
+from apps.scientific.app.domains.execution.model_artifacts import (
+    ARTIFACT_URL_DEFAULT_TTL_SECONDS,
+    create_model_artifact_signed_url,
+)
 from apps.scientific.app.domains.execution.model_execution import (
     download_model_artifact_from_storage,
     fetch_training_file,
@@ -519,6 +523,51 @@ def get_job_status_service(
         response_job["traceability_evidence"] = result.get("traceability_evidence")
     return response_job
 
+def get_model_artifact_access_service(
+    client, job_id: UUID, user_id: UUID, organization_id: UUID
+) -> dict[str, Any]:
+    """Entrega un enlace temporal al artefacto solo si la organización es válida."""
+    validate_job_organization_service(user_id, organization_id)
+    job = find_scientific_job_in_db(
+        client, job_id=str(job_id), organization_id=organization_id
+    )
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontró el trabajo.",
+        )
+
+    result = job.get("result")
+    reference = result.get("model_artifact") if isinstance(result, dict) else None
+    if not isinstance(reference, dict) or reference.get("job_id") != str(job_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontró el artefacto.",
+        )
+
+    try:
+        download_url = create_model_artifact_signed_url(
+            client, reference, ARTIFACT_URL_DEFAULT_TTL_SECONDS
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontró el artefacto.",
+        ) from exc
+    except Exception as exc:
+        logger.exception("No se pudo firmar el artefacto del trabajo %s.", job_id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No se pudo generar el acceso al artefacto.",
+        ) from exc
+
+    return {
+        "job_id": job_id,
+        "download_url": download_url,
+        "expires_in": ARTIFACT_URL_DEFAULT_TTL_SECONDS,
+        "checksum": reference.get("checksum"),
+        "size_bytes": reference.get("size_bytes"),
+    }
 
 def create_execution_job_service(
     client,
