@@ -1,75 +1,45 @@
 from typing import Any
 from uuid import UUID
 
-from storage3.utils import StorageException
+from apps.scientific.app.core.service_clients import (
+    CoreServiceClient,
+    ServiceContractError,
+)
+from apps.scientific.app.dataset_consumer import DatasetContractError
 
 
-def has_active_organization_membership(
-    client, user_id: UUID, organization_id: UUID
-) -> bool:
-    rows = (
-        client.table("memberships")
-        .select("organization_id, organizations!inner(id, status)")
-        .eq("user_id", str(user_id))
-        .eq("organization_id", str(organization_id))
-        .eq("status", "active")
-        .eq("organizations.status", "active")
-        .limit(1)
-        .execute()
-        .data
-        or []
+def has_active_organization_membership(user_id: UUID, organization_id: UUID) -> bool:
+    return CoreServiceClient().has_active_organization_membership(
+        user_id,
+        organization_id,
     )
-    return bool(rows)
 
 
 def get_dataset_version_for_training(
-    client, version_id: UUID | str
+    version_id: UUID | str, organization_id: UUID | str
 ) -> dict[str, Any] | None:
-    rows = (
-        client.schema("dataset")
-        .table("versions")
-        .select("id, dataset_id, state, status")
-        .eq("id", str(version_id))
-        .limit(1)
-        .execute()
-        .data
-        or []
+    return CoreServiceClient().get_dataset_version_for_training(
+        version_id,
+        organization_id,
     )
-    return rows[0] if rows else None
 
 
-def fetch_training_file(client, version_id: UUID | str) -> tuple[bytes, str]:
-    """Obtiene el archivo de entrenamiento y su checksum desde Supabase."""
-    manifests = (
-        client.schema("dataset")
-        .table("training_manifests")
-        .select("storage_path, checksum")
-        .eq("version_id", str(version_id))
-        .limit(1)
-        .execute()
-        .data
-        or []
-    )
-    if not manifests:
-        raise ValueError("Manifiesto de la versión no encontrado.")
-
-    manifest = manifests[0]
-    storage_path = manifest.get("storage_path")
-    checksum = manifest.get("checksum")
-    if (
-        not isinstance(storage_path, str)
-        or not storage_path
-        or not isinstance(checksum, str)
-        or len(checksum) != 64
-    ):
-        raise ValueError("El manifiesto del archivo de entrenamiento no es válido.")
-
+def fetch_training_file(
+    version_id: UUID | str,
+    organization_id: UUID | str,
+    user_id: UUID | str,
+) -> tuple[bytes, str]:
+    """Obtiene el archivo de entrenamiento mediante el contrato interno de Core."""
     try:
-        file_bytes = client.storage.from_("training_files").download(storage_path)
-    except StorageException as exc:
-        raise ValueError("Archivo de entrenamiento no encontrado.") from exc
-
-    return file_bytes, checksum
+        return CoreServiceClient().download_training_file(
+            version_id,
+            organization_id,
+            user_id,
+        )
+    except (DatasetContractError, ServiceContractError) as exc:
+        raise ValueError(
+            "No se pudo obtener el archivo de entrenamiento desde Core."
+        ) from exc
 
 
 def get_registered_model_artifact_ref(

@@ -11,7 +11,7 @@ from pydantic import SecretStr
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 
-from apps.api.app.core.config import settings as api_settings
+from apps.scientific.app.core.config import settings
 from apps.scientific.app.domains import model_scope
 from apps.scientific.app.main import app
 
@@ -23,7 +23,7 @@ LAKE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 @pytest.fixture(autouse=True)
 def internal_service_token(monkeypatch):
     monkeypatch.setattr(
-        api_settings,
+        settings,
         "internal_service_token",
         SecretStr("test-secret-token"),
     )
