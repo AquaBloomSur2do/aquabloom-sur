@@ -46,6 +46,11 @@ class EstimationConfig(BaseModel):
     model_id: str = Field(min_length=1)
     scene_id: str = Field(min_length=1)
     points: list[InferencePoint] | None = Field(default=None, min_length=1)
+    model_name: str | None = None
+    model_version_id: UUID | None = None
+    training_job_id: UUID | None = None
+    dataset_id: UUID | None = None
+    dataset_version_id: UUID | None = None
 
     @field_validator("model_id", "scene_id", mode="before")
     @classmethod

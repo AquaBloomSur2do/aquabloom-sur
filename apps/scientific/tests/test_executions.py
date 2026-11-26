@@ -368,10 +368,12 @@ def test_get_job_status_returns_200(fake_database):
     assert response.status_code == 200
     data = response.json()
     assert data["job_id"] == job_id
+
     assert data["status"] == "completed"
     assert data["model_version_id"] == MODEL_VERSION_ID
     assert data["scene_id"] == SCENE_ID
     assert data["requested_by"] == USER_ID
+
     assert fake_database.rows[0]["organization_id"] == ORGANIZATION_ID
     assert fake_database.rows[0]["requested_by"] == USER_ID
     assert len(fake_database.rows) == 1
@@ -1232,3 +1234,248 @@ def test_job_status_and_result_persist_across_api_restart(tmp_path, monkeypatch)
     finally:
         first_app.dependency_overrides.clear()
         restarted_app.dependency_overrides.clear()
+def test_estimation_job_resolves_training_and_dataset_origin(fake_database):
+    training_job_id = "aaaaaaaa-1111-4111-8111-111111111111"
+    fake_database.rows.append(
+        {
+            "id": training_job_id,
+            "organization_id": ORGANIZATION_ID,
+            "job_type": "training",
+            "status": "completed",
+            "config": {"dataset_id": DATASET_ID, "version_id": VERSION_ID},
+            "result": {
+                "model": "baseline",
+                "model_version_id": MODEL_VERSION_ID,
+            },
+            "dataset_version_id": VERSION_ID,
+            "model_version_id": MODEL_VERSION_ID,
+        }
+    )
+
+    post_response = client.post(
+        "/api/v1/executions/",
+        json={
+            "job_type": "estimation",
+            "config": {
+                "model_id": MODEL_VERSION_ID,
+                "scene_id": SCENE_ID,
+                "training_job_id": training_job_id,
+            },
+        },
+        headers=HEADERS,
+    )
+    assert post_response.status_code == 202
+    job_id = post_response.json()["job_id"]
+
+    status_response = client.get(
+        f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS
+    )
+    assert status_response.status_code == 200
+    body = status_response.json()
+    assert body["status"] == "completed"
+    assert body["result"]["training_job_id"] == training_job_id
+    assert body["result"]["dataset_id"] == DATASET_ID
+    assert body["result"]["dataset_version_id"] == VERSION_ID
+    assert body["result"]["model_version_id"] == MODEL_VERSION_ID
+
+
+def test_estimation_job_fails_when_training_origin_is_missing(fake_database):
+    missing_training_id = "bbbbbbbb-2222-4222-8222-222222222222"
+    post_response = client.post(
+        "/api/v1/executions/",
+        json={
+            "job_type": "estimation",
+            "config": {
+                "model_id": MODEL_VERSION_ID,
+                "scene_id": SCENE_ID,
+                "training_job_id": missing_training_id,
+            },
+        },
+        headers=HEADERS,
+    )
+    assert post_response.status_code == 202
+    job_id = post_response.json()["job_id"]
+
+    status_response = client.get(
+        f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS
+    )
+    assert status_response.status_code == 200
+    body = status_response.json()
+    assert body["status"] == "failed"
+    assert body["error_message"] == (
+        "No se encontró el trabajo de entrenamiento de origen del modelo."
+    )
+
+
+@pytest.mark.parametrize(
+    ("origin_status", "origin_organization_id", "origin_config", "origin_version_id"),
+    [
+        ("failed", ORGANIZATION_ID, {"dataset_id": DATASET_ID}, VERSION_ID),
+        ("completed", OTHER_ORGANIZATION_ID, {"dataset_id": DATASET_ID}, VERSION_ID),
+        ("completed", ORGANIZATION_ID, {"dataset_id": DATASET_ID}, None),
+    ],
+)
+def test_estimation_rejects_unverified_training_origins(
+    fake_database,
+    origin_status,
+    origin_organization_id,
+    origin_config,
+    origin_version_id,
+):
+    training_job_id = "aaaaaaaa-3333-4333-8333-333333333333"
+    fake_database.rows.append(
+        {
+            "id": training_job_id,
+            "organization_id": origin_organization_id,
+            "job_type": "training",
+            "status": origin_status,
+            "config": origin_config,
+            "result": {},
+            "dataset_version_id": origin_version_id,
+        }
+    )
+
+    response = client.post(
+        "/api/v1/executions/",
+        json={
+            "job_type": "estimation",
+            "config": {
+                "model_id": MODEL_VERSION_ID,
+                "scene_id": SCENE_ID,
+                "training_job_id": training_job_id,
+            },
+        },
+        headers=HEADERS,
+    )
+    job_id = response.json()["job_id"]
+
+    status_response = client.get(
+        f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 202
+    assert status_response.status_code == 200
+    body = status_response.json()
+    assert body["status"] == "failed"
+    if origin_status != "completed":
+        assert "aún no está completado" in body["error_message"]
+    elif origin_organization_id != ORGANIZATION_ID:
+        assert "No se encontró el trabajo" in body["error_message"]
+    else:
+        assert "dataset y su versión" in body["error_message"]
+
+
+def test_estimation_finds_training_by_id_when_model_version_id_is_null(
+    fake_database,
+):
+    fake_database.rows.append(
+        {
+            "id": "bbbbbbbb-1111-4111-8111-111111111111",
+            "organization_id": ORGANIZATION_ID,
+            "job_type": "training",
+            "status": "failed",
+            "config": {"dataset_id": DATASET_ID, "version_id": VERSION_ID},
+            "result": {},
+            "dataset_version_id": VERSION_ID,
+            "model_version_id": MODEL_VERSION_ID,
+        }
+    )
+    fake_database.rows.append(
+        {
+            "id": MODEL_VERSION_ID,
+            "organization_id": ORGANIZATION_ID,
+            "job_type": "training",
+            "status": "completed",
+            "config": {"dataset_id": DATASET_ID, "version_id": VERSION_ID},
+            "result": {"model": "baseline"},
+            "dataset_version_id": VERSION_ID,
+            "model_version_id": None,
+        }
+    )
+
+    response = client.post(
+        "/api/v1/executions/",
+        json={
+            "job_type": "estimation",
+            "config": {"model_id": MODEL_VERSION_ID, "scene_id": SCENE_ID},
+        },
+        headers=HEADERS,
+    )
+    job_id = response.json()["job_id"]
+    status_response = client.get(
+        f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 202
+    assert status_response.json()["status"] == "completed"
+    assert status_response.json()["result"]["training_job_id"] == MODEL_VERSION_ID
+    assert status_response.json()["result"]["dataset_id"] == DATASET_ID
+    assert status_response.json()["result"]["dataset_version_id"] == VERSION_ID
+
+
+def test_estimation_rejects_mismatched_training_and_model_versions(fake_database):
+    training_job_id = "aaaaaaaa-4444-4444-8444-444444444444"
+    fake_database.rows.append(
+        {
+            "id": training_job_id,
+            "organization_id": ORGANIZATION_ID,
+            "job_type": "training",
+            "status": "completed",
+            "config": {"dataset_id": DATASET_ID, "version_id": VERSION_ID},
+            "result": {"model_version_id": MODEL_VERSION_ID},
+            "dataset_version_id": VERSION_ID,
+            "model_version_id": MODEL_VERSION_ID,
+        }
+    )
+
+    response = client.post(
+        "/api/v1/executions/",
+        json={
+            "job_type": "estimation",
+            "config": {
+                "model_id": MODEL_VERSION_ID,
+                "scene_id": SCENE_ID,
+                "training_job_id": training_job_id,
+                "model_version_id": OTHER_MODEL_VERSION_ID,
+            },
+        },
+        headers=HEADERS,
+    )
+    job_id = response.json()["job_id"]
+    status_response = client.get(
+        f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 202
+    assert status_response.json()["status"] == "failed"
+    assert (
+        status_response.json()["error_message"]
+        == "El entrenamiento de origen no corresponde al modelo indicado."
+    )
+
+
+def test_estimation_does_not_persist_unverified_dataset_version(
+    fake_database, monkeypatch
+):
+    async def skip_worker(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        "apps.scientific.app.domains.execution.service_execution.process_scientific_job",
+        skip_worker,
+    )
+    response = client.post(
+        "/api/v1/executions/",
+        json={
+            "job_type": "estimation",
+            "config": {
+                "model_id": MODEL_VERSION_ID,
+                "scene_id": SCENE_ID,
+                "dataset_version_id": VERSION_ID,
+            },
+        },
+        headers=HEADERS,
+    )
+
+    assert response.status_code == 202
+    assert "dataset_version_id" not in fake_database.rows[0]

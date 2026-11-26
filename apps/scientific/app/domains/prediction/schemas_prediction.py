@@ -44,10 +44,13 @@ class EstimationPoint(BaseModel):
 
 class EstimationProvenance(BaseModel):
     model_version_id: UUID
+    model_name: str | None = None
+    training_job_id: UUID | None = None
     scene_id: UUID
     lake_id: UUID | None = None
     scene_identifier: str | None = None
     acquisition_date: str | None = None
+    dataset_id: UUID | None = None
     dataset_version_id: UUID | None = None
     rules: list[AppliedRule] = Field(default_factory=list)
     generated_at: datetime
@@ -68,5 +71,3 @@ class PredictionDetailResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(extra="forbid")
-
-

@@ -22,11 +22,14 @@ from apps.scientific.app.domains.execution.schemas_execution import (
 )
 from apps.scientific.app.domains.execution.service_execution import (
     process_scientific_job,
+    run_scientific_algorithm,
 )
 
 ORGANIZATION_ID = "org-123"
 MODEL_ID = "11111111-1111-4111-8111-111111111111"
 JOB_ID = "job-123"
+DATASET_ID = "22222222-2222-4222-8222-222222222222"
+DATASET_VERSION_ID = "33333333-3333-4333-8333-333333333333"
 
 
 class FakeStorageBucket:
@@ -92,9 +95,14 @@ class FakeQuery:
         if self.payload is not None:
             for row in matched_rows:
                 row.update(self.payload)
+        columns = (
+            self.selected_columns.split(", ")
+            if self.selected_columns is not None
+            else ["id", "result"]
+        )
         return SimpleNamespace(
             data=[
-                {"id": row.get("id"), "result": row.get("result")}
+                {column: row.get(column) for column in columns}
                 for row in matched_rows
             ]
         )
@@ -126,6 +134,11 @@ class FakeInferenceDatabase:
             "organization_id": ORGANIZATION_ID,
             "job_type": "training",
             "status": "completed",
+            "config": {
+                "dataset_id": DATASET_ID,
+                "version_id": DATASET_VERSION_ID,
+            },
+            "dataset_version_id": DATASET_VERSION_ID,
             "result": result,
         }
         self.estimation_row: dict[str, object] = {
@@ -418,6 +431,9 @@ def test_process_estimation_persists_completed_predictions(monkeypatch):
     assert database.estimation_row["status"] == "completed"
     assert result["model_id"] == MODEL_ID
     assert result["scene_id"] == "scene-123"
+    assert result["training_job_id"] == MODEL_ID
+    assert result["dataset_id"] == DATASET_ID
+    assert result["dataset_version_id"] == DATASET_VERSION_ID
     assert result["model_type"] == "linear"
     assert result["point_count"] == 2
     assert [item["predicted_value"] for item in result["predictions"]] == [6.0, 12.0]
@@ -441,7 +457,8 @@ def test_process_estimation_legacy_without_points_remains_supported(monkeypatch)
     )
 
     assert database.estimation_row["status"] == "completed"
-    assert "no implementado" in database.estimation_row["result"]["message"]
+    assert database.estimation_row["result"]["training_job_id"] == MODEL_ID
+    assert database.estimation_row["result"]["dataset_id"] == DATASET_ID
     assert database.storage.bucket.downloaded_paths == []
 
 
@@ -467,6 +484,39 @@ def test_process_estimation_exceeds_point_limit_before_storage_download(monkeypa
 
     assert database.estimation_row["status"] == "failed"
     assert "máximo 100" in database.estimation_row["error_message"]
+    assert database.storage.bucket.downloaded_paths == []
+    assert not any(
+        ("job_type", "training") in query.filters
+        for query in database.queries
+    )
+
+
+def test_estimation_does_not_use_client_organization_for_origin_lookup():
+    database = FakeInferenceDatabase(b"unused")
+    config = {
+        "model_id": MODEL_ID,
+        "scene_id": "scene-123",
+        "organization_id": ORGANIZATION_ID,
+        "points": [{"point_id": "p1", "features": {"ndci": 0.2}}],
+    }
+
+    with pytest.raises(ValueError, match="No se encontró el trabajo"):
+        asyncio.run(
+            run_scientific_algorithm(
+                database,
+                "estimation",
+                config,
+                organization_id="org-other",
+            )
+        )
+
+    origin_queries = [
+        query
+        for query in database.queries
+        if ("job_type", "training") in query.filters
+    ]
+    assert origin_queries
+    assert all(("organization_id", "org-other") in query.filters for query in origin_queries)
     assert database.storage.bucket.downloaded_paths == []
 
 

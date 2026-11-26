@@ -88,9 +88,13 @@ describe('flujo de estimación y seguimiento', () => {
     expect(
       screen.getByText('ID del trabajo').closest('.detail')
     ).toHaveTextContent(JOB_ID);
-    expect(executionsService.createJob).toHaveBeenCalledWith({
+   expect(executionsService.createJob).toHaveBeenCalledWith({
       job_type: 'ESTIMATION',
-      config: { model_id: MODEL_VERSION_ID, scene_id: SCENE_ID },
+      config: {
+        model_id: MODEL_VERSION_ID,
+        model_name: 'Modelo NDCI',
+        scene_id: SCENE_ID,
+      },
     });
     await waitFor(() => {
       expect(executionsService.getJobStatus).toHaveBeenCalledWith(

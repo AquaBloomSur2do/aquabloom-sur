@@ -6,6 +6,7 @@ from postgrest.exceptions import APIError
 
 from apps.scientific.app.core.service_clients import ServiceContractError
 from apps.scientific.app.domains.prediction.domain_prediction import (
+    _to_optional_uuid,
     build_prediction_detail,
     has_prediction_read_permission,
 )
@@ -13,6 +14,7 @@ from apps.scientific.app.domains.prediction.model_prediction import (
     get_active_membership_for_organization,
     get_prediction_by_id_in_db,
     get_scene_metadata_in_db,
+    get_training_job_origin_in_db,
     insert_prediction_in_db,
 )
 from apps.scientific.app.domains.prediction.schemas_prediction import (
@@ -102,4 +104,45 @@ def get_prediction_detail_service(
                 detail="El identificador de escena almacenado no es válido.",
             ) from exc
 
-    return build_prediction_detail(prediction, scene_row=scene_metadata)
+    result_payload = (
+        prediction.get("result")
+        if isinstance(prediction.get("result"), dict)
+        else {}
+    )
+    training_job_row = None
+    prediction_for_detail = prediction
+    training_job_id = _to_optional_uuid(result_payload.get("training_job_id"))
+    model_version_id = _to_optional_uuid(prediction.get("model_version_id"))
+    dataset_version_id = _to_optional_uuid(
+        result_payload.get("dataset_version_id")
+    )
+    try:
+        training_job_row = get_training_job_origin_in_db(
+            client,
+            organization_id=organization_id,
+            training_job_id=training_job_id,
+            model_version_id=model_version_id,
+            dataset_version_id=dataset_version_id,
+        )
+        if (
+            training_job_id is not None
+            and training_job_row is not None
+            and str(training_job_row.get("status", "")).lower() != "completed"
+        ):
+            training_job_row = None
+            sanitized_result = dict(result_payload)
+            sanitized_result.pop("training_job_id", None)
+            sanitized_result.pop("dataset_id", None)
+            sanitized_result.pop("dataset_version_id", None)
+            prediction_for_detail = {
+                **prediction,
+                "result": sanitized_result,
+            }
+    except (APIError, ValueError):
+        training_job_row = None
+
+    return build_prediction_detail(
+        prediction_for_detail,
+        scene_row=scene_metadata,
+        training_job_row=training_job_row,
+    )
