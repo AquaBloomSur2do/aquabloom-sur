@@ -36,6 +36,9 @@ const getStationCount = (lake: LakeSummary): number => {
   return 0;
 };
 
+const isForbiddenError = (error: unknown): boolean =>
+  Boolean(error && typeof error === 'object' && 'status' in error && error.status === 403);
+
 export function LakesList() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -46,6 +49,7 @@ export function LakesList() {
   const [lakes, setLakes] = useState<LakeSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isForbidden, setIsForbidden] = useState(false);
 
   const fetchLakes = useCallback(async (isManual = false) => {
     if (isManual) {
@@ -57,7 +61,9 @@ export function LakesList() {
       const data = await apiClient.get<unknown>('lakes');
       setLakes(normalizeLakesResponse(data));
       setError(null);
+      setIsForbidden(false);
     } catch (err) {
+      setIsForbidden(isForbiddenError(err));
       setError(err instanceof Error ? err.message : 'No se pudo cargar la lista de lagos.');
       setLakes([]);
     } finally {
@@ -133,12 +139,22 @@ export function LakesList() {
       )}
 
       {!loading && error && (
-        <div className="state-panel state-panel--error" role="alert">
-          <p>{error}</p>
-          <button type="button" className="btn btn-primary" onClick={() => void fetchLakes(true)}>
-            Reintentar
-          </button>
-        </div>
+        isForbidden ? (
+          <div className="page-state page-state--forbidden" role="alert">
+            <span className="page-state__icon" aria-hidden="true">🔒</span>
+            <div>
+              <h2>Acceso denegado</h2>
+              <p>No tienes permisos para consultar los lagos.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="state-panel state-panel--error" role="alert">
+            <p>{error}</p>
+            <button type="button" className="btn btn-primary" onClick={() => void fetchLakes(true)}>
+              Reintentar
+            </button>
+          </div>
+        )
       )}
 
       {!loading && !error && lakes.length === 0 && (
