@@ -152,5 +152,3 @@ vite.config.ts.timestamp-*
 __pycache__/
 *.py[cod]
 *.pyc
-
-AGENTS.md
