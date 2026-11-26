@@ -233,3 +233,11 @@ class PilotMetricsResult(BaseModel):
     r2_computable: bool
     r2: float | None = None
     limitations: list[str] = Field(default_factory=list)
+
+class ModelArtifactAccess(BaseModel):
+    job_id: UUID
+    download_url: str
+    expires_in: int = Field(gt=0)
+    checksum: str | None = None
+    size_bytes: int | None = Field(default=None, ge=0)
+    
