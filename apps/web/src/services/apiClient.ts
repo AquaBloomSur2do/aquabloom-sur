@@ -28,6 +28,7 @@ export interface ApiErrorDetails {
   status: number;
   code?: string;
   details?: unknown;
+  correlationId?: string;
   isNetworkError?: boolean;
   isCancelled?: boolean;
 }
@@ -36,6 +37,7 @@ export class ApiError extends Error {
   status: number;
   code?: string;
   details?: unknown;
+  correlationId?: string;
   isNetworkError: boolean;
   isCancelled: boolean;
 
@@ -45,6 +47,7 @@ export class ApiError extends Error {
     this.status = payload.status;
     this.code = payload.code;
     this.details = payload.details;
+    this.correlationId = payload.correlationId;
     this.isNetworkError = payload.isNetworkError ?? false;
     this.isCancelled = payload.isCancelled ?? false;
   }
@@ -61,19 +64,37 @@ function createApiError(
     status,
     code,
     details: overrides.details,
+    correlationId: overrides.correlationId,
     isNetworkError: overrides.isNetworkError ?? false,
     isCancelled: overrides.isCancelled ?? false,
   });
+}
+
+function createCorrelationId(): string | undefined {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
+    return crypto.randomUUID();
+  }
+  return undefined;
 }
 
 async function request<T = unknown>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', token, headers = {}, body, signal } = options;
   const url = path.startsWith('http') ? path : `${BASE_URL}/${path.replace(/^\/+/, '')}`;
 
+  const outgoingCorrelationId =
+    headers['X-Correlation-ID'] ?? headers['X-Request-ID'] ?? createCorrelationId();
+
   const defaultHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     ...headers,
   };
+
+  if (outgoingCorrelationId) {
+    defaultHeaders['X-Correlation-ID'] = outgoingCorrelationId;
+  }
 
   // --- S2-044: INYECCIÓN DE TOKEN DINÁMICO ---
   let activeToken = token;
@@ -112,9 +133,13 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
 
     throw createApiError('NETWORK_ERROR', 'Error de red o servidor no disponible', 0, {
       isNetworkError: true,
+      correlationId: outgoingCorrelationId,
       details: error instanceof Error ? error.message : String(error),
     });
   }
+
+  const responseCorrelationId =
+    res.headers.get('X-Correlation-ID') ?? res.headers.get('X-Request-ID') ?? outgoingCorrelationId;
 
   // --- S2-044: MANEJO DE REDIRECCIÓN CONTROLADA ---
   if (res.status === 401) {
@@ -124,7 +149,9 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
           window.location.replace('/login');
       }
       
-      throw createApiError('UNAUTHORIZED', 'Sesión expirada o token inválido.', 401);
+      throw createApiError('UNAUTHORIZED', 'Sesión expirada o token inválido.', 401, {
+        correlationId: responseCorrelationId,
+      });
   }
   // ------------------------------------------------
 
@@ -141,20 +168,33 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
     responseText = await res.text();
   } catch (error) {
     throw createApiError('RESPONSE_READ_ERROR', 'No se pudo leer la respuesta del servidor', res.status, {
+      correlationId: responseCorrelationId,
       details: error instanceof Error ? error.message : String(error),
     });
   }
 
   if (!res.ok) {
+    let parsedErrorBody: unknown;
+
     if (isJsonResponse && responseText) {
       try {
         const data = JSON.parse(responseText) as Record<string, unknown>;
-        const apiErrorPayload = data as { code?: unknown; message?: unknown };
+        parsedErrorBody = data;
+        const codeValue = data.code ?? data.error;
+        const messageValue = data.message ?? data.detail;
 
-        if (typeof apiErrorPayload.code !== 'undefined' && typeof apiErrorPayload.message !== 'undefined') {
-          throw createApiError(String(apiErrorPayload.code), String(apiErrorPayload.message), res.status, {
-            details: data,
-          });
+        if (typeof codeValue !== 'undefined' || typeof messageValue !== 'undefined') {
+          throw createApiError(
+            typeof codeValue === 'string' ? codeValue : `HTTP_ERROR_${res.status}`,
+            typeof messageValue === 'string'
+              ? messageValue
+              : 'Error inesperado al consultar la API',
+            res.status,
+            {
+              correlationId: responseCorrelationId,
+              details: data,
+            }
+          );
         }
       } catch (parseError) {
         if (parseError instanceof ApiError) {
@@ -164,8 +204,9 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
     }
 
     throw createApiError(`HTTP_ERROR_${res.status}`, 'Error inesperado al consultar la API', res.status, {
+      correlationId: responseCorrelationId,
       details: isJsonResponse
-        ? 'La respuesta de error no es un JSON válido'
+        ? (parsedErrorBody ?? 'La respuesta de error no es un JSON válido')
         : responseText || res.statusText,
     });
   }
@@ -180,6 +221,7 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
       'La respuesta del servidor no es JSON válido',
       res.status,
       {
+        correlationId: responseCorrelationId,
         details: responseText,
       }
     );
@@ -190,6 +232,7 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
     return data;
   } catch (error) {
     throw createApiError('JSON_PARSE_ERROR', 'No se pudo parsear la respuesta JSON', res.status, {
+      correlationId: responseCorrelationId,
       details: error instanceof Error ? error.message : String(error),
     });
   }

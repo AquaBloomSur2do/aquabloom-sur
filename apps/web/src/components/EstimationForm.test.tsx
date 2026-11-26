@@ -130,7 +130,7 @@ describe('EstimationForm', () => {
       });
     });
 
-    expect(mockNavigate).toHaveBeenCalledWith('/scientific/jobs/job-est-999');
+    expect(mockNavigate).toHaveBeenCalledWith('/estimations/job-est-999');
   });
 
   it('muestra alerta accesible si falla la creación del trabajo', async () => {

@@ -70,7 +70,7 @@ describe('flujo de estimación y seguimiento', () => {
             element={<EstimationForm lakeId="lake-1" sceneId={SCENE_ID} />}
           />
           <Route
-            path="/scientific/jobs/:jobId"
+            path="/estimations/:jobId"
             element={<ScientificJobDetail />}
           />
         </Routes>
@@ -82,9 +82,11 @@ describe('flujo de estimación y seguimiento', () => {
     );
 
     expect(
-      await screen.findByText('Detalle del experimento')
+      await screen.findByText('Detalle de la estimación')
     ).toBeInTheDocument();
-    expect(await screen.findByText('Completado')).toBeInTheDocument();
+    expect(
+      (await screen.findAllByText('Completado')).length
+    ).toBeGreaterThanOrEqual(1);
     expect(
       screen.getByText('ID del trabajo').closest('.detail')
     ).toHaveTextContent(JOB_ID);

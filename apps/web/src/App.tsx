@@ -46,6 +46,10 @@ function App() {
                 path="/scientific/jobs/:jobId"
                 element={<ScientificJobDetail />}
               />
+              <Route
+                path="/estimations/:jobId"
+                element={<ScientificJobDetail />}
+              />
               <Route path="/admin" element={<OrganizationsList />} />
               <Route
                 path="/lakes/:lakeId/stations/new"
