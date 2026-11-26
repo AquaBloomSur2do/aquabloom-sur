@@ -116,6 +116,14 @@ class TrainingResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class TraceabilityEvidence(BaseModel):
+    job_id: UUID
+    scene_id: UUID
+    dataset_version_id: UUID
+    model_id: str = Field(min_length=1)
+    processing_id: UUID
+
+
 class JobCreate(BaseModel):
     job_type: Literal["training", "modeling", "estimation"]
     config: TrainingConfig | ModelConfig | EstimationConfig
@@ -154,6 +162,7 @@ class JobStatus(BaseModel):
     status: ScientificJobStatusEnum
     config: dict[str, Any]
     result: TrainingResult | dict[str, Any] | None = None
+    traceability_evidence: TraceabilityEvidence | None = None
     dataset_version_id: UUID | None = None
     model_version_id: UUID | None = None
     scene_id: UUID | None = None

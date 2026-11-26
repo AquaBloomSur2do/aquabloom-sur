@@ -363,6 +363,9 @@ def get_job_status_service(
     response_job = dict(job)
     if "id" in response_job:
         response_job["job_id"] = response_job.pop("id")
+    result = response_job.get("result")
+    if isinstance(result, dict):
+        response_job["traceability_evidence"] = result.get("traceability_evidence")
     return response_job
 
 
