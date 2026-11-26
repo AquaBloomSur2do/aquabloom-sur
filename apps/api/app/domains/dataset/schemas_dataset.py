@@ -232,3 +232,13 @@ class DatasetManifest(BaseModel):
     rules: list[ManifestRule]
     manifest_checksum: str
     pilot_fixture: PilotFixtureMetadata | None = None
+
+
+class DatasetProvenance(BaseModel):
+    dataset_id: str
+    version_id: str
+    version_number: str
+    manifest_checksum: str
+    origin: Literal["synthetic", "real", "mixed", "unknown"]
+    sources: list[ManifestItem]
+    pilot_fixture: PilotFixtureMetadata | None = None

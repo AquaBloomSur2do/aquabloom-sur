@@ -31,6 +31,7 @@ from apps.api.app.domains.dataset.model_dataset import (
 from apps.api.app.domains.dataset.schemas_dataset import (
     DatasetDecisionInput,
     DatasetManifest,
+    DatasetProvenance,
     DatasetVersionStateUpdate,
     IncorporateCandidatesInput,
     ManifestItem,
@@ -973,4 +974,42 @@ def build_version_manifest_service(
         rules=rules,
         manifest_checksum=global_checksum,
         pilot_fixture=pilot_fixture,
+    )
+
+
+def classify_dataset_origin(sources: list[ManifestItem]) -> str:
+    """Clasifica el origen según las marcas del manifiesto.
+
+    "real" significa que ninguna fuente está marcada como sintética; no es una
+    verificación independiente de la autenticidad de los datos.
+    """
+    if not sources:
+        return "unknown"
+    flags = {source.is_synthetic for source in sources}
+    if flags == {True}:
+        return "synthetic"
+    if flags == {False}:
+        return "real"
+    return "mixed"
+
+
+def get_dataset_provenance_for_training(
+    client, version_id: UUID, organization_id: UUID
+) -> DatasetProvenance | None:
+    """Devuelve la procedencia de una versión publicada de la organización."""
+    version = get_dataset_version_for_training(client, version_id, organization_id)
+    if version is None or str(version.get("state", "")).upper() != "PUBLISHED":
+        return None
+
+    manifest = build_version_manifest_service(
+        client, UUID(str(version["dataset_id"])), str(version_id)
+    )
+    return DatasetProvenance(
+        dataset_id=manifest.dataset_id,
+        version_id=manifest.version_id,
+        version_number=manifest.version_number,
+        manifest_checksum=manifest.manifest_checksum,
+        origin=classify_dataset_origin(manifest.sources),
+        sources=manifest.sources,
+        pilot_fixture=manifest.pilot_fixture,
     )
