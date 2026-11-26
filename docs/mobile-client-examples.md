@@ -544,7 +544,7 @@ debe aceptar ambos formatos. Toda respuesta incluye la cabecera
 | `404` | Recurso o trabajo inexistente, o fuera de la organización | Ver ejemplo 404 |
 | `422` | Parámetros o encabezados inválidos/faltantes | Ver ejemplo 422 |
 | `500` | Error interno no controlado | `{"error":"InternalServerError","message":"..."}` |
-| `503` | Dependencia caída (base de datos, Redis u otro servicio) | `{"error":"HTTP Error","message":"El servicio de base de datos no está disponible"}` o `{"detail":"..."}` en Satellite |
+| `503` | Dependencia caída (Gateway, base de datos, Redis u otro servicio) | `{"error":"ServiceUnavailable","message":"La dependencia solicitada no está disponible.","details":null}` o `{"detail":"..."}` en Satellite |
 
 **401 Unauthorized:**
 
@@ -608,7 +608,7 @@ debe aceptar ambos formatos. Toda respuesta incluye la cabecera
 - [ ] Usar `start_date`/`end_date` obligatorios al consultar escenas.
 - [ ] Hacer polling de `status_url` hasta `completed` o `failed`.
 - [ ] Tratar `JobStatus` como objeto individual, no como arreglo.
-- [ ] Manejar `401`, `403`, `404` y `422` con mensajes claros.
+- [ ] Manejar `401`, `403`, `404`, `422` y `503` con mensajes claros.
 - [ ] Mostrar la advertencia RN-10: clorofila-a no equivale a toxicidad.
 
 ## 6. Notas de contrato y discrepancias conocidas

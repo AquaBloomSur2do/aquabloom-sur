@@ -31,14 +31,15 @@ y esquemas es el `/openapi.json` del Gateway.
 
 ## 2. Sobres de error reales
 
-La implementación vigente usa cuatro formas. Un cliente robusto debe revisar
-primero el código HTTP y luego leer `message` o `detail`.
+La implementación vigente usa las siguientes formas. Un cliente robusto debe
+revisar primero el código HTTP y luego leer `message` o `detail`.
 
 | Origen | HTTP | Sobre real | Cuándo ocurre |
 | --- | --- | --- | --- |
 | `AuthException` (API) | `401` | `{"error":"Unauthorized","message":"...","details":{"code":"..."}}` | JWT inválido o expirado en rutas que usan `verify_supabase_jwt`. |
 | `HTTPException` (API y `scientific`) | `401`, `403`, `404`, `422`, `503` | `{"error":"HTTP Error","message":"..."}` o `{"error":"Not Found","message":"..."}` | Permisos, recursos, reglas de negocio y dependencias no disponibles. |
 | `RequestValidationError` (API y `scientific`) | `422` | `{"error":"Validation Error","message":"...","details":[...]}` | Body, query o encabezados que no cumplen el esquema. |
+| Proxy del Gateway (`httpx.TransportError`) | `503` | `{"error":"ServiceUnavailable","message":"La dependencia solicitada no está disponible.","details":null}` | Fallo de transporte/conexión del Gateway hacia un microservicio. Incluye `X-Correlation-ID`. |
 | `satellite` (a través del Gateway) | `422`, `503` | `{"detail":"..."}` | Validación o dependencia caída en el servicio Satellite. El Gateway conserva el cuerpo y agrega `X-Correlation-ID`. |
 | Excepción no controlada | `500` | `{"error":"InternalServerError","message":"..."}` | Fallo inesperado no modelado. |
 
@@ -169,9 +170,10 @@ async function loadProfile(): Promise<void> {
     if (!window.location.pathname.includes('/login')) {
       window.location.replace('/login');
     }
+    const body = await res.json().catch(() => null);
     throw normalizeApiError(
       res.status,
-      await res.json(),
+      body,
       res.headers.get('X-Correlation-ID')
     );
   }
@@ -201,9 +203,10 @@ async function loadProfile(token: string): Promise<Profile | null> {
   }
 
   if (!res.ok) {
+    const body = await res.json().catch(() => null);
     const error = normalizeApiError(
       res.status,
-      await res.json(),
+      body,
       res.headers.get('X-Correlation-ID')
     );
     Alert.alert('No se pudo cargar el perfil', error.message);
@@ -398,7 +401,7 @@ web.
 ## 6. Dependencia caída (`503`)
 
 El `503` puede provenir de la API/Gateway, de `scientific` o de `satellite`.
-El Gateway conserva el cuerpo del servicio y agrega `X-Correlation-ID`.
+El Gateway conserva o genera `X-Correlation-ID` en la cabecera de respuesta.
 
 ### 6.1 API o `scientific` con base de datos no disponible
 
@@ -441,10 +444,40 @@ X-Correlation-ID: 9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a
 Content-Type: application/json
 ```
 
-> El cliente debe leer `message` o `detail`. No asumir que todo `503` trae el
-> sobre `{error, message}`.
+### 6.3 Proxy del Gateway ante microservicio caído (`httpx.TransportError`)
 
-### 6.3 Manejo en web
+Cuando el Gateway no logra comunicarse con un microservicio aguas abajo por un
+error de transporte/conexión (`httpx.TransportError`, S3-15), responde `503`
+con el sobre `ServiceUnavailable`:
+
+```bash
+curl -i -X GET "https://api.aquabloomsur.cl/api/v1/executions/99999999-9999-4999-8999-999999999999" \
+     -H "Authorization: Bearer $TOKEN" \
+     -H "X-Organization-ID: 33333333-3333-4333-8333-333333333333" \
+     -H "Accept: application/json"
+```
+
+**Respuesta `503 Service Unavailable`:**
+
+```json
+{
+  "error": "ServiceUnavailable",
+  "message": "La dependencia solicitada no está disponible.",
+  "details": null
+}
+```
+
+Cabeceras relevantes:
+
+```text
+X-Correlation-ID: 4b2e1c0a-8f7d-4e6b-9a1c-3d5e7f9a0b2c
+Content-Type: application/json
+```
+
+> El cliente debe leer `message` o `detail`. No asumir que todo `503` trae el
+> mismo formato de cuerpo.
+
+### 6.4 Manejo en web
 
 ```ts
 async function fetchWithBackoff<T>(
@@ -453,17 +486,24 @@ async function fetchWithBackoff<T>(
 ): Promise<T> {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const res = await request();
-    if (res.status !== 503) {
+    if (res.ok) {
       return (await res.json()) as T;
     }
-    if (attempt === maxAttempts) {
-      throw normalizeApiError(
-        res.status,
-        await res.json(),
-        res.headers.get('X-Correlation-ID')
-      );
+
+    const body = await res.json().catch(() => null);
+    const apiError = normalizeApiError(
+      res.status,
+      body,
+      res.headers.get('X-Correlation-ID')
+    );
+
+    if (res.status !== 503 || attempt === maxAttempts) {
+      throw apiError;
     }
-    await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** (attempt - 1)));
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, 1000 * 2 ** (attempt - 1))
+    );
   }
   throw new Error('Reintentos agotados');
 }
@@ -472,7 +512,7 @@ async function fetchWithBackoff<T>(
 Para `POST /api/v1/executions/jobs`, reutilizar la misma
 `X-Idempotency-Key` en cada reintento para evitar trabajos duplicados.
 
-### 6.4 Manejo en móvil
+### 6.5 Manejo en móvil
 
 ```ts
 if (error.status === 503) {
@@ -494,7 +534,7 @@ Aplicar el mismo mensaje, número de reintentos y backoff que la web.
 | Token inválido/expirado | `401` | `Token JWT alterado o inválido.` / `El token JWT ha expirado.` | No; cerrar sesión |
 | Permiso insuficiente | `403` | `No tienes permisos para ...` | No |
 | Dato inválido | `422` | `Parámetros de entrada inválidos` o mensaje de regla | No |
-| Dependencia caída | `503` | `El servicio de base de datos no está disponible` / `No se pudo encolar ...` | Sí, con backoff e idempotencia |
+| Dependencia caída | `503` | `La dependencia solicitada no está disponible.` / `El servicio de base de datos no está disponible` / `No se pudo encolar ...` | Sí, con backoff e idempotencia |
 
 Checklist para ambos clientes:
 
@@ -532,20 +572,18 @@ curl -i "$API_URL/api/v1/lakes?page=letras"
 curl -i "$API_URL/api/v1/datasets/review" -H "Authorization: Bearer $TOKEN"
 ```
 
-El `503` de base de datos requiere que el cliente de Supabase esté inactivo o
-que la dependencia no responda. El `503` de Satellite requiere Redis no
-disponible. En ambos casos, el servidor debe detenerse al finalizar la prueba
-para liberar el puerto.
+El `503` del proxy del Gateway ocurre ante fallos de conexión `httpx` con un
+microservicio aguas abajo; el `503` de base de datos ocurre cuando el cliente
+de Supabase no está disponible; el `503` de Satellite ocurre cuando Redis no
+está disponible. En todos los casos, el servidor debe detenerse al finalizar la
+prueba para liberar el puerto.
 
 ## 9. Discrepancias conocidas
 
 - Los ejemplos OpenAPI de `COMMON_ERRORS` incluyen `code` y `request_id`; el
   runtime devuelve `error` y expone la correlación solo en la cabecera.
 - `satellite` responde con `{"detail": "..."}` para `422` y `503`, mientras la
-  API y `scientific` usan `{error, message}`. Los clientes deben normalizar
-  ambos formatos.
-- El proxy del Gateway no convierte un fallo de conexión `httpx` en `503`; el
-  ejemplo `503` documenta las respuestas `503` que sí implementan la API y los
-  microservicios.
+  API, el proxy del Gateway y `scientific` usan `{error, message, details}`.
+  Los clientes deben normalizar ambos formatos.
 - Algunos errores de negocio usan `422` con el sobre `HTTP Error` en lugar de
   `Validation Error`. Nuevamente, el código HTTP es el criterio principal.
