@@ -80,3 +80,7 @@ python -m compileall app tests
 
 Las pruebas validan el contrato de encolado, la disponibilidad de Redis, el
 rechazo de entradas inválidas y la ejecución de la tarea por el consumidor.
+
+El catálogo objetivo de errores seguros y el estado actual de su implementación
+para los trabajos persistidos de `/api/v1/executions` están descritos en
+[Formato de errores operativos del worker científico](./formato-errores-operativos-worker.md).
