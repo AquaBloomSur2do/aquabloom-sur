@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { executionsService } from '../services/executions';
@@ -286,9 +286,20 @@ describe('ScientificJobDetail', () => {
       job_id: 'job-123',
       job_type: 'estimation',
       status: 'completed',
-      config: { model_id: 'model-1', scene_id: 'scene-1' },
-      result: { accuracy: 0.98 },
-      dataset_version_id: 'dataset-version-1',
+      config: {
+        model_id: 'model-1',
+        scene_id: 'scene-1',
+        training_job_id: 'config-training-1',
+        dataset_id: 'config-dataset-1',
+        dataset_version_id: ' config-version-1 ',
+      },
+      result: {
+        accuracy: 0.98,
+        training_job_id: ' ',
+        dataset_id: ' ',
+        dataset_version_id: ' ',
+      },
+      dataset_version_id: '  ',
       model_version_id: 'model-version-1',
       requested_by: 'user-1',
       error_message: null,
@@ -315,6 +326,14 @@ describe('ScientificJobDetail', () => {
     ).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('model-1').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('scene-1').length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findAllByText('config-version-1')).not.toHaveLength(0);
+    expect(screen.getByText('model-version-1')).toBeInTheDocument();
+    expect(screen.getByText('model-1')).toBeInTheDocument();
+    expect(screen.getAllByText('config-dataset-1').length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole('link', { name: 'Ver entrenamiento config-training-1' })
+    ).toHaveAttribute('href', '/scientific/jobs/config-training-1');
+    expect(screen.getByText('scene-1')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Abrir manifiesto' })
     ).toBeDisabled();
@@ -452,6 +471,96 @@ describe('ScientificJobDetail', () => {
         ],
       },
     });
+  });
+
+  it('enlaza el modelo, entrenamiento y dataset de origen de la estimación', async () => {
+    vi.mocked(executionsService.getJobStatus).mockResolvedValue({
+      job_id: 'job-estimation',
+      job_type: 'estimation',
+      status: 'completed',
+      config: { model_id: 'model-config', scene_id: 'scene-1' },
+      result: {
+        model_name: 'random_forest',
+        model_id: 'model-1',
+        training_job_id: 'job-training-1',
+        dataset_id: 'dataset-1',
+        dataset_version_id: 'dataset-version-1',
+        predictions: [],
+      },
+      dataset_version_id: null,
+      model_version_id: null,
+      requested_by: 'user-1',
+      error_message: null,
+      created_at: '2026-11-24T12:00:00Z',
+      started_at: '2026-11-24T12:00:01Z',
+      completed_at: '2026-11-24T12:00:02Z',
+      updated_at: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/scientific/jobs/job-estimation']}>
+        <Routes>
+          <Route
+            path="/scientific/jobs/:jobId"
+            element={<ScientificJobDetail />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(
+      await screen.findByText('random_forest (model-1)')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Ver entrenamiento job-training-1' })
+    ).toHaveAttribute('href', '/scientific/jobs/job-training-1');
+    expect(screen.getByText('dataset-1')).toBeInTheDocument();
+    expect(screen.getAllByText('dataset-version-1').length).toBeGreaterThan(0);
+  });
+
+  it('no conserva el detalle anterior si falla la carga del entrenamiento enlazado', async () => {
+    vi.mocked(executionsService.getJobStatus)
+      .mockResolvedValueOnce({
+        job_id: 'job-estimation',
+        job_type: 'estimation',
+        status: 'completed',
+        config: {},
+        result: {
+          model_name: 'modelo-anterior',
+          training_job_id: 'job-training-target',
+        },
+        dataset_version_id: null,
+        model_version_id: null,
+        requested_by: null,
+        error_message: null,
+        created_at: '2026-11-24T12:00:00Z',
+        started_at: null,
+        completed_at: null,
+        updated_at: null,
+      })
+      .mockRejectedValueOnce(new Error('No se pudo cargar el entrenamiento.'));
+
+    render(
+      <MemoryRouter initialEntries={['/scientific/jobs/job-estimation']}>
+        <Routes>
+          <Route
+            path="/scientific/jobs/:jobId"
+            element={<ScientificJobDetail />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(
+      await screen.findByRole('link', {
+        name: 'Ver entrenamiento job-training-target',
+      })
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No se pudo cargar el entrenamiento.'
+    );
+    expect(screen.queryByText('modelo-anterior')).not.toBeInTheDocument();
   });
 
   it('mantiene la tabla y avisa si los puntos no tienen coordenadas válidas', async () => {

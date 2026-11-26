@@ -9,27 +9,28 @@ tareas.
 
 ## Ejecución con Docker Compose
 
-Desde la raíz del repositorio:
+Desde la raíz del repositorio, el worker está en el override de staging y no en
+`compose.yaml` por sí solo. Carga ambos archivos para iniciar el stack:
 
 ```powershell
-docker compose up --build
+docker compose -f compose.yaml -f compose.staging.yaml up -d --build
 ```
 
 En otra terminal PowerShell, encola una tarea de ejemplo:
 
 ```powershell
 Invoke-RestMethod `
-  -Uri http://localhost:8001/tasks/measurement-summary `
+  -Uri http://localhost:8002/tasks/measurement-summary `
   -Method Post `
   -ContentType "application/json" `
   -Body '{"measurements":[1.2,2.4,3.6]}'
 ```
 
 La respuesta contiene `task_id` y `status: queued`. Para observar la ejecución
-separada:
+separada, especifica los dos archivos del Compose de staging:
 
 ```powershell
-docker compose logs -f scientific-worker
+docker compose -f compose.yaml -f compose.staging.yaml logs -f scientific-worker
 ```
 
 El gateway de la API también reenvía las solicitudes `/api/v1/satellite/*` al
@@ -37,11 +38,11 @@ servicio Satellite, de acuerdo con `SATELLITE_SERVICE_URL`.
 
 ## Carácter temporal
 
-Redis se inicia con RDB y AOF desactivados y no tiene un volumen persistente.
-La cola solo actúa como transporte entre el servicio que encola y el worker; el
-worker retira la tarea al consumirla. Si el proceso falla después de retirarla,
-no hay reintento ni registro permanente, lo cual mantiene el alcance mínimo de
-esta integración.
+Compose no declara un volumen para Redis ni configura una política propia de
+persistencia. La cola solo actúa como transporte entre el servicio que encola y
+el worker; el worker retira la tarea al consumirla. Si el proceso falla después
+de retirarla, no hay reintento ni registro permanente del resultado. No se debe
+tratar Redis como almacenamiento duradero.
 
 ## Correlación entre Gateway, servicios y tareas
 
@@ -79,3 +80,7 @@ python -m compileall app tests
 
 Las pruebas validan el contrato de encolado, la disponibilidad de Redis, el
 rechazo de entradas inválidas y la ejecución de la tarea por el consumidor.
+
+El catálogo objetivo de errores seguros y el estado actual de su implementación
+para los trabajos persistidos de `/api/v1/executions` están descritos en
+[Formato de errores operativos del worker científico](./formato-errores-operativos-worker.md).

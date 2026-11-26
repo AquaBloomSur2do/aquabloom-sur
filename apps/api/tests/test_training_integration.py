@@ -29,6 +29,8 @@ USER_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 ORGANIZATION_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
 DATASET_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 VERSION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+MODEL_VERSION_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+TRAINING_JOB_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
 AUTH_HEADERS = {
     "Authorization": "Bearer test-user-token",
     "X-Organization-ID": ORGANIZATION_ID,
@@ -101,6 +103,17 @@ class FakeQuery:
             ]
             return SimpleNamespace(data=rows)
 
+        if self.schema_name == "dataset" and self.table_name == "datasets":
+            rows = [
+                dataset
+                for dataset in self.database.datasets
+                if all(
+                    str(dataset.get(key)) == str(value)
+                    for key, value in self.filters.items()
+                )
+            ]
+            return SimpleNamespace(data=rows)
+
         if self.table_name != "scientific_jobs":
             raise AssertionError(f"Unexpected table: {self.table_name}")
 
@@ -146,6 +159,7 @@ class FakeStagingDatabase:
                 "status": "published",
             }
         ]
+        self.datasets = [{"id": DATASET_ID, "organization_id": ORGANIZATION_ID}]
         self.memberships = [
             {
                 "user_id": USER_ID,
@@ -168,6 +182,46 @@ class FakeStagingDatabase:
 @pytest.fixture(autouse=True)
 def fake_staging_db(monkeypatch):
     database = FakeStagingDatabase()
+    from apps.scientific.app.domains.execution import model_execution
+
+    class FakeCoreServiceClient:
+        def has_active_organization_membership(self, user_id, organization_id):
+            return any(
+                membership["user_id"] == str(user_id)
+                and membership["organization_id"] == str(organization_id)
+                and membership["status"] == "active"
+                and membership["organization_status"] == "active"
+                for membership in database.memberships
+            )
+
+        def get_dataset_version_for_training(self, version_id, organization_id):
+            version = next(
+                (
+                    row
+                    for row in database.versions
+                    if row["id"] == str(version_id)
+                    and row["state"] == "PUBLISHED"
+                ),
+                None,
+            )
+            if version is None:
+                return None
+            dataset = next(
+                (
+                    row
+                    for row in database.datasets
+                    if row["id"] == version["dataset_id"]
+                    and row["organization_id"] == str(organization_id)
+                ),
+                None,
+            )
+            return {**version, "dataset_id": dataset["id"]} if dataset else None
+
+    monkeypatch.setattr(
+        model_execution,
+        "CoreServiceClient",
+        lambda: FakeCoreServiceClient(),
+    )
     monkeypatch.setattr(
         "apps.api.app.gateway.executions_bridge.supabase", database
     )
@@ -271,7 +325,61 @@ def test_web_training_bridge_dispatches_worker_and_persists_result(
     assert isinstance(result["warnings"], list)
     assert len(result["warnings"]) >= 1
     assert status_data["completed_at"] is not None
-    fetch_file.assert_called_once_with(fake_staging_db, VERSION_ID)
+    fetch_file.assert_called_once_with(
+        VERSION_ID,
+        uuid.UUID(ORGANIZATION_ID),
+        uuid.UUID(USER_ID),
+    )
+
+
+def test_web_estimation_result_includes_its_training_and_dataset_origin(
+    fake_staging_db,
+):
+    scene_id = "44444444-4444-4444-8444-444444444444"
+    fake_staging_db.jobs.append(
+        {
+            "id": TRAINING_JOB_ID,
+            "organization_id": ORGANIZATION_ID,
+            "job_type": "training",
+            "status": "completed",
+            "config": {"dataset_id": DATASET_ID, "version_id": VERSION_ID},
+            "result": {
+                "model": "baseline",
+                "model_version_id": MODEL_VERSION_ID,
+            },
+            "dataset_version_id": VERSION_ID,
+            "model_version_id": MODEL_VERSION_ID,
+        }
+    )
+
+    submit_response = client.post(
+        "/api/v1/executions/jobs",
+        json={
+            "job_type": "ESTIMATION",
+            "config": {
+                "model_id": MODEL_VERSION_ID,
+                "model_name": "Baseline clorofila",
+                "scene_id": scene_id,
+                "training_job_id": TRAINING_JOB_ID,
+            },
+        },
+        headers=AUTH_HEADERS,
+    )
+
+    assert submit_response.status_code == 202
+    job_id = submit_response.json()["job_id"]
+    status_response = client.get(
+        f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS
+    )
+
+    assert status_response.status_code == 200
+    result = status_response.json()["result"]
+    assert result["model_id"] == MODEL_VERSION_ID
+    assert result["model_name"] == "Baseline clorofila"
+    assert result["model_version_id"] == MODEL_VERSION_ID
+    assert result["training_job_id"] == TRAINING_JOB_ID
+    assert result["dataset_id"] == DATASET_ID
+    assert result["dataset_version_id"] == VERSION_ID
 
 
 @pytest.mark.parametrize(
@@ -393,6 +501,25 @@ def test_web_estimation_rejects_non_uuid_model_or_scene(config, fake_staging_db)
     response = client.post(
         "/api/v1/executions/jobs",
         json={"job_type": "ESTIMATION", "config": config},
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 422
+    assert fake_staging_db.jobs == []
+
+
+@pytest.mark.parametrize("model_name", [123, {}, "   "])
+def test_web_estimation_rejects_invalid_model_name(model_name, fake_staging_db):
+    response = client.post(
+        "/api/v1/executions/jobs",
+        json={
+            "job_type": "ESTIMATION",
+            "config": {
+                "model_id": "88888888-8888-4888-8888-888888888888",
+                "scene_id": "44444444-4444-4444-8444-444444444444",
+                "model_name": model_name,
+            },
+        },
         headers=AUTH_HEADERS,
     )
 

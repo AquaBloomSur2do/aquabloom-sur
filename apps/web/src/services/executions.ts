@@ -58,6 +58,14 @@ export interface EstimationUncertaintyPayload {
 
 export interface TrainingJobResult {
   model?: string;
+  model_name?: string | null;
+  training_job_id?: string | null;
+  dataset_id?: string | null;
+  model_artifact?: {
+    job_id?: string | null;
+    checksum?: string | null;
+    storage_path?: string | null;
+  } | null;
   baseline?: BaselineInfo;
   prediction_value?: number;
   estimated_value?: number;

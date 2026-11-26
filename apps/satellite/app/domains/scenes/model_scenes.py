@@ -8,6 +8,18 @@ def lake_exists_in_db(client, lake_id: UUID) -> bool:
     return bool(lakes.data)
 
 
+def get_scene_metadata_by_id(client, scene_id: UUID) -> dict[str, Any] | None:
+    response = (
+        client.table("scenes")
+        .select("id, lake_id, scene_identifier, acquisition_date, is_experimental")
+        .eq("id", str(scene_id))
+        .limit(1)
+        .execute()
+    )
+    rows = response.data or []
+    return rows[0] if rows else None
+
+
 def query_scenes_by_lake_and_dates(
     client,
     *,
@@ -31,4 +43,3 @@ def query_scenes_by_lake_and_dates(
         .execute()
     )
     return response.data or [], response.count or 0
-
