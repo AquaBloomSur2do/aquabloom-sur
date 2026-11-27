@@ -1,4 +1,5 @@
 import hashlib
+from copy import deepcopy
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -901,3 +902,114 @@ def test_manifest_includes_version_sources_checksums_and_synthetic_flag(monkeypa
             {"name": "water_mask", "is_synthetic": True},
         ],
     }
+
+
+def test_publishing_test_resource_preserves_official_dataset_and_manifest(monkeypatch):
+    database = setup_request(monkeypatch, "supervisor")
+    official_version = database.dataset_rows["versions"][0]
+    official_version.update(
+        {
+            "state": "PUBLISHED",
+            "status": "published",
+            "published_at": "2026-10-27T00:00:00+00:00",
+        }
+    )
+    official_memberships = deepcopy(database.dataset_rows["memberships"])
+
+    test_dataset_id = database.dataset_id_2
+    test_version_id = str(uuid4())
+    test_membership_id = str(uuid4())
+    database.dataset_rows["versions"].append(
+        {
+            "id": test_version_id,
+            "dataset_id": test_dataset_id,
+            "version_number": 1,
+            "state": "APPROVED",
+            "status": "APPROVED",
+            "created_at": "2026-10-28T00:00:00+00:00",
+            "published_at": None,
+        }
+    )
+    database.dataset_rows["memberships"].append(
+        {
+            "id": test_membership_id,
+            "version_id": test_version_id,
+            "scene_provider": "landsat-experimental",
+            "scene_external_id": "test-experimental-resource",
+            "added_at": "2026-10-28T00:00:00+00:00",
+        }
+    )
+
+    monkeypatch.setattr(
+        "apps.api.app.domains.dataset.service_dataset.fetch_manifest_sources_with_fallback",
+        lambda _client: [
+            {
+                "id": "official-scene-1",
+                "scene_identifier": "Official Sentinel scene",
+                "is_experimental": False,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "apps.api.app.domains.dataset.service_dataset.fetch_manifest_observations_with_fallback",
+        lambda _client: [
+            {
+                "id": "official-observation-1",
+                "spectral_index": "NDCI",
+                "index_value": 0.42,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        "apps.api.app.domains.dataset.service_dataset.fetch_manifest_samples_with_fallback",
+        lambda _client: [
+            {"id": "official-record-1", "station_id": "station-panguipulli"}
+        ],
+    )
+
+    official_manifest_path = (
+        f"/api/v1/datasets/{database.dataset_id}/versions/"
+        f"{database.version_id}/manifest"
+    )
+    manifest_before_response = client.get(official_manifest_path)
+    assert manifest_before_response.status_code == 200
+    manifest_before = manifest_before_response.json()
+    official_version_before = deepcopy(official_version)
+
+    try:
+        publish_test_resource_response = client.post(
+            f"/api/v1/datasets/versions/{test_version_id}/publish"
+        )
+        manifest_after_response = client.get(official_manifest_path)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert publish_test_resource_response.status_code == 200
+    assert publish_test_resource_response.json()["status"] == "published"
+    assert manifest_after_response.status_code == 200
+
+    published_test_version = next(
+        version
+        for version in database.dataset_rows["versions"]
+        if version["id"] == test_version_id
+    )
+    official_version_after = next(
+        version
+        for version in database.dataset_rows["versions"]
+        if version["id"] == database.version_id
+    )
+    official_memberships_after = [
+        membership
+        for membership in database.dataset_rows["memberships"]
+        if membership["version_id"] == database.version_id
+    ]
+    manifest_after = manifest_after_response.json()
+
+    assert published_test_version["status"] == "published"
+    assert official_version_after == official_version_before
+    assert official_memberships_after == official_memberships
+    assert manifest_after == manifest_before
+    assert manifest_after["manifest_checksum"] == manifest_before["manifest_checksum"]
+    assert manifest_after["sources"] == manifest_before["sources"]
+    assert manifest_after["records"] == manifest_before["records"]
+    assert manifest_after["rules"] == manifest_before["rules"]
