@@ -1,5 +1,9 @@
 # Persistencia mínima de versiones de datasets
 
+Para enlazar un dataset y su versión con una escena, un modelo y un trabajo de
+ejecución mediante identificadores sintéticos, consulta el
+[manifiesto de evidencia del piloto](./manifiesto-evidencia-piloto.md).
+
 Las migraciones `013_create_dataset_versioning_schema.sql` y
 `014_enforce_dataset_organization_isolation.sql` definen el versionado dentro
 del esquema PostgreSQL `dataset`, separado de `public`, y su aislamiento por
