@@ -531,8 +531,14 @@ gateway. Si el despliegue la publica a través del proxy
 
 ## 4. Errores estándar
 
-La API responde con el sobre `{ "error", "message", "details" }`. El campo
-`details` es opcional (o una lista en errores de validación).
+La API responde mayoritariamente con el sobre `{ "error", "message", "details" }`.
+El campo `details` es opcional (o una lista en errores de validación). Algunos
+servicios (`satellite`) responden `{ "detail": "..." }`, por lo que el cliente
+debe aceptar ambos formatos. Toda respuesta incluye la cabecera
+`X-Correlation-ID` para trazabilidad.
+
+> Guía ampliada para web y móvil con los cuatro escenarios de S3-16:
+> [`docs/api-error-examples.md`](api-error-examples.md).
 
 | Código | Cuándo ocurre | Ejemplo de cuerpo |
 | --- | --- | --- |
@@ -541,6 +547,7 @@ La API responde con el sobre `{ "error", "message", "details" }`. El campo
 | `404` | Recurso o trabajo inexistente, o fuera de la organización | Ver ejemplo 404 |
 | `422` | Parámetros o encabezados inválidos/faltantes | Ver ejemplo 422 |
 | `500` | Error interno no controlado | `{"error":"InternalServerError","message":"..."}` |
+| `503` | Dependencia caída (Gateway, base de datos, Redis u otro servicio) | `{"error":"ServiceUnavailable","message":"La dependencia solicitada no está disponible.","details":null}` o `{"detail":"..."}` en Satellite |
 
 **401 Unauthorized:**
 
@@ -604,7 +611,7 @@ La API responde con el sobre `{ "error", "message", "details" }`. El campo
 - [ ] Usar `start_date`/`end_date` obligatorios al consultar escenas.
 - [ ] Hacer polling de `status_url` hasta `completed` o `failed`.
 - [ ] Tratar `JobStatus` como objeto individual, no como arreglo.
-- [ ] Manejar `401`, `403`, `404` y `422` con mensajes claros.
+- [ ] Manejar `401`, `403`, `404`, `422` y `503` con mensajes claros.
 - [ ] Mostrar la advertencia RN-10: clorofila-a no equivale a toxicidad.
 
 ## 6. Notas de contrato y discrepancias conocidas
