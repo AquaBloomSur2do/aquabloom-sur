@@ -22,6 +22,10 @@ interface PaginatedLakes {
   total: number;
 }
 
+function isForbiddenError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'status' in error && error.status === 403);
+}
+
 function getStatusClass(status: string) {
   const normalizedStatus = status.toLowerCase();
   if (normalizedStatus === 'active' || normalizedStatus === 'activo') return 'public';
@@ -64,6 +68,7 @@ export default function Catalog() {
   const [lakes, setLakes] = useState<LakeSummary[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isForbidden, setIsForbidden] = useState(false);
 
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize] = useState<number>(10);
@@ -78,6 +83,7 @@ export default function Catalog() {
     async (pageToFetch: number, activeFilters: CatalogFilterValues) => {
       setIsLoading(true);
       setError(null);
+      setIsForbidden(false);
       try {
         const params = new URLSearchParams({
           page: pageToFetch.toString(),
@@ -98,7 +104,8 @@ export default function Catalog() {
         );
         setLakes(data.items || []);
         setTotalItems(data.total || 0);
-      } catch {
+      } catch (fetchError) {
+        setIsForbidden(isForbiddenError(fetchError));
         setError(
           'No se pudo cargar el catálogo de lagos. Verifica tu conexión al servidor.'
         );
@@ -162,18 +169,28 @@ export default function Catalog() {
               ))}
             </div>
           ) : error ? (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center" style={{ marginTop: '1rem' }}>
-              <h2 className="text-xl font-bold text-red-700 mb-2">
-                Error de Conexión
-              </h2>
-              <p className="text-red-600 mb-4">{error}</p>
-              <button
-                onClick={() => void fetchCatalog(currentPage, filters)}
-                className="px-6 py-2 bg-red-600 text-white font-medium rounded hover:bg-red-700 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-              >
-                Reintentar Conexión
-              </button>
-            </div>
+            isForbidden ? (
+              <div className="page-state page-state--forbidden" role="alert" style={{ marginTop: '1rem' }}>
+                <span className="page-state__icon" aria-hidden="true">🔒</span>
+                <div>
+                  <h2>Acceso denegado</h2>
+                  <p>No tienes permisos para consultar el catálogo de lagos.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center" style={{ marginTop: '1rem' }}>
+                <h2 className="text-xl font-bold text-red-700 mb-2">
+                  Error de Conexión
+                </h2>
+                <p className="text-red-600 mb-4">{error}</p>
+                <button
+                  onClick={() => void fetchCatalog(currentPage, filters)}
+                  className="px-6 py-2 bg-red-600 text-white font-medium rounded hover:bg-red-700 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                >
+                  Reintentar Conexión
+                </button>
+              </div>
+            )
           ) : lakes.length === 0 ? (
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-10 text-center" style={{ marginTop: '1rem' }}>
               <h2 className="text-xl font-bold text-gray-600 mb-1">
