@@ -138,6 +138,12 @@ components:
           type: string
           format: uuid
           nullable: true
+        pilot_report:
+          oneOf:
+            - $ref: "#/components/schemas/PilotReport"
+            - type: "null"
+          nullable: true
+          description: Informe piloto mínimo con método, resultados, limitaciones y procedencia.
         status:
           type: string
           enum: [queued, running, completed, failed]
@@ -204,4 +210,121 @@ components:
           type: string
           format: date-time
           nullable: true
-          
+PilotManifestLink:
+      type: object
+      required:
+        - manifest_checksum
+      properties:
+        manifest_checksum:
+          type: string
+          minLength: 64
+          maxLength: 64
+          description: Hash SHA-256 del manifiesto del dataset utilizado.
+        storage_path:
+          type: string
+          nullable: true
+        sources:
+          type: array
+          items:
+            type: string
+          description: Fuentes o escenas que componen la versión del dataset.
+
+    PilotReportMethod:
+      type: object
+      required:
+        - model
+        - strategy
+        - target_variable
+        - split_strategy
+        - split_ratio
+        - configuration
+        - code_version
+        - environment
+      properties:
+        model:
+          type: string
+          example: baseline
+        strategy:
+          type: string
+          example: mean_clorofila_a
+        target_variable:
+          type: string
+          example: clorofila_a
+        split_strategy:
+          type: string
+          example: sequential
+        split_ratio:
+          type: number
+          format: float
+        configuration:
+          type: object
+          additionalProperties: true
+        code_version:
+          type: string
+        environment:
+          type: string
+
+    PilotReportResults:
+      type: object
+      required:
+        - prediction_value
+        - predictions
+        - metrics
+        - train_sample_count
+        - validation_sample_count
+      properties:
+        prediction_value:
+          type: number
+          format: float
+        predictions:
+          type: array
+          items:
+            type: number
+            format: float
+        metrics:
+          $ref: "#/components/schemas/TrainingMetrics"
+        train_sample_count:
+          type: integer
+          minimum: 1
+        validation_sample_count:
+          type: integer
+          minimum: 1
+
+    PilotReportProvenance:
+      type: object
+      required:
+        - dataset_version_id
+        - manifest
+      properties:
+        dataset_id:
+          type: string
+          nullable: true
+        dataset_version_id:
+          type: string
+          description: Versión del dataset utilizada en la corrida piloto.
+        model_version_id:
+          type: string
+          nullable: true
+        manifest:
+          $ref: "#/components/schemas/PilotManifestLink"
+
+    PilotReport:
+      type: object
+      required:
+        - method
+        - results
+        - limitations
+        - provenance
+      properties:
+        method:
+          $ref: "#/components/schemas/PilotReportMethod"
+        results:
+          $ref: "#/components/schemas/PilotReportResults"
+        limitations:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          description: Limitaciones metodológicas explícitas del resultado piloto.
+        provenance:
+          $ref: "#/components/schemas/PilotReportProvenance"
