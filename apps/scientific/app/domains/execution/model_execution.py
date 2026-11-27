@@ -92,10 +92,12 @@ def fetch_training_file(
     version_id: UUID | str,
     organization_id: UUID | str,
     user_id: UUID | str,
+    core_client: CoreServiceClient | None = None,
 ) -> tuple[bytes, str]:
     """Obtiene el archivo de entrenamiento mediante el contrato interno de Core."""
+    client = core_client or CoreServiceClient()
     try:
-        return CoreServiceClient().download_training_file(
+        return client.download_training_file(
             version_id,
             organization_id,
             user_id,
@@ -109,10 +111,12 @@ def fetch_training_file(
 def fetch_dataset_provenance(
     version_id: UUID | str,
     organization_id: UUID | str,
+    core_client: CoreServiceClient | None = None,
 ) -> dict[str, Any] | None:
     """Obtiene la procedencia del dataset mediante el contrato interno de Core."""
+    client = core_client or CoreServiceClient()
     try:
-        return CoreServiceClient().get_dataset_provenance(
+        return client.get_dataset_provenance(
             version_id,
             organization_id,
         )

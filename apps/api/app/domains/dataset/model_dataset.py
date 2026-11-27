@@ -1,4 +1,7 @@
-from typing import NoReturn
+import json
+import logging
+from pathlib import Path
+from typing import Any, NoReturn
 
 from fastapi import HTTPException, status
 
@@ -118,3 +121,19 @@ def fetch_manifest_samples_with_fallback(client) -> list[dict]:
         return samples_res.data if samples_res.data else []
     except Exception:  # noqa: BLE001
         return [{"id": "rec-fallback", "value": "demo"}]
+logger = logging.getLogger(__name__)
+
+
+def fetch_pilot_satellite_metadata() -> dict[str, Any]:
+    """Lee metadatos locales del piloto satelital desde disco."""
+    base_dir = Path(__file__).resolve().parents[4]
+    metadata_path = base_dir / "satellite" / "data" / "metadata.json"
+    if not metadata_path.exists():
+        return {}
+    try:
+        with metadata_path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+            return data if isinstance(data, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+        logger.warning("No se pudo leer metadata.json en %s: %s", metadata_path, exc)
+        return {}

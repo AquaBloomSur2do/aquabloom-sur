@@ -1,8 +1,6 @@
 import hashlib
-import json
 import logging
 from datetime import UTC, datetime
-from pathlib import Path
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -25,6 +23,7 @@ from apps.api.app.domains.dataset.model_dataset import (
     fetch_manifest_samples_with_fallback,
     fetch_manifest_sources_with_fallback,
     fetch_page_rows,
+    fetch_pilot_satellite_metadata,
     fetch_rows,
     raise_publication_database_error,
 )
@@ -855,29 +854,22 @@ def build_version_manifest_service(
             detail="La versión solicitada no existe o no tiene un número asignado.",
         ) from exc
 
-    base_dir = Path(__file__).resolve().parents[4]
-    metadata_path = base_dir / "satellite" / "data" / "metadata.json"
-
     pilot_provider = "Sentinel-2 L2A (Piloto)"
     pilot_id = None
     is_synthetic = False
     raster_sha256 = None
     pilot_fixture = None
 
-    if metadata_path.exists():
-        try:
-            with metadata_path.open("r", encoding="utf-8") as f:
-                metadata = json.load(f)
-                pilot_id = metadata.get("id")
-                pilot_provider = metadata.get("provider", pilot_provider)
-                is_synthetic = metadata.get("is_synthetic", is_synthetic)
-                raster_sha256 = metadata.get("sha256", raster_sha256)
-                if "pilot_fixture" in metadata:
-                    pilot_fixture = PilotFixtureMetadata.model_validate(
-                        metadata["pilot_fixture"]
-                    )
-        except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
-            logger.warning(f"No se pudo leer metadata.json en {metadata_path}: {e}")
+    metadata = fetch_pilot_satellite_metadata()
+    if metadata:
+        pilot_id = metadata.get("id")
+        pilot_provider = metadata.get("provider", pilot_provider)
+        is_synthetic = metadata.get("is_synthetic", is_synthetic)
+        raster_sha256 = metadata.get("sha256", raster_sha256)
+        if "pilot_fixture" in metadata:
+            pilot_fixture = PilotFixtureMetadata.model_validate(
+                metadata["pilot_fixture"]
+            )
 
     raw_sources = fetch_manifest_sources_with_fallback(client)
     raw_obs = fetch_manifest_observations_with_fallback(client)

@@ -64,6 +64,29 @@ def _utc_now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
+async def _resolve_and_validate_training_provenance(
+    version_id: str,
+    organization_id: UUID | str,
+    expected_dataset_id: Any,
+) -> dict[str, Any]:
+    raw_provenance = await asyncio.to_thread(
+        fetch_dataset_provenance, version_id, organization_id
+    )
+    if raw_provenance is None:
+        raise ValueError(
+            "Core no devolvió la procedencia de la versión del dataset."
+        )
+    provenance_model = DatasetProvenanceInfo.model_validate(raw_provenance)
+    if provenance_model.version_id != version_id or (
+        expected_dataset_id is not None
+        and provenance_model.dataset_id != str(expected_dataset_id)
+    ):
+        raise ValueError(
+            "La procedencia recibida no corresponde a la versión de dataset utilizada."
+        )
+    return provenance_model.model_dump(mode="json")
+
+
 def _parse_optional_uuid_str(value: Any) -> str | None:
     if value is None:
         return None
@@ -301,23 +324,11 @@ async def run_scientific_algorithm(
         organization_id,
         requested_by,
     )
-    raw_provenance = await asyncio.to_thread(
-        fetch_dataset_provenance, str(version_id), organization_id
+    provenance = await _resolve_and_validate_training_provenance(
+        str(version_id),
+        organization_id,
+        config.get("dataset_id"),
     )
-    if raw_provenance is None:
-        raise ValueError(
-            "Core no devolvió la procedencia de la versión del dataset."
-        )
-    provenance_model = DatasetProvenanceInfo.model_validate(raw_provenance)
-    expected_dataset_id = config.get("dataset_id")
-    if provenance_model.version_id != str(version_id) or (
-        expected_dataset_id is not None
-        and provenance_model.dataset_id != str(expected_dataset_id)
-    ):
-        raise ValueError(
-            "La procedencia recibida no corresponde a la versión de dataset utilizada."
-        )
-    provenance = provenance_model.model_dump(mode="json")
     raw_data = parse_training_csv(file_bytes, checksum)
     train_data, val_data = split_training_validation(
         raw_data, split_ratio=TRAINING_SPLIT_RATIO
@@ -545,8 +556,8 @@ def get_job_status_service(
     if "id" in response_job:
         response_job["job_id"] = response_job.pop("id")
     result = response_job.get("result")
-    if isinstance(result, dict):
-        response_job["traceability_evidence"] = result.get("traceability_evidence")
+    if isinstance(result, dict) and "traceability_evidence" in result:
+        response_job["traceability_evidence"] = result["traceability_evidence"]
     return response_job
 
 def get_model_artifact_access_service(
