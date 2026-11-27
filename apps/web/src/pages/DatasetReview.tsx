@@ -16,12 +16,122 @@ const decisionLabels: Record<DatasetDecisionValue, string> = {
   rejected: 'Rechazada',
 };
 
+interface LakeOption {
+  id: string;
+  name: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function normalizeLakeOptions(payload: unknown): LakeOption[] {
+  let rows: unknown[];
+  if (Array.isArray(payload)) {
+    rows = payload;
+  } else if (isRecord(payload) && Array.isArray(payload.items)) {
+    rows = payload.items;
+  } else if (isRecord(payload) && Array.isArray(payload.data)) {
+    rows = payload.data;
+  } else {
+    throw new Error('La respuesta de lagos no tiene un formato válido.');
+  }
+
+  return rows.flatMap((row) => {
+    if (
+      !isRecord(row) ||
+      typeof row.id !== 'string' ||
+      typeof row.name !== 'string'
+    ) {
+      return [];
+    }
+
+    const status =
+      typeof row.status === 'string' ? row.status.trim().toLowerCase() : '';
+    if (status && status !== 'active' && status !== 'activo') {
+      return [];
+    }
+
+    return [{ id: row.id, name: row.name }];
+  });
+}
+
+function isCandidateStatus(
+  status: string
+): status is DatasetCandidate['status'] {
+  return (
+    status === 'PENDING' || status === 'APPROVED' || status === 'REJECTED'
+  );
+}
+
+function normalizeCandidates(payload: unknown): DatasetCandidate[] {
+  if (!Array.isArray(payload)) {
+    throw new Error('La respuesta de candidatos no tiene un formato válido.');
+  }
+
+  return payload.map((candidate, index) => {
+    if (
+      !isRecord(candidate) ||
+      typeof candidate.id !== 'string' ||
+      typeof candidate.lake_id !== 'string' ||
+      typeof candidate.data_uri !== 'string' ||
+      typeof candidate.status !== 'string' ||
+      typeof candidate.submitted_at !== 'string'
+    ) {
+      throw new Error(`El candidato ${index + 1} tiene datos incompletos.`);
+    }
+
+    const status = candidate.status.trim().toUpperCase();
+    if (!isCandidateStatus(status)) {
+      throw new Error(`El candidato ${index + 1} tiene un estado inválido.`);
+    }
+
+    return {
+      id: candidate.id,
+      lake_id: candidate.lake_id,
+      data_uri: candidate.data_uri,
+      status,
+      submitted_at: candidate.submitted_at,
+      ...(typeof candidate.exclusion_reason === 'string'
+        ? { exclusion_reason: candidate.exclusion_reason }
+        : {}),
+      ...(typeof candidate.source_provider === 'string'
+        ? { source_provider: candidate.source_provider }
+        : {}),
+    };
+  });
+}
+
+function filterVisibleCandidatesByLake(
+  candidates: DatasetCandidate[],
+  lakes: LakeOption[],
+  selectedLakeId: string
+): DatasetCandidate[] {
+  const activeLakeIds = new Set(
+    lakes.map((lake) => lake.id.trim().toLowerCase())
+  );
+  const normalizedSelectedLakeId = selectedLakeId.trim().toLowerCase();
+
+  return candidates.filter((candidate) => {
+    const lakeId = candidate.lake_id.trim().toLowerCase();
+    return (
+      candidate.status === 'APPROVED' &&
+      activeLakeIds.has(lakeId) &&
+      (!normalizedSelectedLakeId || lakeId === normalizedSelectedLakeId)
+    );
+  });
+}
+
 function isDatasetList(value: unknown): value is ReviewDataset[] {
   return Array.isArray(value);
 }
 
 export function DatasetReview() {
   const [datasets, setDatasets] = useState<ReviewDataset[]>([]);
+  const [lakes, setLakes] = useState<LakeOption[]>([]);
+  const [selectedLakeId, setSelectedLakeId] = useState('');
+  const [loadingLakes, setLoadingLakes] = useState(true);
+  const [lakeError, setLakeError] = useState<string | null>(null);
   const [datasetId, setDatasetId] = useState('');
   const [versionId, setVersionId] = useState('');
   const [decisions, setDecisions] = useState<
@@ -45,6 +155,7 @@ export function DatasetReview() {
 
   const [candidates, setCandidates] = useState<DatasetCandidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [candidateError, setCandidateError] = useState<string | null>(null);
 
   const [manifest, setManifest] = useState<DatasetManifest | null>(null);
   const [manifestLoading, setManifestLoading] = useState(false);
@@ -85,6 +196,35 @@ export function DatasetReview() {
     };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const loadLakes = async () => {
+      setLoadingLakes(true);
+      setLakeError(null);
+      try {
+        const response = await apiClient.get<unknown>('lakes');
+        const lakeOptions = normalizeLakeOptions(response);
+        if (mounted) setLakes(lakeOptions);
+      } catch (error) {
+        if (mounted) {
+          setLakeError(
+            error instanceof Error
+              ? error.message
+              : 'No se pudieron cargar los lagos.'
+          );
+        }
+      } finally {
+        if (mounted) setLoadingLakes(false);
+      }
+    };
+
+    void loadLakes();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // --- Carga de Candidatos (S2-139) ---
   useEffect(() => {
     if (!datasetId) return;
@@ -94,36 +234,23 @@ export function DatasetReview() {
 
     const loadCandidates = async () => {
       setLoadingCandidates(true);
+      setCandidates([]);
+      setCandidateError(null);
       try {
-        const response = await apiClient.get<DatasetCandidate[]>(
+        const response = await apiClient.get<unknown>(
           `datasets/candidates?dataset_id=${datasetId}`,
           { signal: controller.signal }
         );
-        if (mounted) setCandidates(response);
+        const candidateList = normalizeCandidates(response);
+        if (mounted) setCandidates(candidateList);
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') return;
-
+        if (controller.signal.aborted) return;
         if (mounted) {
-          setCandidates([
-            {
-              id: 'c-1',
-              lake_id: 'lago-villarrica-uuid-mock',
-              data_uri: 's3://ingest/batch-1.csv',
-              status: 'REJECTED',
-              submitted_at: new Date().toISOString(),
-              exclusion_reason: 'Falla regla S2-121: 85% de nubosidad.',
-              source_provider: 'Sentinel-2 L2A',
-            },
-            {
-              id: 'c-2',
-              lake_id: 'lago-villarrica-uuid-mock',
-              data_uri: 's3://ingest/batch-2.csv',
-              status: 'PENDING',
-              submitted_at: new Date().toISOString(),
-              exclusion_reason: 'Evaluación de calidad geoespacial pendiente.',
-              source_provider: 'Estación Fija (Terreno)',
-            },
-          ]);
+          setCandidateError(
+            error instanceof Error
+              ? error.message
+              : 'No se pudieron cargar los candidatos.'
+          );
         }
       } finally {
         if (mounted) setLoadingCandidates(false);
@@ -184,6 +311,12 @@ export function DatasetReview() {
     selectedVersion?.state ?? selectedVersion?.status;
   const isSelectedVersionPublished =
     selectedVersionState?.toUpperCase() === 'PUBLISHED';
+  const visibleCandidates = filterVisibleCandidatesByLake(
+    candidates,
+    lakes,
+    selectedLakeId
+  );
+  const selectedLake = lakes.find((lake) => lake.id === selectedLakeId);
 
   const handleDatasetChange = (nextDatasetId: string) => {
     const nextDataset = datasets.find(
@@ -191,6 +324,8 @@ export function DatasetReview() {
     );
     setDatasetId(nextDatasetId);
     setVersionId(nextDataset?.versions[0]?.id ?? '');
+    setCandidates([]);
+    setCandidateError(null);
     setManifest(null);
   };
 
@@ -399,9 +534,9 @@ export function DatasetReview() {
             <article className="card kpi">
               <div className="kpi-icon amber">IN</div>
               <div>
-                <div className="kpi-value">{candidates.length}</div>
+                <div className="kpi-value">{visibleCandidates.length}</div>
                 <div className="kpi-label">
-                  Candidatos en bandeja de ingesta
+                  Recursos visibles de la bandeja
                 </div>
               </div>
             </article>
@@ -825,21 +960,46 @@ export function DatasetReview() {
               <div>
                 <h2>Bandeja de Entrada: Candidatos de Ingesta</h2>
                 <p className="card-note">
-                  Muestras y observaciones crudas esperando ser evaluadas o ya
-                  descartadas automáticamente (S2-139).
+                  Recursos aprobados vinculados a lagos activos.
                 </p>
               </div>
-              <span className="badge draft">Pre-curaduría</span>
+              <label className="label">
+                Lago
+                <select
+                  className="control"
+                  aria-label="Filtrar candidatos por lago"
+                  value={selectedLakeId}
+                  onChange={(event) => setSelectedLakeId(event.target.value)}
+                  disabled={loadingLakes || lakeError !== null}
+                >
+                  <option value="">Todos los lagos</option>
+                  {lakes.map((lake) => (
+                    <option key={lake.id} value={lake.id}>
+                      {lake.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
-            {loadingCandidates ? (
-              <div className="card-body">
-                <p className="subtitle">Cargando candidatos...</p>
+            {loadingLakes || loadingCandidates ? (
+              <div className="state-panel state-panel--loading state-container" role="status">
+                <p>Cargando lagos y candidatos...</p>
               </div>
-            ) : candidates.length === 0 ? (
-              <div className="card-body">
-                <p className="subtitle">
-                  No hay candidatos pendientes de Ingesta para este dataset.
+            ) : lakeError ? (
+              <div className="status-banner danger" role="alert">
+                No se pudo cargar el filtro de lagos: {lakeError}
+              </div>
+            ) : candidateError ? (
+              <div className="status-banner danger" role="alert">
+                No se pudieron cargar los candidatos: {candidateError}
+              </div>
+            ) : visibleCandidates.length === 0 ? (
+              <div className="state-panel state-panel--empty state-container state-empty" role="status">
+                <p>
+                  {selectedLake
+                    ? `No hay recursos visibles vinculados a ${selectedLake.name}.`
+                    : 'No hay recursos visibles vinculados a lagos activos para este dataset.'}
                 </p>
               </div>
             ) : (
@@ -854,7 +1014,7 @@ export function DatasetReview() {
                     </tr>
                   </thead>
                   <tbody>
-                    {candidates.map((candidate) => (
+                    {visibleCandidates.map((candidate) => (
                       <tr
                         key={candidate.id}
                         className={
