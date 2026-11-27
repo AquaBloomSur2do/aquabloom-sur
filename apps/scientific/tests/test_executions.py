@@ -1143,8 +1143,10 @@ class PersistentSqliteClient:
         return _PersistentSqliteQuery(self.db_path, None, table_name)
 
 
-def test_job_status_and_result_persist_across_api_restart(tmp_path, monkeypatch):
-    """Tras reiniciar la API, el estado y resultado completados siguen disponibles (S2-167)."""
+def test_terminal_job_status_result_and_error_persist_across_api_restart(
+    tmp_path, monkeypatch
+):
+    """Tras reiniciar la API, ambos estados terminales siguen disponibles."""
     db_path = tmp_path / "scientific_persistent.db"
     _init_persistent_sqlite_db(db_path)
 
@@ -1190,6 +1192,35 @@ def test_job_status_and_result_persist_across_api_restart(tmp_path, monkeypatch)
                 assert initial_body["status"] == "completed"
                 assert initial_body["result"] is not None
 
+                failed_create_response = first_api_client.post(
+                    "/api/v1/executions/",
+                    json={
+                        "job_type": "estimation",
+                        "config": {
+                            "model_id": MODEL_VERSION_ID,
+                            "scene_id": SCENE_ID,
+                            "training_job_id": (
+                                "bbbbbbbb-2222-4222-8222-222222222222"
+                            ),
+                        },
+                    },
+                    headers=HEADERS,
+                )
+                assert failed_create_response.status_code == 202
+                failed_job_id = failed_create_response.json()["job_id"]
+
+                failed_initial_response = first_api_client.get(
+                    f"/api/v1/executions/{failed_job_id}",
+                    headers=AUTH_HEADERS,
+                )
+                assert failed_initial_response.status_code == 200
+                failed_initial_body = failed_initial_response.json()
+                assert failed_initial_body["status"] == "failed"
+                assert failed_initial_body["result"] is None
+                assert failed_initial_body["error_message"] == (
+                    "No se encontró el trabajo de entrenamiento de origen del modelo."
+                )
+
         # 2. Descartar la primera instancia y crear un cliente limpio tras el reinicio
         first_app.dependency_overrides.clear()
         restarted_db_client = PersistentSqliteClient(db_path)
@@ -1223,6 +1254,35 @@ def test_job_status_and_result_persist_across_api_restart(tmp_path, monkeypatch)
                 "mae": 15.0,
                 "rmse": 15.0,
             }
+
+            recovered_failed_response = restarted_api_client.get(
+                f"/api/v1/executions/{failed_job_id}",
+                headers=AUTH_HEADERS,
+            )
+            assert recovered_failed_response.status_code == 200
+            recovered_failed_body = recovered_failed_response.json()
+            assert recovered_failed_body == failed_initial_body
+            assert recovered_failed_body["job_id"] == failed_job_id
+            assert recovered_failed_body["job_type"] == "estimation"
+            assert recovered_failed_body["status"] == "failed"
+            assert recovered_failed_body["result"] is None
+            assert recovered_failed_body["error_message"] == (
+                "No se encontró el trabajo de entrenamiento de origen del modelo."
+            )
+            assert recovered_failed_body["requested_by"] == USER_ID
+            assert recovered_failed_body["created_at"] is not None
+            assert recovered_failed_body["started_at"] is not None
+            assert recovered_failed_body["completed_at"] is not None
+
+            for persisted_job_id in (job_id, failed_job_id):
+                persisted_job = (
+                    restarted_db_client.table("scientific_jobs")
+                    .select("organization_id")
+                    .eq("id", persisted_job_id)
+                    .execute()
+                    .data[0]
+                )
+                assert persisted_job["organization_id"] == ORGANIZATION_ID
 
             # Verificar aislamiento real por organización sobre scientific_jobs en disco
             # (USER_ID es miembro activo de OTHER_ORGANIZATION_ID, por lo que el 404 proviene de scientific_jobs)

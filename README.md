@@ -239,6 +239,7 @@ aquabloom-sur/
 ## Documentación de servicios
 
 - [Worker científico y flujo de ejecuciones](./docs/scientific-worker.md)
+- [Verificación de estados terminales tras reinicio en staging](./docs/verificacion-estado-terminal-reinicio-staging.md)
 - [Formato de errores operativos del worker científico](./docs/formato-errores-operativos-worker.md)
 
 ## Configuración de Datos y Supabase

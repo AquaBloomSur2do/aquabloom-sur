@@ -84,3 +84,7 @@ rechazo de entradas inválidas y la ejecución de la tarea por el consumidor.
 El catálogo objetivo de errores seguros y el estado actual de su implementación
 para los trabajos persistidos de `/api/v1/executions` están descritos en
 [Formato de errores operativos del worker científico](./formato-errores-operativos-worker.md).
+
+La consulta de trabajos `completed` y `failed` tras reiniciar Scientific,
+incluyendo la prueba local y el procedimiento pendiente en staging, está en
+[Verificación de estados terminales tras reinicio en staging](./verificacion-estado-terminal-reinicio-staging.md).
