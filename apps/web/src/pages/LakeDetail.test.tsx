@@ -53,4 +53,49 @@ describe('LakeDetail', () => {
     expect(await screen.findByRole('heading', { name: 'Lago Uno' })).toBeInTheDocument();
     expect(screen.getByText(/no se pudieron cargar las estaciones/i)).toBeInTheDocument();
   });
+
+  it('S3-24: muestra el detalle de Panguipulli con su registro y fuente disponible', async () => {
+    mockGet.mockImplementation((path: string) => {
+      if (path.endsWith('/stations')) {
+        return Promise.resolve([
+          {
+            id: 'st-panguipulli-1',
+            lake_id: 'lake-panguipulli',
+            code: 'DGA-PAN-01',
+            name: 'Estación Panguipulli Centro',
+            status: 'ACTIVE',
+          },
+        ]);
+      }
+
+      return Promise.resolve({
+        id: 'lake-panguipulli',
+        name: 'Panguipulli',
+        region: 'Los Ríos',
+        description: 'Fuente disponible: DGA / Sentinel-2.',
+        status: 'ACTIVE',
+        geom: null,
+      });
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/lakes/lake-panguipulli']}>
+        <Routes>
+          <Route path="/lakes/:id" element={<LakeDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Panguipulli' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Los Ríos')).toBeInTheDocument();
+    expect(screen.getByText('ID Catálogo')).toBeInTheDocument();
+    expect(screen.getByText('lake-panguipulli')).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Fuente disponible: DGA \/ Sentinel-2\./i).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText('Estación Panguipulli Centro')).toBeInTheDocument();
+    expect(screen.getByText('DGA-PAN-01')).toBeInTheDocument();
+  });
 });
