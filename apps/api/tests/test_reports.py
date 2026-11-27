@@ -89,6 +89,23 @@ class FakeSupabase:
         return FakeQuery(self, table_name)
 
 
+def _promote_to_moderator(context, role: str = "supervisor") -> None:
+    context["auth_payload"].update(
+        {
+            "sub": str(context["moderator_id"]),
+            "user_metadata": {"role": role},
+        }
+    )
+    context["database"].tables["memberships"].append(
+        {
+            "user_id": str(context["moderator_id"]),
+            "organization_id": str(uuid4()),
+            "role": role,
+            "status": "active",
+        }
+    )
+
+
 @pytest.fixture
 def reports_context(monkeypatch):
     reporter_id = uuid4()
@@ -141,20 +158,7 @@ def test_authenticated_report_is_persisted_and_moderator_resolution_is_traceable
         "id"
     ]
 
-    context["auth_payload"].update(
-        {
-            "sub": str(context["moderator_id"]),
-            "user_metadata": {"role": "supervisor"},
-        }
-    )
-    context["database"].tables["memberships"].append(
-        {
-            "user_id": str(context["moderator_id"]),
-            "organization_id": str(uuid4()),
-            "role": "supervisor",
-            "status": "active",
-        }
-    )
+    _promote_to_moderator(context, role="supervisor")
     resolution_reason = "Reporte verificado y corregido."
     resolved_response = client.patch(
         f"/api/v1/reports/{created_report['id']}/resolve",
@@ -273,6 +277,99 @@ def test_private_report_is_hidden_from_unrelated_account_in_list_and_detail(
     )
 
 
+def test_report_html_and_code_payloads_are_returned_as_literal_json_text(
+    reports_context, tmp_path
+):
+    context = reports_context
+    execution_marker = tmp_path / "s3_64_code_executed"
+    shell_marker = tmp_path / "s3_64_shell_executed"
+    reason = "<script>alert('s3-64')</script> {{ 7 * 7 }}"
+    details = (
+        '<img src=x onerror="window.__s3_64=1">'
+        '<iframe src="javascript:alert(1)"></iframe>'
+        f"$(touch '{shell_marker}') "
+        f"__import__('pathlib').Path({str(execution_marker)!r}).write_text('x')"
+    )
+
+    created_response = client.post(
+        "/api/v1/reports",
+        json={
+            "resource_type": "lake",
+            "resource_id": str(context["lake_id"]),
+            "reason": reason,
+            "details": details,
+        },
+    )
+
+    assert created_response.status_code == 201
+    content_type = created_response.headers["content-type"]
+    assert content_type.startswith("application/json")
+    assert "text/html" not in content_type
+
+    created_report = created_response.json()
+    assert created_report["reason"] == reason
+    assert created_report["details"] == details
+    assert "<script>alert('s3-64')</script>" in created_response.text
+    assert "49" not in created_report["reason"]
+    assert not execution_marker.exists()
+    assert not shell_marker.exists()
+
+    stored_report = context["database"].tables["resource_reports"][0]
+    assert stored_report["reason"] == reason
+    assert stored_report["details"] == details
+
+    detail_response = client.get(f"/api/v1/reports/{created_report['id']}")
+    assert detail_response.status_code == 200
+    assert detail_response.headers["content-type"].startswith("application/json")
+    detail_report = detail_response.json()
+    assert detail_report["reason"] == reason
+    assert detail_report["details"] == details
+
+    list_response = client.get("/api/v1/reports")
+    assert list_response.status_code == 200
+    assert list_response.headers["content-type"].startswith("application/json")
+    listed_reports = {item["id"]: item for item in list_response.json()}
+    assert listed_reports[created_report["id"]]["reason"] == reason
+    assert listed_reports[created_report["id"]]["details"] == details
+
+
+def test_resolution_reason_with_html_and_code_is_preserved_as_text(reports_context):
+    context = reports_context
+    created_response = client.post(
+        "/api/v1/reports",
+        json={
+            "resource_type": "station",
+            "resource_id": str(context["station_id"]),
+            "reason": "Reporte para probar la resolución segura",
+        },
+    )
+    assert created_response.status_code == 201
+    report_id = created_response.json()["id"]
+
+    _promote_to_moderator(context, role="supervisor")
+
+    resolution_reason = "<svg onload=alert('s3-64')></svg> {{ 7 * 7 }}"
+    resolved_response = client.patch(
+        f"/api/v1/reports/{report_id}/resolve",
+        json={"resolution_reason": resolution_reason},
+    )
+
+    assert resolved_response.status_code == 200
+    content_type = resolved_response.headers["content-type"]
+    assert content_type.startswith("application/json")
+    assert "text/html" not in content_type
+    resolved_report = resolved_response.json()
+    assert resolved_report["resolution_reason"] == resolution_reason
+    assert "49" not in resolved_report["resolution_reason"]
+
+    stored_report = context["database"].tables["resource_reports"][0]
+    assert stored_report["resolution_reason"] == resolution_reason
+
+    detail_response = client.get(f"/api/v1/reports/{report_id}")
+    assert detail_response.status_code == 200
+    assert detail_response.json()["resolution_reason"] == resolution_reason
+
+
 def test_moderator_lists_and_reads_private_reports_for_moderation(reports_context):
     context = reports_context
     created_response = client.post(
@@ -286,22 +383,11 @@ def test_moderator_lists_and_reads_private_reports_for_moderation(reports_contex
     assert created_response.status_code == 201
     private_report = created_response.json()
 
-    context["database"].tables["memberships"].append(
-        {
-            "user_id": str(context["moderator_id"]),
-            "organization_id": str(uuid4()),
-            "role": "supervisor",
-            "status": "active",
-        }
-    )
-    context["auth_payload"]["sub"] = str(context["moderator_id"])
-    context["auth_payload"]["user_metadata"]["role"] = "supervisor"
+    _promote_to_moderator(context, role="supervisor")
 
     list_response = client.get("/api/v1/reports")
     assert list_response.status_code == 200
-    assert private_report["id"] in [
-        item["id"] for item in list_response.json()
-    ]
+    assert private_report["id"] in [item["id"] for item in list_response.json()]
 
     detail_response = client.get(f"/api/v1/reports/{private_report['id']}")
     assert detail_response.status_code == 200
