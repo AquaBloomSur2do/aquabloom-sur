@@ -23,6 +23,16 @@ def _is_moderator(client, user_id: UUID) -> bool:
     return bool(response.data)
 
 
+def _requester_id(requester: dict) -> UUID:
+    try:
+        return UUID(str(requester["sub"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token sin un identificador de usuario válido.",
+        ) from exc
+
+
 def _get_report(client, report_id: UUID) -> dict:
     response = (
         client.table("resource_reports")
@@ -73,15 +83,18 @@ def create_resource_report(
     return response.data[0]
 
 
+def list_resource_reports(client, requester: dict) -> list[dict]:
+    requester_id = _requester_id(requester)
+    query = client.table("resource_reports").select("*")
+    if not _is_moderator(client, requester_id):
+        query = query.eq("reported_by", str(requester_id))
+    response = query.execute()
+    return response.data or []
+
+
 def get_resource_report(client, report_id: UUID, requester: dict) -> dict:
     report = _get_report(client, report_id)
-    try:
-        requester_id = UUID(str(requester["sub"]))
-    except (KeyError, TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token sin un identificador de usuario válido.",
-        ) from exc
+    requester_id = _requester_id(requester)
 
     if str(requester_id) != str(report["reported_by"]) and not _is_moderator(
         client, requester_id
@@ -99,13 +112,7 @@ def resolve_resource_report(
     resolution: ResourceReportResolution,
     moderator: dict,
 ) -> dict:
-    try:
-        moderator_id = UUID(str(moderator["sub"]))
-    except (KeyError, TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token sin un identificador de usuario válido.",
-        ) from exc
+    moderator_id = _requester_id(moderator)
 
     if not _is_moderator(client, moderator_id):
         raise HTTPException(

@@ -12,6 +12,7 @@ from apps.api.app.domains.reports.schemas_reports import (
 from apps.api.app.domains.reports.service_reports import (
     create_resource_report,
     get_resource_report,
+    list_resource_reports,
     resolve_resource_report,
 )
 
@@ -47,6 +48,13 @@ def create_report(
     payload: dict = Depends(verify_supabase_jwt),  # noqa: B008
 ):
     return create_resource_report(_require_database(), report, _get_user_id(payload))
+
+
+@router.get("", response_model=list[ResourceReportResponse])
+def list_reports(
+    payload: dict = Depends(verify_supabase_jwt),  # noqa: B008
+):
+    return list_resource_reports(_require_database(), payload)
 
 
 @router.get("/{report_id}", response_model=ResourceReportResponse)

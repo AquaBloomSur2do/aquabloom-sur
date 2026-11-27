@@ -204,3 +204,105 @@ def test_reporter_cannot_resolve_their_own_report(reports_context):
     assert stored_report["status"] == "open"
     assert stored_report["resolved_by"] is None
     assert stored_report["resolution_reason"] is None
+
+
+def test_private_report_is_hidden_from_unrelated_account_in_list_and_detail(
+    reports_context,
+):
+    context = reports_context
+    created_response = client.post(
+        "/api/v1/reports",
+        json={
+            "resource_type": "lake",
+            "resource_id": str(context["lake_id"]),
+            "reason": "Información privada del reporte",
+            "details": "Detalle sensible que no debe filtrarse.",
+        },
+    )
+    assert created_response.status_code == 201
+    private_report = created_response.json()
+
+    outsider_id = uuid4()
+    outsider_report_id = str(uuid4())
+    context["database"].tables["resource_reports"].append(
+        {
+            "id": outsider_report_id,
+            "resource_type": "station",
+            "resource_id": str(context["station_id"]),
+            "reported_by": str(outsider_id),
+            "reason": "Reporte propio de la cuenta ajena",
+            "details": None,
+            "status": "open",
+            "resolution_reason": None,
+            "resolved_by": None,
+            "resolved_at": None,
+            "created_at": "2026-11-27T13:00:00+00:00",
+            "updated_at": "2026-11-27T13:00:00+00:00",
+        }
+    )
+
+    context["auth_payload"]["sub"] = str(outsider_id)
+    context["auth_payload"]["user_metadata"]["role"] = "investigador"
+
+    list_response = client.get("/api/v1/reports")
+    assert list_response.status_code == 200
+    listed_ids = [item["id"] for item in list_response.json()]
+    assert listed_ids == [outsider_report_id]
+    assert private_report["id"] not in listed_ids
+
+    hidden_detail = client.get(f"/api/v1/reports/{private_report['id']}")
+    assert hidden_detail.status_code == 403
+    assert hidden_detail.json() == {
+        "detail": "No tienes permisos para consultar este reporte."
+    }
+    assert private_report["reason"] not in hidden_detail.text
+    assert "Detalle sensible" not in hidden_detail.text
+    assert "reported_by" not in hidden_detail.text
+
+    own_detail = client.get(f"/api/v1/reports/{outsider_report_id}")
+    assert own_detail.status_code == 200
+
+    context["auth_payload"]["sub"] = str(context["reporter_id"])
+    context["auth_payload"]["user_metadata"]["role"] = "investigador"
+
+    reporter_list = client.get("/api/v1/reports")
+    assert reporter_list.status_code == 200
+    assert [item["id"] for item in reporter_list.json()] == [private_report["id"]]
+    assert (
+        client.get(f"/api/v1/reports/{private_report['id']}").status_code == 200
+    )
+
+
+def test_moderator_lists_and_reads_private_reports_for_moderation(reports_context):
+    context = reports_context
+    created_response = client.post(
+        "/api/v1/reports",
+        json={
+            "resource_type": "station",
+            "resource_id": str(context["station_id"]),
+            "reason": "Reporte privado a moderar",
+        },
+    )
+    assert created_response.status_code == 201
+    private_report = created_response.json()
+
+    context["database"].tables["memberships"].append(
+        {
+            "user_id": str(context["moderator_id"]),
+            "organization_id": str(uuid4()),
+            "role": "supervisor",
+            "status": "active",
+        }
+    )
+    context["auth_payload"]["sub"] = str(context["moderator_id"])
+    context["auth_payload"]["user_metadata"]["role"] = "supervisor"
+
+    list_response = client.get("/api/v1/reports")
+    assert list_response.status_code == 200
+    assert private_report["id"] in [
+        item["id"] for item in list_response.json()
+    ]
+
+    detail_response = client.get(f"/api/v1/reports/{private_report['id']}")
+    assert detail_response.status_code == 200
+    assert detail_response.json()["id"] == private_report["id"]
