@@ -12,7 +12,12 @@ from apps.scientific.app.domains.execution.schemas_execution import (
     EstimationRequestInput,
     JobCreate,
     ModelScopeSpec,
+    PilotManifestLink,
     PilotMetricsResult,
+    PilotReport,
+    PilotReportMethod,
+    PilotReportProvenance,
+    PilotReportResults,
     ScientificJobStatusEnum,
     TrainingMetrics,
     TrainingResult,
@@ -414,6 +419,80 @@ def calculate_baseline(
         warnings=warnings,
     )
     return result.model_dump(mode="json")
+
+
+def build_pilot_report_method(
+    *,
+    model: str,
+    strategy: str,
+    target_variable: str,
+    split_strategy: str = "sequential",
+    split_ratio: float = 0.8,
+    configuration: dict[str, Any] | None = None,
+    code_version: str = "dev",
+    environment: str = "development",
+) -> PilotReportMethod:
+    """Construye la sección method del informe piloto (S3-09)."""
+    return PilotReportMethod(
+        model=model,
+        strategy=strategy,
+        target_variable=target_variable,
+        split_strategy=split_strategy,
+        split_ratio=split_ratio,
+        configuration=configuration or {},
+        code_version=code_version,
+        environment=environment,
+    )
+
+
+def build_pilot_report_results(
+    *,
+    prediction_value: float,
+    predictions: list[float],
+    mae: float,
+    rmse: float,
+    train_sample_count: int,
+    validation_sample_count: int,
+) -> PilotReportResults:
+    """Construye la sección results del informe piloto (S3-09)."""
+    return PilotReportResults(
+        prediction_value=prediction_value,
+        predictions=predictions,
+        metrics=TrainingMetrics(mae=mae, rmse=rmse),
+        train_sample_count=train_sample_count,
+        validation_sample_count=validation_sample_count,
+    )
+
+
+def build_pilot_report(
+    *,
+    method: PilotReportMethod,
+    results: PilotReportResults,
+    limitations: list[str],
+    dataset_version_id: str,
+    manifest_checksum: str,
+    dataset_id: str | None = None,
+    model_version_id: str | None = None,
+    storage_path: str | None = None,
+    sources: list[str] | None = None,
+) -> dict[str, Any]:
+    """Valida y serializa el informe piloto con método, resultados, limitaciones y procedencia."""
+    report = PilotReport(
+        method=method,
+        results=results,
+        limitations=limitations,
+        provenance=PilotReportProvenance(
+            dataset_id=dataset_id,
+            dataset_version_id=dataset_version_id,
+            model_version_id=model_version_id,
+            manifest=PilotManifestLink(
+                manifest_checksum=manifest_checksum,
+                storage_path=storage_path,
+                sources=sources or [],
+            ),
+        ),
+    )
+    return report.model_dump(mode="json")
 
 
 def validate_group_partition_disjointness(

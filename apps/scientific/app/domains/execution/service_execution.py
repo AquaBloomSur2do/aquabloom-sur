@@ -16,6 +16,9 @@ from apps.scientific.app.domains.execution.domain_execution import (
     build_completed_update_payload,
     build_failure_update_payload,
     build_job_accepted_response,
+    build_pilot_report,
+    build_pilot_report_method,
+    build_pilot_report_results,
     build_running_update_payload,
     build_timeout_error_message,
     calculate_baseline,
@@ -328,6 +331,39 @@ async def run_scientific_algorithm(
         code_version=os.getenv("APP_VERSION") or "dev",
         environment=settings.environment,
     ).model_dump(mode="json")
+    dataset_id_value = config.get("dataset_id")
+    raw_sources = config.get("sources")
+    sources_list = (
+        [str(item) for item in raw_sources if item is not None]
+        if isinstance(raw_sources, list)
+        else []
+    )
+    result["pilot_report"] = build_pilot_report(
+        method=build_pilot_report_method(
+            model=result["model"],
+            strategy=result["baseline"]["strategy"],
+            target_variable=result["baseline"]["target_variable"],
+            split_strategy="sequential",
+            split_ratio=TRAINING_SPLIT_RATIO,
+            configuration=result["reproducibility"]["configuration"],
+            code_version=result["reproducibility"]["code_version"],
+            environment=result["reproducibility"]["environment"],
+        ),
+        results=build_pilot_report_results(
+            prediction_value=result["prediction_value"],
+            predictions=result["predictions"],
+            mae=result["metrics"]["mae"],
+            rmse=result["metrics"]["rmse"],
+            train_sample_count=result["baseline"]["train_sample_count"],
+            validation_sample_count=result["baseline"]["validation_sample_count"],
+        ),
+        limitations=list(result.get("warnings") or []),
+        dataset_id=str(dataset_id_value) if dataset_id_value is not None else None,
+        dataset_version_id=str(version_id),
+        model_version_id=str(model_version_id) if model_version_id else None,
+        manifest_checksum=checksum,
+        sources=sources_list,
+    )
     return result
 
 
