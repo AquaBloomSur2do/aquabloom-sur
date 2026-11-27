@@ -74,7 +74,16 @@ const STRUCTURED_RESULT_KEYS = new Set([
   'dataset_id',
   'model_artifact',
   'artifact_checksum',
+  'provenance',
+  'limitations',
 ]);
+
+const datasetOriginLabels = {
+  synthetic: 'Sintético',
+  real: 'No marcado como sintético por el manifiesto',
+  mixed: 'Mixto (sintético y no sintético)',
+  unknown: 'Desconocido',
+};
 
 function displayValue(value: unknown): string {
   if (typeof value === 'string') return value;
@@ -136,6 +145,8 @@ function isStructuredTrainingResult(result: TrainingJobResult): boolean {
       result.version ||
       result.model_version_id ||
       result.dataset_version_id ||
+    result.provenance ||
+    result.limitations?.length ||
       normalizedWarnings.length > 0
   );
 }
@@ -630,6 +641,68 @@ export function ScientificJobDetail({
                       <div className="detail detail-full">
                         <span>Condición experimental</span>
                         <b>{getExperimentalCondition(job.result)}</b>
+                      </div>
+
+                      <h3 className="detail-full">Procedencia de datos</h3>
+                      <div className="detail">
+                        <span>Origen declarado</span>
+                        <b>
+                          {job.result.provenance
+                            ? datasetOriginLabels[job.result.provenance.origin]
+                            : 'No informado por la API'}
+                        </b>
+                      </div>
+                      <div className="detail">
+                        <span>Versión del dataset</span>
+                        <b>
+                          {job.result.provenance?.version_number ??
+                            'No informada'}
+                          {job.result.provenance?.version_id
+                            ? ` (${job.result.provenance.version_id})`
+                            : ''}
+                        </b>
+                      </div>
+                      {job.result.provenance && (
+                        <>
+                          <div className="detail">
+                            <span>Checksum del manifiesto</span>
+                            <span className="code-pill">
+                              {job.result.provenance.manifest_checksum}
+                            </span>
+                          </div>
+                          <div className="detail detail-full">
+                            <span>Fuentes</span>
+                            {job.result.provenance.sources.length > 0 ? (
+                              <ul className="traceability-list">
+                                {job.result.provenance.sources.map((source) => (
+                                  <li key={source.id}>
+                                    {source.source_name ?? source.id}
+                                    {source.is_synthetic
+                                      ? ' — sintética'
+                                      : ' — no marcada como sintética'}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <b>No informadas por el manifiesto</b>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      <h3 className="detail-full">
+                        Limitaciones científicas
+                      </h3>
+                      <div className="detail detail-full">
+                        {job.result.limitations?.length ? (
+                          <ul className="traceability-list">
+                            {job.result.limitations.map((limitation) => (
+                              <li key={limitation}>{limitation}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <b>No informadas por la API</b>
+                        )}
                       </div>
 
                       <div className="detail">

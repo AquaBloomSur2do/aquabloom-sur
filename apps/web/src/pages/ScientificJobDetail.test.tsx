@@ -51,6 +51,25 @@ describe('ScientificJobDetail', () => {
         dataset_version_id: 'version-2026-1',
         model_version_id: null,
         status: 'completed',
+        provenance: {
+          dataset_id: 'dataset-1',
+          version_id: 'version-2026-1',
+          version_number: '3',
+          manifest_checksum: 'a'.repeat(64),
+          origin: 'synthetic',
+          sources: [
+            {
+              id: 'pilot-source',
+              source_name: 'Synthetic pilot fixture',
+              checksum: 'b'.repeat(64),
+              is_synthetic: true,
+              is_experimental: false,
+            },
+          ],
+        },
+        limitations: [
+          'No se calculó exactitud (accuracy) contra valores de referencia independientes.',
+        ],
         warnings: [
           'Modelo baseline de referencia basado en la media de clorofila_a de entrenamiento.',
         ],
@@ -101,6 +120,18 @@ describe('ScientificJobDetail', () => {
     expect(screen.getByText('Condición experimental')).toBeInTheDocument();
     expect(
       screen.getByText('Resultado piloto preliminar.')
+    ).toBeInTheDocument();
+    expect(screen.getByText('Procedencia de datos')).toBeInTheDocument();
+    expect(screen.getByText('Sintético')).toBeInTheDocument();
+    expect(screen.getByText('3 (version-2026-1)')).toBeInTheDocument();
+    expect(
+      screen.getByText('Synthetic pilot fixture — sintética')
+    ).toBeInTheDocument();
+    expect(screen.getByText('Limitaciones científicas')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'No se calculó exactitud (accuracy) contra valores de referencia independientes.'
+      )
     ).toBeInTheDocument();
   });
 
@@ -293,7 +324,6 @@ describe('ScientificJobDetail', () => {
         dataset_version_id: ' config-version-1 ',
       },
       result: {
-        accuracy: 0.98,
         training_job_id: ' ',
         dataset_id: ' ',
         dataset_version_id: ' ',

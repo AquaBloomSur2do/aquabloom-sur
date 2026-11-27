@@ -802,7 +802,73 @@ def mock_training_file(monkeypatch, csv_content: bytes, valid_checksum: bool = T
         "apps.scientific.app.domains.execution.service_execution.fetch_training_file",
         fetch_file,
     )
+    monkeypatch.setattr(
+        "apps.scientific.app.domains.execution.service_execution.fetch_dataset_provenance",
+        lambda version_id, _organization_id: {
+            "dataset_id": DATASET_ID,
+            "version_id": str(version_id),
+            "version_number": "1",
+            "manifest_checksum": "a" * 64,
+            "origin": "synthetic",
+            "sources": [
+                {
+                    "id": "pilot-source",
+                    "source_name": "Synthetic pilot fixture",
+                    "checksum": "b" * 64,
+                    "is_synthetic": True,
+                    "is_experimental": False,
+                }
+            ],
+            "pilot_fixture": None,
+        },
+    )
     return fetch_file
+
+
+def test_training_fails_when_dataset_provenance_is_unavailable(
+    fake_database, monkeypatch
+):
+    csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
+    mock_training_file(monkeypatch, csv_data)
+    monkeypatch.setattr(service_execution, "fetch_dataset_provenance", lambda *_: None)
+
+    response = client.post(
+        "/api/v1/executions/", json=training_payload(), headers=HEADERS
+    )
+
+    assert response.status_code == 202
+    row = fake_database.rows[0]
+    assert row["status"] == "failed"
+    assert "procedencia" in row["error_message"].lower()
+
+
+def test_training_fails_when_dataset_provenance_version_does_not_match(
+    fake_database, monkeypatch
+):
+    csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
+    mock_training_file(monkeypatch, csv_data)
+    monkeypatch.setattr(
+        service_execution,
+        "fetch_dataset_provenance",
+        lambda _version_id, _organization_id: {
+            "dataset_id": DATASET_ID,
+            "version_id": OTHER_MODEL_VERSION_ID,
+            "version_number": "1",
+            "manifest_checksum": "a" * 64,
+            "origin": "synthetic",
+            "sources": [],
+            "pilot_fixture": None,
+        },
+    )
+
+    response = client.post(
+        "/api/v1/executions/", json=training_payload(), headers=HEADERS
+    )
+
+    assert response.status_code == 202
+    row = fake_database.rows[0]
+    assert row["status"] == "failed"
+    assert "no corresponde" in row["error_message"].lower()
 
 
 def test_model_fetches_training_file_for_version(monkeypatch):
@@ -841,6 +907,13 @@ def test_training_is_persisted_as_queued_and_returns_202(fake_database, monkeypa
     assert result["prediction_value"] == 15.0
     assert result["predictions"] == [15.0]
     assert result["metrics"] == {"mae": 15.0, "rmse": 15.0}
+    assert result["provenance"]["origin"] == "synthetic"
+    assert result["provenance"]["version_id"] == VERSION_ID
+    assert any(
+        "No se calculó exactitud (accuracy)" in item
+        for item in result["limitations"]
+    )
+    assert "accuracy" not in result
     fetch_file.assert_called_once_with(
         VERSION_ID,
         uuid.UUID(ORGANIZATION_ID),
@@ -921,6 +994,17 @@ def test_get_training_job_status_exposes_full_structured_result(
     assert result["metrics"] == {"mae": 15.0, "rmse": 15.0}
     assert result["version"] == VERSION_ID
     assert result["dataset_version_id"] == VERSION_ID
+    assert result["provenance"]["origin"] == "synthetic"
+    assert result["provenance"]["manifest_checksum"] == "a" * 64
+    assert any(
+        "datos de entrenamiento son sintéticos" in item
+        for item in result["limitations"]
+    )
+    assert any(
+        "No se calculó exactitud (accuracy)" in item
+        for item in result["limitations"]
+    )
+    assert "accuracy" not in result
     assert result["status"] == "completed"
     assert isinstance(result["warnings"], list)
     assert len(result["warnings"]) >= 1
@@ -1171,6 +1255,19 @@ def test_job_status_and_result_persist_across_api_restart(tmp_path, monkeypatch)
                     csv_data,
                     checksum,
                 ),
+            )
+            mp.setattr(
+                service_execution,
+                "fetch_dataset_provenance",
+                lambda version_id, _organization_id: {
+                    "dataset_id": DATASET_ID,
+                    "version_id": str(version_id),
+                    "version_number": "1",
+                    "manifest_checksum": "a" * 64,
+                    "origin": "synthetic",
+                    "sources": [],
+                    "pilot_fixture": None,
+                },
             )
             with TestClient(first_app) as first_api_client:
                 create_response = first_api_client.post(

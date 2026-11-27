@@ -43,7 +43,7 @@ class FakeDatabase:
         return FakeQuery(self.row)
 
 
-def test_job_status_exposes_validated_traceability_evidence():
+def test_job_status_exposes_validated_traceability_evidence(monkeypatch):
     from apps.scientific.app.domains.execution.schemas_execution import (
         JobStatus,
         TraceabilityEvidence,
@@ -52,12 +52,16 @@ def test_job_status_exposes_validated_traceability_evidence():
         get_job_status_service,
     )
 
+    monkeypatch.setattr(
+        "apps.scientific.app.domains.execution.service_execution.has_active_organization_membership",
+        lambda *_args: True,
+    )
     row = {
         "id": JOB_ID,
         "job_type": "estimation",
         "status": "completed",
         "config": {},
-        "result": {"accuracy": 0.98, "traceability_evidence": EVIDENCE},
+        "result": {"traceability_evidence": EVIDENCE},
         "created_at": "2026-11-17T00:00:00Z",
     }
 

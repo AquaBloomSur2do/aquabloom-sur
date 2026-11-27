@@ -1,8 +1,35 @@
 import pytest
 
 from apps.scientific.app.domains.execution.domain_execution import (
+    build_training_limitations,
     calculate_pilot_metrics,
 )
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["synthetic", "real", "mixed", "unknown"],
+)
+def test_training_limitations_always_disclose_unmeasured_accuracy(origin):
+    limitations = build_training_limitations(
+        {"origin": origin},
+        train_sample_count=8,
+        validation_sample_count=2,
+    )
+
+    assert any("No se calculó exactitud (accuracy)" in item for item in limitations)
+    assert any("validación secuencial" in item for item in limitations)
+    assert any("línea base" in item for item in limitations)
+
+
+def test_training_limitations_identify_synthetic_origin():
+    limitations = build_training_limitations(
+        {"origin": "synthetic"},
+        train_sample_count=8,
+        validation_sample_count=2,
+    )
+
+    assert any("datos de entrenamiento son sintéticos" in item for item in limitations)
 
 
 def test_calculate_pilot_metrics_standard_case():

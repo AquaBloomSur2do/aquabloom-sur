@@ -18,6 +18,7 @@ from apps.scientific.app.domains.execution.domain_execution import (
     build_job_accepted_response,
     build_running_update_payload,
     build_timeout_error_message,
+    build_training_limitations,
     calculate_baseline,
     execute_point_inference,
     format_exception_error_message,
@@ -35,6 +36,7 @@ from apps.scientific.app.domains.execution.model_artifacts import (
 )
 from apps.scientific.app.domains.execution.model_execution import (
     download_model_artifact_from_storage,
+    fetch_dataset_provenance,
     fetch_training_file,
     find_scientific_job_in_db,
     get_dataset_version_for_training,
@@ -45,6 +47,7 @@ from apps.scientific.app.domains.execution.model_execution import (
     update_scientific_job_in_db,
 )
 from apps.scientific.app.domains.execution.schemas_execution import (
+    DatasetProvenanceInfo,
     EstimationConfig,
     JobCreate,
     ReproducibilityMetadata,
@@ -298,6 +301,19 @@ async def run_scientific_algorithm(
         organization_id,
         requested_by,
     )
+    raw_provenance = await asyncio.to_thread(
+        fetch_dataset_provenance, str(version_id), organization_id
+    )
+    if raw_provenance is None:
+        raise ValueError(
+            "Core no devolvió la procedencia de la versión del dataset."
+        )
+    provenance_model = DatasetProvenanceInfo.model_validate(raw_provenance)
+    if provenance_model.version_id != str(version_id):
+        raise ValueError(
+            "La procedencia recibida no corresponde a la versión de dataset utilizada."
+        )
+    provenance = provenance_model.model_dump(mode="json")
     raw_data = parse_training_csv(file_bytes, checksum)
     train_data, val_data = split_training_validation(
         raw_data, split_ratio=TRAINING_SPLIT_RATIO
@@ -328,6 +344,12 @@ async def run_scientific_algorithm(
         code_version=os.getenv("APP_VERSION") or "dev",
         environment=settings.environment,
     ).model_dump(mode="json")
+    result["provenance"] = provenance
+    result["limitations"] = build_training_limitations(
+        provenance,
+        train_sample_count=result["baseline"]["train_sample_count"],
+        validation_sample_count=result["baseline"]["validation_sample_count"],
+    )
     return result
 
 

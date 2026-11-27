@@ -99,6 +99,15 @@ class CoreServiceClient(_InternalServiceClient):
             raise ServiceContractError("La respuesta Core no incluye checksum.")
         return response.content, checksum
 
+    def get_dataset_provenance(
+        self, version_id: UUID | str, organization_id: UUID | str
+    ) -> dict[str, Any] | None:
+        response = self.get(
+            f"/internal/v1/datasets/versions/{version_id}/provenance",
+            params={"organization_id": str(organization_id)},
+        )
+        return response.json() if response is not None else None
+
 
 class SatelliteServiceClient(_InternalServiceClient):
     def __init__(self):

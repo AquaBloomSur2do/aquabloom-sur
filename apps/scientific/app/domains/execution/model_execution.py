@@ -106,6 +106,22 @@ def fetch_training_file(
         ) from exc
 
 
+def fetch_dataset_provenance(
+    version_id: UUID | str,
+    organization_id: UUID | str,
+) -> dict[str, Any] | None:
+    """Obtiene la procedencia del dataset mediante el contrato interno de Core."""
+    try:
+        return CoreServiceClient().get_dataset_provenance(
+            version_id,
+            organization_id,
+        )
+    except (DatasetContractError, ServiceContractError) as exc:
+        raise ValueError(
+            "No se pudo obtener la procedencia del dataset desde Core."
+        ) from exc
+
+
 def get_registered_model_artifact_ref(
     client, model_id: UUID | str, organization_id: UUID | str
 ) -> dict[str, Any]:

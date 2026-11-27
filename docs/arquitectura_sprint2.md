@@ -58,7 +58,6 @@ trabajo:
 
 ```json
 {
-  "accuracy": 0.98,
   "processed_pixels": 102400,
   "traceability_evidence": {
     "job_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -70,6 +69,9 @@ trabajo:
 }
 ```
 
+El ejemplo ilustra la forma del JSON; sus identificadores no documentan una
+ejecución real ni afirman una métrica de precisión.
+
 La API ya valida y expone la evidencia persistida. El proceso científico actual
 no genera todavía estos cinco valores: en particular, `EstimationConfig.scene_id`
 es hoy texto libre, no exige `dataset_version_id`, y no se persiste un UUID por
@@ -78,3 +80,29 @@ resuelto la escena y utilizado efectivamente la versión/modelo identificados;
 el siguiente paso de integración es crear esos identificadores durante el
 procesamiento y persistirlos junto al resultado. No se infieren identificadores
 ni se presenta evidencia ficticia para resultados existentes.
+
+## Procedencia y límites de entrenamiento (S2-191)
+
+Al completar un entrenamiento, `result.provenance` conserva la procedencia
+devuelta por Core para la versión publicada realmente consumida: dataset,
+`version_id`, número de versión, checksum del manifiesto, fuentes y clasificación
+`synthetic`, `real`, `mixed` o `unknown`. Una consulta de procedencia fallida o
+una versión distinta de la solicitada impide completar el trabajo, para evitar
+resultados exitosos sin evidencia verificable. `real` significa únicamente que
+las fuentes del manifiesto no están marcadas como sintéticas; no es una
+verificación independiente de autenticidad.
+
+El resultado también conserva la línea base, MAE/RMSE calculados sobre una
+partición secuencial del mismo dataset, tamaños de muestra y metadatos de
+reproducibilidad (versión del dataset, configuración, código y entorno). Sus
+limitaciones explicitan el uso de datos sintéticos cuando aplica, la falta de
+validación independiente con mediciones de campo y que no se calculó `accuracy`
+contra valores de referencia independientes. MAE/RMSE no deben presentarse como
+una medición de precisión independiente.
+
+Para repetir la demostración, ejecutar un trabajo de entrenamiento con una
+versión publicada cuyo manifiesto identifique las fuentes, consultar el estado
+del trabajo y conservar el `job_id`, el origen, el `version_id`, el checksum del
+manifiesto, las métricas devueltas y las limitaciones. Los datos concretos de
+esa ejecución deben copiarse de la respuesta persistida; este documento no
+inventa identificadores ni resultados de una ejecución no realizada.

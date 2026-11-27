@@ -28,6 +28,28 @@ export interface BaselineInfo {
   validation_sample_count: number;
 }
 
+export interface DatasetProvenanceSource {
+  id: string;
+  source_name?: string | null;
+  checksum: string;
+  is_synthetic: boolean;
+  is_experimental: boolean;
+}
+
+export interface DatasetProvenance {
+  dataset_id: string;
+  version_id: string;
+  version_number: string;
+  manifest_checksum: string;
+  origin: 'synthetic' | 'real' | 'mixed' | 'unknown';
+  sources: DatasetProvenanceSource[];
+  pilot_fixture?: {
+    dataset_version?: string;
+    scene_identifier?: string;
+    random_seed?: number;
+  } | null;
+}
+
 export interface PointPredictionItem {
   point_id?: string;
   station_name?: string | null;
@@ -62,6 +84,8 @@ export interface TrainingJobResult {
   point_count?: number;
   model_id?: string;
   artifact_checksum?: string;
+  provenance?: DatasetProvenance | null;
+  limitations?: string[];
   status?: 'queued' | 'running' | 'completed' | 'failed' | string;
   warnings?: string[];
   [key: string]: unknown;
