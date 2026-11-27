@@ -1,4 +1,5 @@
 import hashlib
+from copy import deepcopy
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -565,6 +566,44 @@ def test_investigator_cannot_publish_version(monkeypatch):
 
     assert response.status_code == 403
     assert database.dataset_rows["versions"][0]["status"] == "DRAFT"
+
+
+def test_member_of_another_organization_cannot_publish_or_change_version(monkeypatch):
+    database = setup_request(monkeypatch, "supervisor")
+    other_organization_id = str(uuid4())
+    database.organization_memberships[0]["organization_id"] = other_organization_id
+
+    version = database.dataset_rows["versions"][0]
+    version.update(
+        {
+            "state": "APPROVED",
+            "status": "APPROVED",
+            "published_at": None,
+        }
+    )
+    version_before = deepcopy(version)
+
+    try:
+        response = client.post(
+            f"/api/v1/datasets/versions/{database.version_id}/publish"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    version_after = next(
+        row
+        for row in database.dataset_rows["versions"]
+        if row["id"] == database.version_id
+    )
+
+    assert database.organization_memberships[0]["organization_id"] != (
+        database.dataset_rows["datasets"][0]["organization_id"]
+    )
+    assert response.status_code == 403
+    assert version_after == version_before
+    assert version_after["state"] == "APPROVED"
+    assert version_after["status"] == "APPROVED"
+    assert version_after["published_at"] is None
 
 
 def test_publishing_version_requires_authentication():
