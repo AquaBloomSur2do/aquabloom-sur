@@ -32,12 +32,21 @@ Define el ciclo de vida, los roles autorizados y las transiciones válidas e inv
 | :--- | :--- | :--- | :--- | :--- |
 | **Crear** | *(ninguno)* | `draft` | `author`, `org_admin` | El usuario pertenece a la organización propietaria del recurso (`S3-30`, `S3-31`). |
 | **Enviar a revisión** | `draft` | `submitted` | `author`, `org_admin` | La versión cuenta con metadatos mínimos, atribución y archivo válido (`S3-06`, `S3-07`, `S3-35`). |
-| **Aprobar revisión** | `submitted` | `approved` | `reviewer`, `org_admin` | Decisión positiva registrada en auditoría (`S3-36`, `S3-68`). |
-| **Solicitar cambios** | `submitted` | `draft` | `reviewer`, `org_admin` | Devuelve la versión a borrador con observaciones de revisión (`S3-36`). |
+| **Aprobar revisión** | `submitted` | `approved` | `reviewer`, `org_admin` | Decisión `"approved"` con motivo según `docs/library-version-review-contract.md` (`S3-11`, `S3-36`, `S3-68`). |
+| **Solicitar cambios** | `submitted` | `draft` | `reviewer`, `org_admin` | Decisión `"changes_requested"` con motivo según `docs/library-version-review-contract.md` (`S3-11`, `S3-36`). |
 | **Publicar** | `approved` | `published` | `org_admin` | Requiere aprobación previa vigente y permiso de publicación en la organización (`S3-53`, `S3-70`). |
 | **Retirar (previo a publicar)** | `draft`, `submitted`, `approved` | `withdrawn` | `author`, `org_admin` | Cancela la versión antes de su publicación. |
 | **Retirar (publicada)** | `published` | `withdrawn` | `org_admin` | Retira del catálogo activo conservando trazabilidad e historial (`S3-67`). |
 
+### Efecto de las decisiones de revisión (`S3-11`)
+
+El contrato detallado de solicitud, identificación del revisor desde la sesión
+autenticada, decisión y motivo se define en
+[`docs/library-version-review-contract.md`](./library-version-review-contract.md)
+(flujo exclusivo de biblioteca, separado de `dataset.decisions`):
+
+- **`"decision": "approved"`:** transiciona la versión de `submitted` a `approved`, habilitando su posterior publicación por un `org_admin`.
+- **`"decision": "changes_requested"`:** transiciona la versión de `submitted` a `draft` con el motivo registrado para que el autor aplique correcciones y reenvíe.
 ---
 
 ## 4. Casos de transición rechazada
