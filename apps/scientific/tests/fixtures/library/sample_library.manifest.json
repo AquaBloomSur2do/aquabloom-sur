@@ -1,0 +1,28 @@
+{
+  "file_name": "sample_library.csv",
+  "media_type": "text/csv",
+  "origin": "synthetic",
+  "usage_permission": {
+    "allowed": true,
+    "scope": "automated_testing_and_pilot_validation",
+    "license_spdx": "CC-BY-4.0",
+    "notes": "Recurso sintético determinista generado para pruebas de carga y restauración de biblioteca (S3-10)."
+  },
+  "size_bytes": 238,
+  "sha256": "c2a25f7fb98e601422a5a774fb127e03be3cd9363f17ac5a09e0f3d456133e3b",
+  "attribution": {
+    "author": {
+      "status": "known",
+      "name": "Equipo Científico AquaBloom Sur"
+    },
+    "license": {
+      "spdx_id": "CC-BY-4.0",
+      "url": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    "version": "1.0.0",
+    "source": {
+      "name": "Fixture sintético de biblioteca científica AquaBloom Sur (S3-10)",
+      "url": null
+    }
+  }
+}
