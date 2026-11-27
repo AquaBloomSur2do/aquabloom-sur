@@ -93,7 +93,7 @@ export function EstimationForm({ lakeId, sceneId }: EstimationFormProps) {
         job_type: 'ESTIMATION',
         config: { ...config },
       });
-      navigate(`/scientific/jobs/${response.job_id}`);
+      navigate(`/estimations/${response.job_id}`);
     } catch (err: unknown) {
       setError(
         err instanceof ApiError

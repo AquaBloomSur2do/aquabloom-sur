@@ -139,7 +139,7 @@ describe('EstimationForm', () => {
       });
     });
 
-    expect(mockNavigate).toHaveBeenCalledWith('/scientific/jobs/job-est-999');
+    expect(mockNavigate).toHaveBeenCalledWith('/estimations/job-est-999');
   });
 
   it('omite metadatos de trazabilidad vacíos después de normalizarlos', async () => {

@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { executionsService } from '../services/executions';
+import { ApiError } from '../services/apiClient';
 import BaseMap from '../components/Map/BaseMap';
 import { ScientificJobDetail } from './ScientificJobDetail';
 
@@ -319,6 +320,12 @@ describe('ScientificJobDetail', () => {
       </MemoryRouter>
     );
 
+    expect(await screen.findByText('dataset-version-1')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('model-version-1').length
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('model-1').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('scene-1').length).toBeGreaterThanOrEqual(1);
     expect(await screen.findAllByText('config-version-1')).not.toHaveLength(0);
     expect(screen.getByText('model-version-1')).toBeInTheDocument();
     expect(screen.getByText('model-1')).toBeInTheDocument();
@@ -368,7 +375,7 @@ describe('ScientificJobDetail', () => {
     );
 
     expect(await screen.findAllByText('No informada por la API')).toHaveLength(
-      2
+      4
     );
     expect(
       screen.queryByRole('button', { name: 'Abrir manifiesto' })
@@ -606,6 +613,112 @@ describe('ScientificJobDetail', () => {
     expect(BaseMap).not.toHaveBeenCalled();
   });
 
+  it('muestra el resumen de la estimación con valor, unidad, incertidumbre y RN-10', async () => {
+    vi.mocked(executionsService.getJobStatus).mockResolvedValue({
+      job_id: 'job-est-summary',
+      job_type: 'estimation',
+      status: 'completed',
+      config: { model_id: 'model-ndci', scene_id: 'scene-s2' },
+      result: {
+        estimated_value: 7.89,
+        unit: 'ug/L',
+        model: 'NDCI',
+        acquisition_date: '2026-11-20T00:00:00Z',
+        uncertainty: {
+          lower: 6.5,
+          upper: 9.2,
+          calibrated: true,
+          unit: 'ug/L',
+        },
+        usage_limits: ['No usar como alerta sanitaria.'],
+        warnings: ['Escena con nubosidad parcial.'],
+      },
+      dataset_version_id: null,
+      model_version_id: 'model-version-ndci',
+      scene_id: 'scene-s2',
+      requested_by: 'user-1',
+      error_message: null,
+      created_at: '2026-11-25T12:00:00Z',
+      started_at: '2026-11-25T12:00:01Z',
+      completed_at: '2026-11-25T12:00:02Z',
+      updated_at: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/estimations/job-est-summary']}>
+        <Routes>
+          <Route
+            path="/estimations/:jobId"
+            element={<ScientificJobDetail />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Resumen de la estimación' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('7.89 ug/L')).toBeInTheDocument();
+    expect(screen.getByText('ug/L')).toBeInTheDocument();
+    const dateDetail = screen
+      .getByText('Fecha de estimación')
+      .closest('.detail');
+    expect(dateDetail).not.toBeNull();
+    expect(dateDetail).not.toHaveTextContent('No disponible');
+    expect(
+      screen.getByText('Estado').closest('.detail')
+    ).toHaveTextContent('Completado');
+    expect(
+      screen.getByText('Intervalo 6.5 – 9.2 ug/L (calibrada)')
+    ).toBeInTheDocument();
+    expect(screen.getByText('NDCI')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('model-version-ndci').length
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('scene-s2').length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getByText('Escena con nubosidad parcial.')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('No usar como alerta sanitaria.')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'La clorofila-a es un indicador de biomasa fitoplanctónica y no confirma toxicidad ni constituye una alerta sanitaria.'
+      )
+    ).toBeInTheDocument();
+    expect(executionsService.getJobStatus).toHaveBeenCalledWith(
+      'job-est-summary',
+      expect.any(AbortSignal)
+    );
+  });
+
+  it('muestra un error amigable y la correlación cuando falla la consulta', async () => {
+    vi.mocked(executionsService.getJobStatus).mockRejectedValueOnce(
+      new ApiError({
+        message: 'Not found',
+        status: 404,
+        correlationId: 'corr-est-404',
+      })
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/estimations/job-missing']}>
+        <Routes>
+          <Route
+            path="/estimations/:jobId"
+            element={<ScientificJobDetail />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No se encontró la estimación solicitada o no pertenece a tu organización.'
+    );
+    expect(screen.getByText('Referencia de correlación: corr-est-404')).toBeInTheDocument();
+  });
+
   it('muestra errores de carga y el mensaje de error del trabajo fallido', async () => {
     vi.mocked(executionsService.getJobStatus).mockRejectedValueOnce(
       new Error('No se pudo consultar el trabajo.')
@@ -657,7 +770,7 @@ describe('ScientificJobDetail', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Falló el procesamiento de la escena.'
     );
-    expect(screen.getByText('Fallido')).toBeInTheDocument();
+    expect(screen.getAllByText('Fallido').length).toBeGreaterThanOrEqual(1);
   });
 
   it('muestra fallos durante el sondeo sin ocultar el último estado recibido', async () => {

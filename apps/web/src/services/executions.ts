@@ -30,15 +30,30 @@ export interface BaselineInfo {
 
 export interface PointPredictionItem {
   point_id?: string;
+  station_id?: string | null;
   station_name?: string | null;
   station_code?: string | null;
+  label?: string | null;
+  quality?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   predicted_value?: number | null;
+  prediction_value?: number | null;
   value?: number | null;
   unit?: string | null;
   warning?: string | null;
   warnings?: string[];
+}
+
+export interface EstimationUncertaintyPayload {
+  calibrated?: boolean;
+  lower?: number | null;
+  lower_bound?: number | null;
+  upper?: number | null;
+  upper_bound?: number | null;
+  value?: number | null;
+  unit?: string | null;
+  [key: string]: unknown;
 }
 
 export interface TrainingJobResult {
@@ -53,17 +68,29 @@ export interface TrainingJobResult {
   } | null;
   baseline?: BaselineInfo;
   prediction_value?: number;
+  estimated_value?: number;
+  value?: number;
+  chlorophyll_a?: number;
+  clorofila_a?: number;
   predictions?: number[] | PointPredictionItem[];
+  points?: PointPredictionItem[];
   metrics?: TrainingMetrics;
   version?: string | null;
   dataset_version_id?: string | null;
   model_version_id?: string | null;
   unit?: string | null;
+  unidad?: string | null;
+  uncertainty?: number | EstimationUncertaintyPayload | null;
+  uncertainty_calibrated?: boolean;
+  usage_limits?: string[];
+  warnings?: string[];
+  status?: 'queued' | 'running' | 'completed' | 'failed' | string;
   point_count?: number;
   model_id?: string;
   artifact_checksum?: string;
-  status?: 'queued' | 'running' | 'completed' | 'failed' | string;
-  warnings?: string[];
+  message?: string;
+  acquisition_date?: string | null;
+  scene_identifier?: string | null;
   [key: string]: unknown;
 }
 

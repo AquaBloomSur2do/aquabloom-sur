@@ -1,13 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import type { FeatureCollection, Geometry } from 'geojson';
 import BaseMap from '../components/Map/BaseMap';
+import { ApiError } from '../services/apiClient';
 import { executionsService } from '../services/executions';
 import type {
   JobStatusResponse,
   PointPredictionItem,
   TrainingJobResult,
 } from '../services/executions';
+import {
+  buildEstimationDetail,
+  DEFAULT_ESTIMATION_UNIT,
+  RN10_WARNING,
+  type EstimationDetail,
+} from '../services/estimations';
 
 const DEFAULT_POLL_INTERVAL_MS = 1500;
 const MAX_POLL_ATTEMPTS = 40;
@@ -66,14 +73,26 @@ const STRUCTURED_RESULT_KEYS = new Set([
   'model_version_id',
   'status',
   'warnings',
+  'usage_limits',
   'unit',
+  'unidad',
+  'uncertainty',
+  'uncertainty_calibrated',
   'point_count',
+  'points',
   'model_id',
   'model_name',
   'training_job_id',
   'dataset_id',
   'model_artifact',
   'artifact_checksum',
+  'message',
+  'estimated_value',
+  'value',
+  'chlorophyll_a',
+  'clorofila_a',
+  'acquisition_date',
+  'scene_identifier',
 ]);
 
 function displayValue(value: unknown): string {
@@ -107,10 +126,118 @@ function normalizeWarnings(warnings: string[] | undefined): string[] {
 }
 
 function formatPointValue(value: number | null | undefined): string {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
     return 'No disponible';
   }
   return Number.isInteger(value) ? String(value) : value.toFixed(4);
+}
+
+function formatEstimationValue(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) {
+    return 'No disponible';
+  }
+  return String(Number(value.toFixed(4)));
+}
+
+function formatDateTimeValue(value: string | null | undefined): string {
+  if (!value) {
+    return 'No disponible';
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 'No disponible' : parsed.toLocaleString();
+}
+
+function estimationValueLabel(estimation: EstimationDetail): string {
+  if (estimation.value !== null) {
+    return `${formatEstimationValue(estimation.value)} ${estimation.unit}`;
+  }
+  if (estimation.status === 'queued' || estimation.status === 'running') {
+    return 'Pendiente de cálculo';
+  }
+  if (estimation.status === 'failed') {
+    return 'No disponible por fallo del trabajo';
+  }
+  return 'No disponible';
+}
+
+function formatUncertainty(estimation: EstimationDetail): string {
+  const { uncertainty, unit } = estimation;
+  const uncertaintyUnit = uncertainty.unit ?? unit;
+
+  if (uncertainty.lower !== null && uncertainty.upper !== null) {
+    return `Intervalo ${formatEstimationValue(
+      uncertainty.lower
+    )} – ${formatEstimationValue(uncertainty.upper)} ${uncertaintyUnit}${
+      uncertainty.calibrated ? ' (calibrada)' : ' (no calibrada)'
+    }`;
+  }
+
+  if (uncertainty.value !== null) {
+    return `± ${formatEstimationValue(uncertainty.value)} ${uncertaintyUnit}${
+      uncertainty.calibrated ? ' (calibrada)' : ' (no calibrada)'
+    }`;
+  }
+
+  if (uncertainty.mae !== null || uncertainty.rmse !== null) {
+    const metricParts = [
+      uncertainty.mae !== null
+        ? `MAE ${formatEstimationValue(uncertainty.mae)} ${uncertaintyUnit}`
+        : null,
+      uncertainty.rmse !== null
+        ? `RMSE ${formatEstimationValue(uncertainty.rmse)} ${uncertaintyUnit}`
+        : null,
+    ].filter((part): part is string => part !== null);
+    return `Error del modelo: ${metricParts.join(', ')}. No es un intervalo de confianza calibrado.`;
+  }
+
+  return 'No informada por la API. El resultado no incluye un intervalo de confianza calibrado.';
+}
+
+function resolveLoadErrorMessage(
+  error: unknown,
+  isEstimation: boolean
+): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) {
+      return 'Tu sesión expiró o no es válida. Inicia sesión nuevamente.';
+    }
+    if (error.status === 403) {
+      return isEstimation
+        ? 'No tienes permisos para consultar esta estimación.'
+        : 'No tienes permisos para consultar este trabajo.';
+    }
+    if (error.status === 404) {
+      return isEstimation
+        ? 'No se encontró la estimación solicitada o no pertenece a tu organización.'
+        : 'No se encontró el trabajo solicitado o no pertenece a tu organización.';
+    }
+    if (error.status === 422) {
+      return isEstimation
+        ? 'El identificador de la estimación no es válido.'
+        : 'El identificador del trabajo no es válido.';
+    }
+    if (error.status === 503) {
+      return isEstimation
+        ? 'El servicio de estimaciones no está disponible. Intenta nuevamente en unos segundos.'
+        : 'El servicio de trabajos científicos no está disponible. Intenta nuevamente en unos segundos.';
+    }
+    if (error.isNetworkError) {
+      return 'No se pudo conectar con la API. Revisa tu conexión e inténtalo nuevamente.';
+    }
+    return error.message;
+  }
+
+  return error instanceof Error
+    ? error.message
+    : isEstimation
+      ? 'No se pudo cargar el detalle de la estimación.'
+      : 'No se pudo cargar el detalle del trabajo.';
+}
+
+function resolveCorrelationId(error: unknown): string | null {
+  return error instanceof ApiError && error.correlationId
+    ? error.correlationId
+    : null;
 }
 
 function isPointPredictionList(
@@ -187,9 +314,14 @@ export function ScientificJobDetail({
   pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
 }: ScientificJobDetailProps) {
   const { jobId } = useParams<{ jobId: string }>();
+  const { pathname } = useLocation();
+  const isEstimationRoute = pathname.startsWith('/estimations');
   const [job, setJob] = useState<JobStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorCorrelationId, setErrorCorrelationId] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     if (!jobId) return;
@@ -206,6 +338,7 @@ export function ScientificJobDetail({
       if (isInitialLoad) {
         setLoading(true);
         setError(null);
+        setErrorCorrelationId(null);
         setJob(null);
       }
 
@@ -220,6 +353,7 @@ export function ScientificJobDetail({
 
         setJob(response);
         setError(null);
+        setErrorCorrelationId(null);
 
         if (isInProgressStatus(response.status)) {
           if (pollAttempts >= MAX_POLL_ATTEMPTS) {
@@ -235,11 +369,8 @@ export function ScientificJobDetail({
         }
       } catch (loadError) {
         if (active && !activeController.signal.aborted) {
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : 'No se pudo cargar el detalle del trabajo.'
-          );
+          setError(resolveLoadErrorMessage(loadError, isEstimationRoute));
+          setErrorCorrelationId(resolveCorrelationId(loadError));
         }
       } finally {
         if (active && isInitialLoad) {
@@ -256,8 +387,15 @@ export function ScientificJobDetail({
         window.clearTimeout(pollTimer);
       }
     };
-  }, [jobId, pollIntervalMs]);
+  }, [jobId, pollIntervalMs, isEstimationRoute]);
 
+  const isEstimationView = job
+    ? job.job_type === 'estimation'
+    : isEstimationRoute;
+  const estimation = useMemo(
+    () => (job && job.job_type === 'estimation' ? buildEstimationDetail(job) : null),
+    [job]
+  );
   const resolvedDatasetVersionId = job ? resolveDatasetVersionId(job) : null;
 
   const extraResultEntries = job?.result
@@ -268,7 +406,8 @@ export function ScientificJobDetail({
   const normalizedWarnings = normalizeWarnings(job?.result?.warnings);
   const baselinePrediction =
     job?.result?.baseline?.prediction_value ?? job?.result?.prediction_value;
-  const pointPredictionSource = job?.result?.predictions;
+  const pointPredictionSource =
+    job?.result?.points ?? job?.result?.predictions;
   const pointPredictions = useMemo(
     () =>
       isPointPredictionList(pointPredictionSource)
@@ -381,8 +520,12 @@ export function ScientificJobDetail({
       <header className="page-head">
         <div>
           <span className="eyebrow">Trazabilidad científica</span>
-          <h1>Detalle del experimento</h1>
-          <p className="subtitle">Trabajo {jobId ?? 'no identificado'}</p>
+          <h1>
+            {isEstimationView ? 'Detalle de la estimación' : 'Detalle del experimento'}
+          </h1>
+          <p className="subtitle">
+            {isEstimationView ? 'Estimación' : 'Trabajo'} {jobId ?? 'no identificado'}
+          </p>
         </div>
         <Link to="/lakes" className="btn btn-secondary">
           Volver a lagos
@@ -391,24 +534,135 @@ export function ScientificJobDetail({
 
       {!jobId ? (
         <div className="status-banner danger" role="alert">
-          No se indicó el identificador del trabajo.
+          {isEstimationView
+            ? 'No se indicó el identificador de la estimación.'
+            : 'No se indicó el identificador del trabajo.'}
         </div>
       ) : loading ? (
-        <p role="status">Cargando detalle del trabajo...</p>
+        <p role="status">
+          {isEstimationView
+            ? 'Cargando detalle de la estimación...'
+            : 'Cargando detalle del trabajo...'}
+        </p>
       ) : error && !job ? (
         <div className="status-banner danger" role="alert">
-          {error}
+          <span>{error}</span>
+          {errorCorrelationId && (
+            <span className="card-note">
+              Referencia de correlación: {errorCorrelationId}
+            </span>
+          )}
         </div>
       ) : job ? (
         <main className="grid">
           {error && (
             <div className="status-banner danger detail-full" role="alert">
-              {error}
+              <span>{error}</span>
+              {errorCorrelationId && (
+                <span className="card-note">
+                  Referencia de correlación: {errorCorrelationId}
+                </span>
+              )}
             </div>
           )}
+
+          {estimation && (
+            <section className="card" aria-labelledby="estimation-summary-heading">
+              <div className="card-head">
+                <h2 id="estimation-summary-heading">Resumen de la estimación</h2>
+                <span className={statusPresentation[estimation.status].className}>
+                  <span aria-hidden="true">
+                    {statusPresentation[estimation.status].icon}
+                  </span>{' '}
+                  {statusPresentation[estimation.status].label}
+                </span>
+              </div>
+              <div className="card-body grid">
+                <div className="detail">
+                  <span>Valor estimado</span>
+                  <b>{estimationValueLabel(estimation)}</b>
+                </div>
+                <div className="detail">
+                  <span>Unidad</span>
+                  <b>{estimation.unit}</b>
+                </div>
+                <div className="detail">
+                  <span>Fecha de estimación</span>
+                  <b>{formatDateTimeValue(estimation.date)}</b>
+                </div>
+                <div className="detail">
+                  <span>Estado</span>
+                  <b>{statusPresentation[estimation.status].label}</b>
+                </div>
+                <div className="detail">
+                  <span>Modelo</span>
+                  <b>{estimation.model ?? 'No informado por la API'}</b>
+                </div>
+                <div className="detail">
+                  <span>Versión del modelo</span>
+                  {estimation.modelVersionId ? (
+                    <span className="code-pill">{estimation.modelVersionId}</span>
+                  ) : (
+                    <b>No informada por la API</b>
+                  )}
+                </div>
+                <div className="detail">
+                  <span>Escena</span>
+                  {estimation.sceneId ? (
+                    <span className="code-pill">{estimation.sceneId}</span>
+                  ) : (
+                    <b>No informada por la API</b>
+                  )}
+                </div>
+                {estimation.acquisitionDate && (
+                  <div className="detail">
+                    <span>Fecha de adquisición de la escena</span>
+                    <b>{formatDateTimeValue(estimation.acquisitionDate)}</b>
+                  </div>
+                )}
+                <div className="detail detail-full">
+                  <span>Incertidumbre</span>
+                  <b>{formatUncertainty(estimation)}</b>
+                </div>
+                {estimation.usageLimits.length > 0 && (
+                  <div className="detail detail-full">
+                    <span>Límites de uso</span>
+                    <ul className="traceability-list">
+                      {estimation.usageLimits.map((limit) => (
+                        <li key={limit}>{limit}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="detail detail-full">
+                  <span>Advertencias científicas</span>
+                  {estimation.warnings.length > 0 ? (
+                    <ul className="traceability-list">
+                      {estimation.warnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <b>Sin advertencias adicionales.</b>
+                  )}
+                </div>
+                <div
+                  className="status-banner warning detail-full"
+                  role="note"
+                  aria-label="Advertencia de interpretación"
+                >
+                  <div>
+                    <strong>Advertencia de interpretación</strong>
+                    <p>{RN10_WARNING}</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
           <section className="card">
             <div className="card-head">
-              <h2>Estado del experimento</h2>
+              <h2>{isEstimationView ? 'Estado de la estimación' : 'Estado del experimento'}</h2>
               <span className={statusPresentation[job.status].className}>
                 <span aria-hidden="true">
                   {statusPresentation[job.status].icon}
@@ -435,12 +689,12 @@ export function ScientificJobDetail({
               </div>
               <div className="detail">
                 <span>Creado</span>
-                <b>{new Date(job.created_at).toLocaleString()}</b>
+                <b>{formatDateTimeValue(job.created_at)}</b>
               </div>
               {job.completed_at && (
                 <div className="detail">
                   <span>Finalizado</span>
-                  <b>{new Date(job.completed_at).toLocaleString()}</b>
+                  <b>{formatDateTimeValue(job.completed_at)}</b>
                 </div>
               )}
               {job.status === 'failed' && job.error_message && (
@@ -683,6 +937,16 @@ export function ScientificJobDetail({
                         interactive={false}
                       />
                     </div>
+                    <ul className="card-note" aria-label="Leyenda del mapa">
+                      <li>
+                        Punto rojo: estimación puntual de clorofila-a en la
+                        escena.
+                      </li>
+                      <li>
+                        La escala métrica se muestra en la esquina inferior
+                        izquierda del mapa.
+                      </li>
+                    </ul>
                   </>
                 ) : (
                   <p className="card-note" role="status">
@@ -719,11 +983,15 @@ export function ScientificJobDetail({
                             item.latitude,
                             item.longitude
                           );
-                          const rawValue = item.predicted_value ?? item.value;
+                          const rawValue =
+                            item.predicted_value ??
+                            item.prediction_value ??
+                            item.value;
                           const unit =
                             item.unit?.trim() ||
                             job.result?.unit?.trim() ||
-                            'Sin unidad';
+                            job.result?.unidad?.trim() ||
+                            DEFAULT_ESTIMATION_UNIT;
                           const warning =
                             item.warning?.trim() ||
                             (item.warnings?.length

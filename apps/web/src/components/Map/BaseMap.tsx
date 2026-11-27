@@ -3,6 +3,7 @@ import {
   Map as MapLibreMap,
   NavigationControl,
   Popup,
+  ScaleControl,
   type GeoJSONSource,
   type LngLatLike,
   type MapLayerMouseEvent,
@@ -73,6 +74,7 @@ export default function BaseMap({
 
     mapRef.current = map;
     map.addControl(new NavigationControl(), 'top-right');
+    map.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left');
 
     const handleLoad = () => setMapLoaded(true);
     map.on('load', handleLoad);
