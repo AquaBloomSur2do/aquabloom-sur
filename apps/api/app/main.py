@@ -32,6 +32,12 @@ from apps.api.app.domains.ingestion.controller_ingestion import (
 from apps.api.app.domains.internal.controller_internal import (
     router as internal_router,
 )
+from apps.api.app.domains.library.controller_library import (
+    router as library_router,
+)
+from apps.api.app.domains.library.service_library import (
+    verify_library_module_startup,
+)
 from apps.api.app.gateway.controller_gateway import router as gateway_router
 from apps.api.app.gateway.executions_bridge import (
     router as executions_bridge_router,
@@ -58,6 +64,7 @@ tags_metadata = [
     {"name": "Observations", "description": "Observaciones espectrales."},
     {"name": "Datasets", "description": "Versionado y manifiestos de datasets."},
     {"name": "Manifests", "description": "Trazabilidad y validación criptográfica."},
+    {"name": "Library", "description": "Módulo habilitable de biblioteca en Core."},
 ]
 
 logger = logging.getLogger(__name__)
@@ -145,6 +152,8 @@ app.include_router(scenes_router)
 app.include_router(observations_router, responses=COMMON_RESPONSES)
 app.include_router(execution_router)
 app.include_router(internal_router)
+app.include_router(library_router, responses=COMMON_RESPONSES)
+verify_library_module_startup(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -209,3 +218,6 @@ def health_check():
 )
 def test_permission_route() -> dict:
     return {"message": "Acceso permitido. Tienes el rol correcto."}
+
+
+
