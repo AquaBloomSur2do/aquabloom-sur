@@ -100,9 +100,11 @@ validación independiente con mediciones de campo y que no se calculó `accuracy
 contra valores de referencia independientes. MAE/RMSE no deben presentarse como
 una medición de precisión independiente.
 
-Para repetir la demostración, ejecutar un trabajo de entrenamiento con una
-versión publicada cuyo manifiesto identifique las fuentes, consultar el estado
-del trabajo y conservar el `job_id`, el origen, el `version_id`, el checksum del
-manifiesto, las métricas devueltas y las limitaciones. Los datos concretos de
-esa ejecución deben copiarse de la respuesta persistida; este documento no
-inventa identificadores ni resultados de una ejecución no realizada.
+Este cambio cubre la implementación técnica, los contratos entre servicios y la
+validación automatizada; sin servicios activos desplegados en este flujo, no se
+inventan identificadores ni resultados ficticios. Antes de dar por cerrado
+`S2-191` en Linear, se debe ejecutar la demostración sobre un entorno activo con
+una versión publicada cuyo manifiesto identifique las fuentes, consultar el
+estado del trabajo y registrar la evidencia real observada (`job_id`,
+`dataset_id`, `version_id`, `origin`, `manifest_checksum`, `MAE`/`RMSE`,
+tamaños de partición y limitaciones científicas detectadas).

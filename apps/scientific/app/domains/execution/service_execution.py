@@ -309,7 +309,11 @@ async def run_scientific_algorithm(
             "Core no devolvió la procedencia de la versión del dataset."
         )
     provenance_model = DatasetProvenanceInfo.model_validate(raw_provenance)
-    if provenance_model.version_id != str(version_id):
+    expected_dataset_id = config.get("dataset_id")
+    if provenance_model.version_id != str(version_id) or (
+        expected_dataset_id is not None
+        and provenance_model.dataset_id != str(expected_dataset_id)
+    ):
         raise ValueError(
             "La procedencia recibida no corresponde a la versión de dataset utilizada."
         )

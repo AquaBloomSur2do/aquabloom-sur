@@ -911,7 +911,7 @@ def build_version_manifest_service(
                 or src.get("scene_provider")
                 or f"Fuente Externa {idx + 1}"
             )
-            src_synthetic = False
+            src_synthetic = bool(src.get("is_synthetic", False))
 
         sources.append(
             ManifestItem(
@@ -977,15 +977,22 @@ def build_version_manifest_service(
     )
 
 
-def classify_dataset_origin(sources: list[ManifestItem]) -> str:
+def classify_dataset_origin(
+    sources: list[ManifestItem],
+    pilot_fixture: PilotFixtureMetadata | None = None,
+) -> str:
     """Clasifica el origen según las marcas del manifiesto.
 
     "real" significa que ninguna fuente está marcada como sintética; no es una
     verificación independiente de la autenticidad de los datos.
     """
-    if not sources:
-        return "unknown"
     flags = {source.is_synthetic for source in sources}
+    if pilot_fixture is not None:
+        flags.add(pilot_fixture.dataset_is_synthetic)
+        flags.add(pilot_fixture.scene_is_synthetic)
+        flags.update(item.is_synthetic for item in pilot_fixture.inputs)
+    if not flags:
+        return "unknown"
     if flags == {True}:
         return "synthetic"
     if flags == {False}:
@@ -1009,7 +1016,7 @@ def get_dataset_provenance_for_training(
         version_id=manifest.version_id,
         version_number=manifest.version_number,
         manifest_checksum=manifest.manifest_checksum,
-        origin=classify_dataset_origin(manifest.sources),
+        origin=classify_dataset_origin(manifest.sources, manifest.pilot_fixture),
         sources=manifest.sources,
         pilot_fixture=manifest.pilot_fixture,
     )

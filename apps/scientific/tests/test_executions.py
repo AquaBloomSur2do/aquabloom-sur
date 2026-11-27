@@ -871,6 +871,31 @@ def test_training_fails_when_dataset_provenance_version_does_not_match(
     assert "no corresponde" in row["error_message"].lower()
 
 
+def test_training_fails_when_provenance_dataset_id_mismatches_config(
+    fake_database, monkeypatch
+):
+    csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
+    mock_training_file(monkeypatch, csv_data)
+    monkeypatch.setattr(
+        service_execution,
+        "fetch_dataset_provenance",
+        lambda _version_id, _organization_id: {
+            "dataset_id": "00000000-0000-4000-8000-000000000099",
+            "version_id": VERSION_ID,
+            "version_number": "1",
+            "manifest_checksum": "a" * 64,
+            "origin": "real",
+            "sources": [],
+            "pilot_fixture": None,
+        },
+    )
+    response = client.post("/api/v1/executions/", json=training_payload(), headers=HEADERS)
+    assert response.status_code == 202
+    row = fake_database.rows[0]
+    assert row["status"] == "failed"
+    assert "no corresponde" in row["error_message"].lower()
+
+
 def test_model_fetches_training_file_for_version(monkeypatch):
     mock_client = MagicMock()
     expected_checksum = "a" * 64

@@ -653,6 +653,39 @@ def test_classify_dataset_origin_uses_manifest_flags(flags, expected):
     assert classify_dataset_origin(sources) == expected
 
 
+@pytest.mark.parametrize(
+    ("source_flags", "dataset_is_synthetic", "input_is_synthetic", "expected"),
+    [
+        ([], True, True, "synthetic"),
+        ([False], True, True, "mixed"),
+        ([False], False, True, "mixed"),
+    ],
+)
+def test_classify_dataset_origin_considers_pilot_fixture(
+    source_flags, dataset_is_synthetic, input_is_synthetic, expected
+):
+    from apps.api.app.domains.dataset.schemas_dataset import (
+        ManifestItem,
+        PilotFixtureInput,
+        PilotFixtureMetadata,
+    )
+    from apps.api.app.domains.dataset.service_dataset import classify_dataset_origin
+
+    sources = [
+        ManifestItem(id=f"src-{index}", checksum="a" * 64, is_synthetic=flag)
+        for index, flag in enumerate(source_flags)
+    ]
+    fixture = PilotFixtureMetadata(
+        dataset_version="piloto-v1",
+        dataset_is_synthetic=dataset_is_synthetic,
+        scene_identifier="escena-piloto-01",
+        scene_is_synthetic=dataset_is_synthetic,
+        random_seed=42,
+        inputs=[PilotFixtureInput(name="clorofila_a", is_synthetic=input_is_synthetic)],
+    )
+    assert classify_dataset_origin(sources, fixture) == expected
+
+
 def test_internal_provenance_reports_synthetic_origin_and_pilot_fixture(
     use_provenance_manifest,
 ):

@@ -66,6 +66,11 @@ describe('ScientificJobDetail', () => {
               is_experimental: false,
             },
           ],
+          pilot_fixture: {
+            dataset_version: 'piloto-v1',
+            scene_identifier: 'escena-sintetica-01',
+            random_seed: 42,
+          },
         },
         limitations: [
           'No se calculó exactitud (accuracy) contra valores de referencia independientes.',
@@ -127,6 +132,10 @@ describe('ScientificJobDetail', () => {
     expect(
       screen.getByText('Synthetic pilot fixture — sintética')
     ).toBeInTheDocument();
+    expect(screen.getByText('Fixture piloto')).toBeInTheDocument();
+    expect(screen.getByText('piloto-v1')).toBeInTheDocument();
+    expect(screen.getByText('escena-sintetica-01')).toBeInTheDocument();
+    expect(screen.getByText('42')).toBeInTheDocument();
     expect(screen.getByText('Limitaciones científicas')).toBeInTheDocument();
     expect(
       screen.getByText(

@@ -145,8 +145,8 @@ function isStructuredTrainingResult(result: TrainingJobResult): boolean {
       result.version ||
       result.model_version_id ||
       result.dataset_version_id ||
-    result.provenance ||
-    result.limitations?.length ||
+      result.provenance ||
+      result.limitations?.length ||
       normalizedWarnings.length > 0
   );
 }
@@ -648,7 +648,9 @@ export function ScientificJobDetail({
                         <span>Origen declarado</span>
                         <b>
                           {job.result.provenance
-                            ? datasetOriginLabels[job.result.provenance.origin]
+                            ? (datasetOriginLabels[
+                                job.result.provenance.origin
+                              ] ?? 'Desconocido')
                             : 'No informado por la API'}
                         </b>
                       </div>
@@ -670,9 +672,53 @@ export function ScientificJobDetail({
                               {job.result.provenance.manifest_checksum}
                             </span>
                           </div>
+                          {job.result.provenance.pilot_fixture && (
+                            <div className="detail detail-full">
+                              <span>Fixture piloto</span>
+                              <dl className="traceability-list">
+                                {job.result.provenance.pilot_fixture
+                                  .dataset_version && (
+                                  <div>
+                                    <dt>Versión fixture</dt>
+                                    <dd>
+                                      {
+                                        job.result.provenance.pilot_fixture
+                                          .dataset_version
+                                      }
+                                    </dd>
+                                  </div>
+                                )}
+                                {job.result.provenance.pilot_fixture
+                                  .scene_identifier && (
+                                  <div>
+                                    <dt>Escena piloto</dt>
+                                    <dd>
+                                      {
+                                        job.result.provenance.pilot_fixture
+                                          .scene_identifier
+                                      }
+                                    </dd>
+                                  </div>
+                                )}
+                                {typeof job.result.provenance.pilot_fixture
+                                  .random_seed === 'number' && (
+                                  <div>
+                                    <dt>Semilla aleatoria</dt>
+                                    <dd>
+                                      {
+                                        job.result.provenance.pilot_fixture
+                                          .random_seed
+                                      }
+                                    </dd>
+                                  </div>
+                                )}
+                              </dl>
+                            </div>
+                          )}
                           <div className="detail detail-full">
                             <span>Fuentes</span>
-                            {job.result.provenance.sources.length > 0 ? (
+                            {Array.isArray(job.result.provenance.sources) &&
+                            job.result.provenance.sources.length > 0 ? (
                               <ul className="traceability-list">
                                 {job.result.provenance.sources.map((source) => (
                                   <li key={source.id}>
