@@ -217,6 +217,22 @@ def fake_staging_db(monkeypatch):
             )
             return {**version, "dataset_id": dataset["id"]} if dataset else None
 
+        def get_dataset_provenance(self, version_id, organization_id):
+            version = self.get_dataset_version_for_training(
+                version_id, organization_id
+            )
+            if version is None:
+                return None
+            return {
+                "dataset_id": str(version["dataset_id"]),
+                "version_id": str(version["id"]),
+                "version_number": str(version.get("version_number", "1")),
+                "manifest_checksum": "a" * 64,
+                "origin": "real",
+                "sources": [],
+                "pilot_fixture": None,
+            }
+
     monkeypatch.setattr(
         model_execution,
         "CoreServiceClient",
