@@ -240,6 +240,7 @@ aquabloom-sur/
 
 - [Worker científico y flujo de ejecuciones](./docs/scientific-worker.md)
 - [Formato de errores operativos del worker científico](./docs/formato-errores-operativos-worker.md)
+- [Manifiesto de evidencia del piloto (S3-44)](./docs/manifiesto-evidencia-piloto.md)
 
 ## Configuración de Datos y Supabase
 
