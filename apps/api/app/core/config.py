@@ -8,17 +8,22 @@ class Settings(BaseSettings):
     satellite_service_url: str = "http://satellite:8000"
     scientific_service_url: str = "http://scientific:8000"
     internal_service_token: SecretStr | None = None
+    library_module_enabled: bool = False
 
     # Variables obligatorias (sin valor por defecto)
     supabase_url: str
     supabase_key: SecretStr
     supabase_jwt_secret: SecretStr | None = None
-    
-    model_config = SettingsConfigDict(env_file=(".env", "apps/api/.env", "../../.env"), extra="ignore")
+
+    model_config = SettingsConfigDict(
+        env_file=(".env", "apps/api/.env", "../../.env"),
+        extra="ignore",
+    )
 
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",")]
+
 
 settings = Settings()
 
