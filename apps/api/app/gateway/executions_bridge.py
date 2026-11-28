@@ -29,6 +29,13 @@ from apps.scientific.app.domains.execution.service_execution import (
 
 router = APIRouter(prefix="/api/v1/executions", tags=["Gateway"])
 
+WEB_EXECUTION_ERROR_RESPONSES = {
+    401: {"description": "No autenticado o token inválido."},
+    404: {"description": "No se encontró la versión del dataset."},
+    409: {"description": "La versión del dataset no está publicada."},
+    503: {"description": "Servicio de base de datos no disponible."},
+}
+
 
 class WebExecutionJobCreate(BaseModel):
     dataset_version_id: UUID | None = None
@@ -195,6 +202,7 @@ def _build_estimation_job_create(payload: WebExecutionJobCreate) -> JobCreate:
     "/jobs",
     response_model=JobResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    responses=WEB_EXECUTION_ERROR_RESPONSES,
 )
 def submit_web_execution_job(
     payload: WebExecutionJobCreate,

@@ -34,6 +34,12 @@ from apps.scientific.app.domains.execution.service_execution import (
 
 router = APIRouter(prefix="/api/v1/executions", tags=["Executions"])
 
+JOB_ACCESS_ERROR_RESPONSES = {
+    401: {"description": "No autenticado o token inválido."},
+    404: {"description": "Trabajo no encontrado o sin acceso en la organización."},
+    503: {"description": "Servicio de base de datos no disponible."},
+}
+
 # Alias de compatibilidad para tests que parchean _process_scientific_job o JOB_TIMEOUT_SECONDS
 _process_scientific_job = process_scientific_job
 
@@ -54,6 +60,7 @@ def _require_database():
     response_model=JobStatus,
     status_code=status.HTTP_200_OK,
     summary="Consultar estado y resultado de un trabajo científico",
+    responses=JOB_ACCESS_ERROR_RESPONSES,
 )
 def get_job_status(
     job_id: UUID,
@@ -76,6 +83,7 @@ def get_job_status(
     response_model=ModelArtifactAccess,
     status_code=status.HTTP_200_OK,
     summary="Solicitar acceso temporal al artefacto de un trabajo científico",
+    responses=JOB_ACCESS_ERROR_RESPONSES,
 )
 def get_job_artifact_access(
     job_id: UUID,
