@@ -15,8 +15,8 @@ La propiedad `license` es obligatoria aunque su valor pueda ser `null`.
 
 | Propiedad | Tipo | Regla |
 | :--- | :--- | :--- |
-| `author` | objeto | Requiere `status` (`known` o `unknown`) y `name`. Con `known`, `name` es texto no vacío; con `unknown`, `name` es `null`. `orcid` es opcional y solo se informa si se conoce. |
-| `license` | objeto o `null` | `null` significa que no se declaró una licencia; no implica dominio público ni concede permisos de reutilización. Si existe, requiere `spdx_id`; `url` es opcional. |
+| `author` | objeto | Requiere `status` (`known` o `unknown`) y `name`. Con `known`, `name` es texto no vacío; con `unknown`, `name` es `null`. `orcid` es opcional: se puede omitir o informar como `null`; un valor de texto no vacío solo se admite para un autor conocido. |
+| `license` | objeto o `null` | `null` significa que no se declaró una licencia; no implica dominio público ni concede permisos de reutilización. Si existe, requiere `spdx_id`; `url` se puede omitir, informar como `null` o proporcionar como texto no vacío. |
 | `version` | string | Versión del recurso en formato SemVer `MAJOR.MINOR.PATCH`, opcionalmente con sufijo prerelease; por ejemplo, `1.2.0`. |
 | `source` | objeto | Requiere `name`, no vacío. `url` puede ser una URL, DOI resoluble o `null` si la fuente no tiene localizador público. |
 
@@ -79,9 +79,11 @@ abierta por defecto.
 - `author.status` solo admite `known` o `unknown`.
 - Si `author.status` es `known`, `author.name` debe contener un nombre no vacío.
 - Si `author.status` es `unknown`, `author.name` debe ser `null`; no inventar ni
-  inferir un autor a partir de la fuente.
+  inferir un autor a partir de la fuente. `orcid` puede omitirse o ser `null`,
+  pero no puede contener un valor para un autor desconocido.
 - `license` debe ser `null` o incluir un identificador SPDX válido. Cuando se
-  proporcione `url`, debe apuntar al texto de esa licencia.
+  proporcione `url`, debe ser texto no vacío y apuntar al texto de esa licencia;
+  si no se conoce, se puede omitir o indicar como `null`.
 - `source.name` identifica de dónde proviene el recurso; `source.url` permite
   rastrearlo cuando existe un localizador.
 - La cita visible debe conservar autor, versión y fuente. Debe mostrar la
