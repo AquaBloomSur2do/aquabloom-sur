@@ -32,6 +32,7 @@ from apps.api.app.domains.ingestion.controller_ingestion import (
 from apps.api.app.domains.internal.controller_internal import (
     router as internal_router,
 )
+from apps.api.app.domains.reports.controller_reports import router as reports_router
 from apps.api.app.gateway.controller_gateway import router as gateway_router
 from apps.api.app.gateway.executions_bridge import (
     router as executions_bridge_router,
@@ -144,6 +145,7 @@ app.include_router(dataset_router, responses=COMMON_RESPONSES)
 app.include_router(scenes_router)
 app.include_router(observations_router, responses=COMMON_RESPONSES)
 app.include_router(execution_router)
+app.include_router(reports_router)
 app.include_router(internal_router)
 
 app.add_middleware(
