@@ -271,6 +271,57 @@ def build_running_update_payload(started_at: str) -> dict[str, Any]:
     }
 
 
+def build_training_limitations(
+    provenance: dict[str, Any] | None,
+    *,
+    train_sample_count: int,
+    validation_sample_count: int,
+) -> list[str]:
+    """Limitaciones científicas de un entrenamiento, sin atribuir precisión no medida."""
+    origin = provenance.get("origin") if provenance else None
+    limitations: list[str] = []
+    if origin == "synthetic":
+        limitations.append(
+            "Los datos de entrenamiento son sintéticos (piloto): el resultado "
+            "demuestra el flujo técnico y no describe el estado real del lago."
+        )
+    elif origin == "mixed":
+        limitations.append(
+            "El dataset combina fuentes sintéticas y no sintéticas: el resultado "
+            "no puede atribuirse solo a mediciones reales."
+        )
+    elif origin == "real":
+        limitations.append(
+            "El manifiesto no marca fuentes sintéticas, pero este proceso no "
+            "verificó de forma independiente la autenticidad de los datos."
+        )
+    else:
+        limitations.append(
+            "El origen del dataset no está disponible: no se puede afirmar si "
+            "es real o sintético."
+        )
+    limitations.extend(
+        [
+            (
+                "El modelo es una línea base (promedio de clorofila_a) que no usa "
+                "variables explicativas ni imágenes satelitales."
+            ),
+            (
+                "MAE y RMSE se calculan sobre una partición de validación "
+                "secuencial del mismo dataset "
+                f"({train_sample_count} muestras de entrenamiento y "
+                f"{validation_sample_count} de validación); no hay validación "
+                "independiente con mediciones de campo."
+            ),
+            (
+                "No se calculó exactitud (accuracy) contra valores de referencia "
+                "independientes: no debe atribuirse precisión al resultado."
+            ),
+        ]
+    )
+    return limitations
+
+
 def build_completed_update_payload(
     result: dict[str, Any], completed_at: str
 ) -> dict[str, Any]:

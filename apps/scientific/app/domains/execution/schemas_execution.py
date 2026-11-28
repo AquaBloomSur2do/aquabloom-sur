@@ -107,6 +107,22 @@ class ReproducibilityMetadata(BaseModel):
     environment: str = Field(min_length=1)
 
 
+class ProvenanceSource(BaseModel):
+    id: str
+    source_name: str | None = None
+    checksum: str
+    is_synthetic: bool = False
+    is_experimental: bool = False
+
+
+class DatasetProvenanceInfo(BaseModel):
+    dataset_id: str
+    version_id: str
+    version_number: str
+    manifest_checksum: str
+    origin: Literal["synthetic", "real", "mixed", "unknown"]
+    sources: list[ProvenanceSource] = Field(default_factory=list)
+    pilot_fixture: dict[str, Any] | None = None
 class PilotManifestLink(BaseModel):
     manifest_checksum: str = Field(min_length=64, max_length=64)
     storage_path: str | None = None
@@ -183,6 +199,8 @@ class TrainingResult(BaseModel):
     pilot_report: PilotReport | None = None
     status: ScientificJobStatusEnum = ScientificJobStatusEnum.COMPLETED
     warnings: list[str] = Field(default_factory=list)
+    provenance: DatasetProvenanceInfo | None = None
+    limitations: list[str] = Field(default_factory=list)
 
 
 class TraceabilityEvidence(BaseModel):
@@ -304,4 +322,3 @@ class ModelArtifactAccess(BaseModel):
     expires_in: int = Field(gt=0)
     checksum: str | None = None
     size_bytes: int | None = Field(default=None, ge=0)
-    

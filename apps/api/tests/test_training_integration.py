@@ -217,6 +217,22 @@ def fake_staging_db(monkeypatch):
             )
             return {**version, "dataset_id": dataset["id"]} if dataset else None
 
+        def get_dataset_provenance(self, version_id, organization_id):
+            version = self.get_dataset_version_for_training(
+                version_id, organization_id
+            )
+            if version is None:
+                return None
+            return {
+                "dataset_id": str(version["dataset_id"]),
+                "version_id": str(version["id"]),
+                "version_number": str(version.get("version_number", "1")),
+                "manifest_checksum": "a" * 64,
+                "origin": "real",
+                "sources": [],
+                "pilot_fixture": None,
+            }
+
     monkeypatch.setattr(
         model_execution,
         "CoreServiceClient",
@@ -560,5 +576,184 @@ def test_cors_allows_organization_header_for_web_training():
     ).lower()
     assert "x-organization-id" in allowed_headers
 
+PROVENANCE_PATH = f"/internal/v1/datasets/versions/{VERSION_ID}/provenance"
+PROVENANCE_PARAMS = {"organization_id": ORGANIZATION_ID}
+INTERNAL_HEADERS = {"X-Internal-Token": "test-secret-token"}
+OTHER_ORGANIZATION_ID = "99999999-9999-4999-8999-999999999999"
 
 
+def _provenance_manifest(sources, pilot_fixture=None):
+    from apps.api.app.domains.dataset.schemas_dataset import DatasetManifest
+
+    return DatasetManifest(
+        dataset_id=DATASET_ID,
+        version_id=VERSION_ID,
+        version_number="1",
+        records=[],
+        sources=sources,
+        observations=[],
+        rules=[],
+        manifest_checksum="c" * 64,
+        pilot_fixture=pilot_fixture,
+    )
+
+
+def _synthetic_source():
+    from apps.api.app.domains.dataset.schemas_dataset import ManifestItem
+
+    return ManifestItem(
+        id="src-pilot",
+        source_name="piloto-sintetico",
+        checksum="a" * 64,
+        is_synthetic=True,
+    )
+
+
+@pytest.fixture
+def use_provenance_manifest(monkeypatch, fake_staging_db):
+    from pydantic import SecretStr
+
+    from apps.api.app.core.config import settings
+    from apps.api.app.domains.dataset import service_dataset
+    from apps.api.app.domains.internal import controller_internal
+
+    monkeypatch.setattr(
+        settings, "internal_service_token", SecretStr("test-secret-token")
+    )
+    monkeypatch.setattr(controller_internal, "supabase", fake_staging_db)
+
+    def _use(manifest):
+        monkeypatch.setattr(
+            service_dataset,
+            "build_version_manifest_service",
+            lambda _client, _dataset_id, _version_id: manifest,
+        )
+
+    return _use
+
+
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    [
+        ([True], "synthetic"),
+        ([False], "real"),
+        ([True, False], "mixed"),
+        ([], "unknown"),
+    ],
+)
+def test_classify_dataset_origin_uses_manifest_flags(flags, expected):
+    from apps.api.app.domains.dataset.schemas_dataset import ManifestItem
+    from apps.api.app.domains.dataset.service_dataset import classify_dataset_origin
+
+    sources = [
+        ManifestItem(id=f"src-{index}", checksum="a" * 64, is_synthetic=flag)
+        for index, flag in enumerate(flags)
+    ]
+
+    assert classify_dataset_origin(sources) == expected
+
+
+@pytest.mark.parametrize(
+    ("source_flags", "dataset_is_synthetic", "input_is_synthetic", "expected"),
+    [
+        ([], True, True, "synthetic"),
+        ([False], True, True, "mixed"),
+        ([False], False, True, "mixed"),
+    ],
+)
+def test_classify_dataset_origin_considers_pilot_fixture(
+    source_flags, dataset_is_synthetic, input_is_synthetic, expected
+):
+    from apps.api.app.domains.dataset.schemas_dataset import (
+        ManifestItem,
+        PilotFixtureInput,
+        PilotFixtureMetadata,
+    )
+    from apps.api.app.domains.dataset.service_dataset import classify_dataset_origin
+
+    sources = [
+        ManifestItem(id=f"src-{index}", checksum="a" * 64, is_synthetic=flag)
+        for index, flag in enumerate(source_flags)
+    ]
+    fixture = PilotFixtureMetadata(
+        dataset_version="piloto-v1",
+        dataset_is_synthetic=dataset_is_synthetic,
+        scene_identifier="escena-piloto-01",
+        scene_is_synthetic=dataset_is_synthetic,
+        random_seed=42,
+        inputs=[PilotFixtureInput(name="clorofila_a", is_synthetic=input_is_synthetic)],
+    )
+    assert classify_dataset_origin(sources, fixture) == expected
+
+
+def test_internal_provenance_reports_synthetic_origin_and_pilot_fixture(
+    use_provenance_manifest,
+):
+    from apps.api.app.domains.dataset.schemas_dataset import (
+        PilotFixtureInput,
+        PilotFixtureMetadata,
+    )
+
+    fixture = PilotFixtureMetadata(
+        dataset_version="piloto-v1",
+        dataset_is_synthetic=True,
+        scene_identifier="escena-sintetica-01",
+        scene_is_synthetic=True,
+        random_seed=42,
+        inputs=[PilotFixtureInput(name="clorofila_a", is_synthetic=True)],
+    )
+    use_provenance_manifest(_provenance_manifest([_synthetic_source()], fixture))
+
+    response = client.get(
+        PROVENANCE_PATH, params=PROVENANCE_PARAMS, headers=INTERNAL_HEADERS
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["origin"] == "synthetic"
+    assert body["dataset_id"] == DATASET_ID
+    assert body["version_id"] == VERSION_ID
+    assert body["manifest_checksum"] == "c" * 64
+    assert body["sources"][0]["is_synthetic"] is True
+    assert body["pilot_fixture"]["dataset_version"] == "piloto-v1"
+    assert body["pilot_fixture"]["random_seed"] == 42
+
+
+def test_internal_provenance_requires_internal_token(use_provenance_manifest):
+    use_provenance_manifest(_provenance_manifest([_synthetic_source()]))
+
+    missing = client.get(PROVENANCE_PATH, params=PROVENANCE_PARAMS)
+    wrong = client.get(
+        PROVENANCE_PATH,
+        params=PROVENANCE_PARAMS,
+        headers={"X-Internal-Token": "otro-token"},
+    )
+
+    assert missing.status_code == 401
+    assert wrong.status_code == 401
+
+
+def test_internal_provenance_hides_other_organization(use_provenance_manifest):
+    use_provenance_manifest(_provenance_manifest([_synthetic_source()]))
+
+    response = client.get(
+        PROVENANCE_PATH,
+        params={"organization_id": OTHER_ORGANIZATION_ID},
+        headers=INTERNAL_HEADERS,
+    )
+
+    assert response.status_code == 404
+    assert "synthetic" not in response.text
+
+
+def test_internal_provenance_requires_published_version(
+    use_provenance_manifest, fake_staging_db
+):
+    fake_staging_db.versions[0]["state"] = "DRAFT"
+    use_provenance_manifest(_provenance_manifest([_synthetic_source()]))
+
+    response = client.get(
+        PROVENANCE_PATH, params=PROVENANCE_PARAMS, headers=INTERNAL_HEADERS
+    )
+
+    assert response.status_code == 404

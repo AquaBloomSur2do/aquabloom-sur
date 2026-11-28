@@ -58,7 +58,6 @@ trabajo:
 
 ```json
 {
-  "accuracy": 0.98,
   "processed_pixels": 102400,
   "traceability_evidence": {
     "job_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -70,6 +69,9 @@ trabajo:
 }
 ```
 
+El ejemplo ilustra la forma del JSON; sus identificadores no documentan una
+ejecución real ni afirman una métrica de precisión.
+
 La API ya valida y expone la evidencia persistida. El proceso científico actual
 no genera todavía estos cinco valores: en particular, `EstimationConfig.scene_id`
 es hoy texto libre, no exige `dataset_version_id`, y no se persiste un UUID por
@@ -78,6 +80,34 @@ resuelto la escena y utilizado efectivamente la versión/modelo identificados;
 el siguiente paso de integración es crear esos identificadores durante el
 procesamiento y persistirlos junto al resultado. No se infieren identificadores
 ni se presenta evidencia ficticia para resultados existentes.
+
+## Procedencia y límites de entrenamiento (S2-191)
+
+Al completar un entrenamiento, `result.provenance` conserva la procedencia
+devuelta por Core para la versión publicada realmente consumida: dataset,
+`version_id`, número de versión, checksum del manifiesto, fuentes y clasificación
+`synthetic`, `real`, `mixed` o `unknown`. Una consulta de procedencia fallida o
+una versión distinta de la solicitada impide completar el trabajo, para evitar
+resultados exitosos sin evidencia verificable. `real` significa únicamente que
+las fuentes del manifiesto no están marcadas como sintéticas; no es una
+verificación independiente de autenticidad.
+
+El resultado también conserva la línea base, MAE/RMSE calculados sobre una
+partición secuencial del mismo dataset, tamaños de muestra y metadatos de
+reproducibilidad (versión del dataset, configuración, código y entorno). Sus
+limitaciones explicitan el uso de datos sintéticos cuando aplica, la falta de
+validación independiente con mediciones de campo y que no se calculó `accuracy`
+contra valores de referencia independientes. MAE/RMSE no deben presentarse como
+una medición de precisión independiente.
+
+Este cambio cubre la implementación técnica, los contratos entre servicios y la
+validación automatizada; sin servicios activos desplegados en este flujo, no se
+inventan identificadores ni resultados ficticios. Antes de dar por cerrado
+`S2-191` en Linear, se debe ejecutar la demostración sobre un entorno activo con
+una versión publicada cuyo manifiesto identifique las fuentes, consultar el
+estado del trabajo y registrar la evidencia real observada (`job_id`,
+`dataset_id`, `version_id`, `origin`, `manifest_checksum`, `MAE`/`RMSE`,
+tamaños de partición y limitaciones científicas detectadas).
 ## Datos mínimos del informe piloto (S3-09)
 
 Todo resultado de entrenamiento piloto incluye el objeto `result.pilot_report`,

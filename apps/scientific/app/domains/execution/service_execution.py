@@ -21,6 +21,7 @@ from apps.scientific.app.domains.execution.domain_execution import (
     build_pilot_report_results,
     build_running_update_payload,
     build_timeout_error_message,
+    build_training_limitations,
     calculate_baseline,
     execute_point_inference,
     format_exception_error_message,
@@ -38,6 +39,7 @@ from apps.scientific.app.domains.execution.model_artifacts import (
 )
 from apps.scientific.app.domains.execution.model_execution import (
     download_model_artifact_from_storage,
+    fetch_dataset_provenance,
     fetch_training_file,
     find_scientific_job_in_db,
     get_dataset_version_for_training,
@@ -48,6 +50,7 @@ from apps.scientific.app.domains.execution.model_execution import (
     update_scientific_job_in_db,
 )
 from apps.scientific.app.domains.execution.schemas_execution import (
+    DatasetProvenanceInfo,
     EstimationConfig,
     JobCreate,
     ReproducibilityMetadata,
@@ -62,6 +65,29 @@ TRAINING_SPLIT_RATIO = 0.8
 
 def _utc_now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+async def _resolve_and_validate_training_provenance(
+    version_id: str,
+    organization_id: UUID | str,
+    expected_dataset_id: Any,
+) -> dict[str, Any]:
+    raw_provenance = await asyncio.to_thread(
+        fetch_dataset_provenance, version_id, organization_id
+    )
+    if raw_provenance is None:
+        raise ValueError(
+            "Core no devolvió la procedencia de la versión del dataset."
+        )
+    provenance_model = DatasetProvenanceInfo.model_validate(raw_provenance)
+    if provenance_model.version_id != version_id or (
+        expected_dataset_id is not None
+        and provenance_model.dataset_id != str(expected_dataset_id)
+    ):
+        raise ValueError(
+            "La procedencia recibida no corresponde a la versión de dataset utilizada."
+        )
+    return provenance_model.model_dump(mode="json")
 
 
 def _parse_optional_uuid_str(value: Any) -> str | None:
@@ -301,6 +327,11 @@ async def run_scientific_algorithm(
         organization_id,
         requested_by,
     )
+    provenance = await _resolve_and_validate_training_provenance(
+        str(version_id),
+        organization_id,
+        config.get("dataset_id"),
+    )
     raw_data = parse_training_csv(file_bytes, checksum)
     train_data, val_data = split_training_validation(
         raw_data, split_ratio=TRAINING_SPLIT_RATIO
@@ -331,6 +362,12 @@ async def run_scientific_algorithm(
         code_version=os.getenv("APP_VERSION") or "dev",
         environment=settings.environment,
     ).model_dump(mode="json")
+    result["provenance"] = provenance
+    result["limitations"] = build_training_limitations(
+        provenance,
+        train_sample_count=result["baseline"]["train_sample_count"],
+        validation_sample_count=result["baseline"]["validation_sample_count"],
+    )
     dataset_id_value = config.get("dataset_id")
     raw_sources = config.get("sources")
     sources_list = (
@@ -555,8 +592,8 @@ def get_job_status_service(
     if "id" in response_job:
         response_job["job_id"] = response_job.pop("id")
     result = response_job.get("result")
-    if isinstance(result, dict):
-        response_job["traceability_evidence"] = result.get("traceability_evidence")
+    if isinstance(result, dict) and "traceability_evidence" in result:
+        response_job["traceability_evidence"] = result["traceability_evidence"]
     return response_job
 
 def get_model_artifact_access_service(
