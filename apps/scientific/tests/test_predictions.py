@@ -630,6 +630,62 @@ def test_get_prediction_detail_isolates_predictions_by_organization(monkeypatch)
     )
 
 
+def test_get_prediction_detail_isolates_bidirectionally_between_organizations(
+    monkeypatch,
+):
+    database = FakePredictionDatabase()
+    monkeypatch.setattr(controller_prediction, "supabase", database)
+    mock_prediction_service_contracts(monkeypatch, database)
+
+    payload_a = detailed_prediction_payload()
+    payload_a["result"]["points"][0]["value"] = 11.1
+    payload_a["result"]["warnings"] = ["secreto-a"]
+    created_a = client.post("/api/v1/predictions/", json=payload_a, headers=HEADERS)
+    assert created_a.status_code == 201
+    prediction_a = created_a.json()["id"]
+
+    payload_b = detailed_prediction_payload()
+    payload_b["organization_id"] = OTHER_ORGANIZATION_ID
+    payload_b["result"]["points"][0]["value"] = 22.2
+    payload_b["result"]["warnings"] = ["secreto-b"]
+    created_b = client.post("/api/v1/predictions/", json=payload_b, headers=HEADERS)
+    assert created_b.status_code == 201
+    prediction_b = created_b.json()["id"]
+
+    own_a = client.get(f"/api/v1/predictions/{prediction_a}", headers=AUTH_HEADERS)
+    assert own_a.status_code == 200
+    assert own_a.json()["points"][0]["value"] == 11.1
+    assert own_a.headers["x-correlation-id"]
+
+    cross_a = client.get(
+        f"/api/v1/predictions/{prediction_b}", headers=AUTH_HEADERS
+    )
+    assert cross_a.status_code == 404
+    assert cross_a.json()["message"] == "No se encontró la estimación solicitada."
+    assert "secreto-b" not in cross_a.text
+    assert "22.2" not in cross_a.text
+    assert cross_a.headers["x-correlation-id"]
+
+    foreign_headers = {
+        "Authorization": AUTH_HEADERS["Authorization"],
+        "X-Organization-ID": OTHER_ORGANIZATION_ID,
+    }
+    own_b = client.get(
+        f"/api/v1/predictions/{prediction_b}", headers=foreign_headers
+    )
+    assert own_b.status_code == 200
+    assert own_b.json()["points"][0]["value"] == 22.2
+
+    cross_b = client.get(
+        f"/api/v1/predictions/{prediction_a}", headers=foreign_headers
+    )
+    assert cross_b.status_code == 404
+    assert cross_b.json()["message"] == "No se encontró la estimación solicitada."
+    assert "secreto-a" not in cross_b.text
+    assert "11.1" not in cross_b.text
+    assert cross_b.headers["x-correlation-id"]
+
+
 def test_get_prediction_detail_returns_404_when_prediction_does_not_exist(
     monkeypatch,
 ):

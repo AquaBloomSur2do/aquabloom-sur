@@ -412,6 +412,73 @@ def test_get_job_status_returns_404_for_another_organization(fake_database):
     assert "resultado confidencial" not in response.text
 
 
+def test_job_status_is_isolated_bidirectionally_between_organizations(fake_database):
+    def create_job(organization_id):
+        response = client.post(
+            "/api/v1/executions/",
+            json=estimation_payload(),
+            headers={
+                "Authorization": AUTH_HEADERS["Authorization"],
+                "X-Organization-ID": organization_id,
+                "X-Internal-Token": "test-secret-token",
+            },
+        )
+        assert response.status_code == 202
+        return response.json()["job_id"]
+
+    job_a = create_job(ORGANIZATION_ID)
+    job_b = create_job(OTHER_ORGANIZATION_ID)
+    assert job_a != job_b
+
+    results = {
+        job_a: {"prediction_value": 11.1, "confidential_marker": "org-a-secret"},
+        job_b: {"prediction_value": 22.2, "confidential_marker": "org-b-secret"},
+    }
+    for row in fake_database.rows:
+        if row["id"] in results:
+            row["result"] = results[row["id"]]
+
+    own_a = client.get(f"/api/v1/executions/{job_a}", headers=AUTH_HEADERS)
+    assert own_a.status_code == 200
+    assert own_a.json()["result"]["confidential_marker"] == "org-a-secret"
+    assert own_a.headers["x-correlation-id"]
+
+    cross_a = client.get(
+        f"/api/v1/executions/{job_b}",
+        headers={
+            "Authorization": AUTH_HEADERS["Authorization"],
+            "X-Organization-ID": ORGANIZATION_ID,
+        },
+    )
+    assert cross_a.status_code == 404
+    assert cross_a.json()["message"] == "No se encontró el trabajo."
+    assert "org-b-secret" not in cross_a.text
+    assert "22.2" not in cross_a.text
+    assert cross_a.headers["x-correlation-id"]
+
+    own_b = client.get(
+        f"/api/v1/executions/{job_b}",
+        headers={
+            "Authorization": AUTH_HEADERS["Authorization"],
+            "X-Organization-ID": OTHER_ORGANIZATION_ID,
+        },
+    )
+    assert own_b.status_code == 200
+    assert own_b.json()["result"]["confidential_marker"] == "org-b-secret"
+
+    cross_b = client.get(
+        f"/api/v1/executions/{job_a}",
+        headers={
+            "Authorization": AUTH_HEADERS["Authorization"],
+            "X-Organization-ID": OTHER_ORGANIZATION_ID,
+        },
+    )
+    assert cross_b.status_code == 404
+    assert cross_b.json()["message"] == "No se encontró el trabajo."
+    assert "org-a-secret" not in cross_b.text
+    assert "11.1" not in cross_b.text
+    assert cross_b.headers["x-correlation-id"]
+
 def test_get_job_status_requires_authentication(fake_database):
     response = client.get(
         f"/api/v1/executions/{uuid.uuid4()}",
