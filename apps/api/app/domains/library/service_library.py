@@ -1,64 +1,80 @@
 from typing import Any
 from uuid import UUID
 
-from fastapi import HTTPException, status
-
 from apps.api.app.domains.library.domain_library import (
+    LibraryAccessDeniedError,
+    LibraryResourceNotFoundError,
+    LibraryVersionNotFoundError,
     build_library_version_record,
+    can_create_library_version,
+    can_read_library_version,
+    reconstruct_library_version_response,
 )
 from apps.api.app.domains.library.model_library import (
-    fetch_library_version_by_id,
-    insert_library_version,
+    fetch_active_organization_membership,
+    fetch_library_resource_by_id,
+    fetch_library_resource_version_by_id,
+    insert_library_resource_version,
 )
-from apps.api.app.domains.library.schemas_library import (
-    LibraryAttribution,
-    LibraryVersionCreate,
-)
-
-
-def _normalize_persisted_version(row: dict[str, Any]) -> dict[str, Any]:
-    raw_attribution = row.get("attribution")
-    if not isinstance(raw_attribution, dict):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="La versión persistida no conserva su atribución.",
-        )
-    validated_attribution = LibraryAttribution.model_validate(raw_attribution)
-    return {
-        "id": row["id"],
-        "resource_id": row["resource_id"],
-        "status": row.get("status", "draft"),
-        "attribution": validated_attribution.model_dump(mode="json"),
-        "created_by": row.get("created_by"),
-        "created_at": row["created_at"],
-    }
+from apps.api.app.domains.library.schemas_library import LibraryVersionCreate
 
 
 def create_library_version_service(
     client: Any,
     payload: LibraryVersionCreate,
-    user_id: str | None,
+    user_id: UUID,
 ) -> dict[str, Any]:
-    try:
-        record = build_library_version_record(payload, user_id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
+    resource = fetch_library_resource_by_id(client, payload.resource_id)
+    if resource is None:
+        raise LibraryResourceNotFoundError(
+            "No se encontró el recurso de biblioteca."
+        )
 
-    inserted = insert_library_version(client, record)
-    return _normalize_persisted_version(inserted)
+    owner_org_id = str(resource.get("owner_organization_id") or "")
+    membership = fetch_active_organization_membership(client, owner_org_id, user_id)
+    if membership is None:
+        # Oculta existencia de recursos de otras organizaciones para evitar enumeración.
+        raise LibraryResourceNotFoundError(
+            "No se encontró el recurso de biblioteca."
+        )
+
+    if not can_create_library_version(membership.get("role")):
+        raise LibraryAccessDeniedError(
+            "No tienes permisos para crear versiones en este recurso de biblioteca."
+        )
+
+    record = build_library_version_record(payload, user_id)
+    inserted = insert_library_resource_version(client, record)
+    return reconstruct_library_version_response(inserted)
 
 
 def get_library_version_service(
     client: Any,
     version_id: UUID,
+    user_id: UUID,
 ) -> dict[str, Any]:
-    row = fetch_library_version_by_id(client, version_id)
+    row = fetch_library_resource_version_by_id(client, version_id)
     if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Versión de biblioteca no encontrada.",
+        raise LibraryVersionNotFoundError(
+            "Versión de biblioteca no encontrada."
         )
-    return _normalize_persisted_version(row)
+
+    resource_id = UUID(str(row["resource_id"]))
+    resource = fetch_library_resource_by_id(client, resource_id)
+    if resource is None:
+        raise LibraryVersionNotFoundError(
+            "Versión de biblioteca no encontrada."
+        )
+
+    owner_org_id = str(resource.get("owner_organization_id") or "")
+    membership = fetch_active_organization_membership(client, owner_org_id, user_id)
+    if not can_read_library_version(
+        resource_visibility=resource.get("visibility"),
+        version_status=row.get("status"),
+        has_active_membership=membership is not None,
+    ):
+        raise LibraryVersionNotFoundError(
+            "Versión de biblioteca no encontrada."
+        )
+
+    return reconstruct_library_version_response(row)
