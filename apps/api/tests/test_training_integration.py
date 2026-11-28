@@ -15,6 +15,10 @@ os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test-secret-token")
 
+from apps.api.app.core.dependencies import (
+    require_internal_service as api_require_internal_service,
+)
+from apps.api.app.domains.internal import controller_internal
 from apps.api.app.gateway import controller_gateway, service_gateway
 from apps.api.app.main import app
 from apps.scientific.app.core.dependencies import (
@@ -27,8 +31,11 @@ client = TestClient(app)
 
 USER_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 ORGANIZATION_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+OTHER_ORGANIZATION_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
 DATASET_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 VERSION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+OTHER_DATASET_ID = "99999999-9999-4999-8999-999999999999"
+OTHER_VERSION_ID = "88888888-8888-4888-8888-888888888888"
 MODEL_VERSION_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff"
 TRAINING_JOB_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
 AUTH_HEADERS = {
@@ -542,6 +549,56 @@ def test_web_training_bridge_rejects_unpublished_version(fake_staging_db):
 
     assert response.status_code == 409
     assert fake_staging_db.jobs == []
+
+
+def test_internal_dataset_version_is_isolated_bidirectionally(
+    fake_staging_db, monkeypatch
+):
+    monkeypatch.setattr(controller_internal, "supabase", fake_staging_db)
+    fake_staging_db.datasets.append(
+        {"id": OTHER_DATASET_ID, "organization_id": OTHER_ORGANIZATION_ID}
+    )
+    fake_staging_db.versions.append(
+        {
+            "id": OTHER_VERSION_ID,
+            "dataset_id": OTHER_DATASET_ID,
+            "state": "PUBLISHED",
+            "status": "published",
+        }
+    )
+    app.dependency_overrides[api_require_internal_service] = lambda: None
+    try:
+        own_a = client.get(
+            f"/internal/v1/datasets/versions/{VERSION_ID}",
+            params={"organization_id": ORGANIZATION_ID},
+        )
+        assert own_a.status_code == 200
+        assert own_a.json()["id"] == VERSION_ID
+
+        cross_a = client.get(
+            f"/internal/v1/datasets/versions/{OTHER_VERSION_ID}",
+            params={"organization_id": ORGANIZATION_ID},
+        )
+        assert cross_a.status_code == 404
+        assert OTHER_VERSION_ID not in cross_a.text
+        assert cross_a.headers["x-correlation-id"]
+
+        own_b = client.get(
+            f"/internal/v1/datasets/versions/{OTHER_VERSION_ID}",
+            params={"organization_id": OTHER_ORGANIZATION_ID},
+        )
+        assert own_b.status_code == 200
+        assert own_b.json()["id"] == OTHER_VERSION_ID
+
+        cross_b = client.get(
+            f"/internal/v1/datasets/versions/{VERSION_ID}",
+            params={"organization_id": OTHER_ORGANIZATION_ID},
+        )
+        assert cross_b.status_code == 404
+        assert VERSION_ID not in cross_b.text
+        assert cross_b.headers["x-correlation-id"]
+    finally:
+        app.dependency_overrides.pop(api_require_internal_service, None)
 
 
 def test_cors_allows_organization_header_for_web_training():

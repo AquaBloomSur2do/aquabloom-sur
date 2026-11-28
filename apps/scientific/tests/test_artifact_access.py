@@ -27,6 +27,7 @@ TAMPERED_JOB_ID = "33333333-3333-4333-8333-333333333333"
 FOREIGN_JOB_ID = "44444444-4444-4444-8444-444444444444"
 UNKNOWN_JOB_ID = "99999999-9999-4999-8999-999999999999"
 ARTIFACT_PATH = f"models/{JOB_ID}/model.pkl"
+FOREIGN_ARTIFACT_PATH = f"models/{FOREIGN_JOB_ID}/model.pkl"
 AUTH_HEADERS = {
     "Authorization": "Bearer test-user-token",
     "X-Organization-ID": ORGANIZATION_ID,
@@ -102,12 +103,12 @@ class FakeClient:
         return FakeJobsQuery(self.rows)
 
 
-def _artifact_reference(job_id, storage_path):
+def _artifact_reference(job_id, storage_path, checksum="a" * 64):
     return {
         "job_id": job_id,
         "bucket": "model_artifacts",
         "storage_path": storage_path,
-        "checksum": "a" * 64,
+        "checksum": checksum,
         "size_bytes": 12,
     }
 
@@ -131,6 +132,15 @@ def env(monkeypatch):
             "result": {
                 "model_artifact": _artifact_reference(
                     TAMPERED_JOB_ID, f"models/{FOREIGN_JOB_ID}/model.pkl"
+                )
+            },
+        },
+        {
+            "id": FOREIGN_JOB_ID,
+            "organization_id": OTHER_ORGANIZATION_ID,
+            "result": {
+                "model_artifact": _artifact_reference(
+                    FOREIGN_JOB_ID, FOREIGN_ARTIFACT_PATH, checksum="b" * 64
                 )
             },
         },
@@ -215,6 +225,52 @@ def test_user_from_another_organization_cannot_access_artifact(env, organization
     assert ARTIFACT_PATH not in response.text
     assert env.database.storage.requested_buckets == []
 
+
+def test_artifact_access_is_isolated_bidirectionally_between_organizations(env):
+    own_a = env.api.get(
+        f"/api/v1/executions/{JOB_ID}/artifact", headers=AUTH_HEADERS
+    )
+    assert own_a.status_code == 200
+    assert ARTIFACT_PATH in own_a.json()["download_url"]
+    assert own_a.headers["x-correlation-id"]
+    assert env.database.storage.bucket.calls == [(ARTIFACT_PATH, 60)]
+
+    cross_a = env.api.get(
+        f"/api/v1/executions/{FOREIGN_JOB_ID}/artifact", headers=AUTH_HEADERS
+    )
+    assert cross_a.status_code == 404
+    assert cross_a.json()["message"] == "No se encontró el trabajo."
+    assert FOREIGN_ARTIFACT_PATH not in cross_a.text
+    assert "b" * 64 not in cross_a.text
+    assert cross_a.headers["x-correlation-id"]
+    assert env.database.storage.bucket.calls == [(ARTIFACT_PATH, 60)]
+
+    foreign_headers = {
+        "Authorization": AUTH_HEADERS["Authorization"],
+        "X-Organization-ID": OTHER_ORGANIZATION_ID,
+    }
+    own_b = env.api.get(
+        f"/api/v1/executions/{FOREIGN_JOB_ID}/artifact", headers=foreign_headers
+    )
+    assert own_b.status_code == 200
+    assert FOREIGN_ARTIFACT_PATH in own_b.json()["download_url"]
+    assert env.database.storage.bucket.calls == [
+        (ARTIFACT_PATH, 60),
+        (FOREIGN_ARTIFACT_PATH, 60),
+    ]
+
+    cross_b = env.api.get(
+        f"/api/v1/executions/{JOB_ID}/artifact", headers=foreign_headers
+    )
+    assert cross_b.status_code == 404
+    assert cross_b.json()["message"] == "No se encontró el trabajo."
+    assert ARTIFACT_PATH not in cross_b.text
+    assert "a" * 64 not in cross_b.text
+    assert cross_b.headers["x-correlation-id"]
+    assert env.database.storage.bucket.calls == [
+        (ARTIFACT_PATH, 60),
+        (FOREIGN_ARTIFACT_PATH, 60),
+    ]
 
 def test_unknown_job_returns_404(env):
     response = env.api.get(
