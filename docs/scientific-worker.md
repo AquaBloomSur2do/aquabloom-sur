@@ -38,11 +38,13 @@ servicio Satellite, de acuerdo con `SATELLITE_SERVICE_URL`.
 
 ## Carácter temporal
 
-Compose no declara un volumen para Redis ni configura una política propia de
-persistencia. La cola solo actúa como transporte entre el servicio que encola y
-el worker; el worker retira la tarea al consumirla. Si el proceso falla después
-de retirarla, no hay reintento ni registro permanente del resultado. No se debe
-tratar Redis como almacenamiento duradero.
+`compose.yaml` usa `redis:7-alpine` sin configurar explícitamente opciones RDB
+ni AOF, declarar un volumen para Redis o establecer una política de expiración.
+Por eso el repositorio no garantiza persistencia durable de la cola ni configura
+una política propia de persistencia. La cola solo actúa como transporte entre
+el servicio que encola y el worker; `BRPOP` retira la tarea al consumirla. Si el
+proceso falla después de retirarla, no hay reintento ni registro permanente del
+resultado. No se debe tratar Redis como almacenamiento duradero.
 
 ## Correlación entre Gateway, servicios y tareas
 
