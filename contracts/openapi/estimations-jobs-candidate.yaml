@@ -1,0 +1,1283 @@
+openapi: 3.0.3
+info:
+  title: AquaBloom Sur — Contrato Candidato de Estimaciones y Trabajos (S3-02)
+  version: 1.1.0-candidate
+  description: >
+    Contrato OpenAPI candidato acordado para Web y Móvil sobre trabajos
+    científicos (entrenamiento y estimación), acceso a artefactos y detalle
+    de predicciones. Sirve como insumo verificable para la suite de AQU-234
+    (S2-180) y registra explícitamente el estado actual y las rutas candidatas
+    a consolidación en el API Gateway.
+servers:
+  - url: https://api.aquabloomsur.cl/api/v1
+    description: API Gateway en producción / staging con TLS (RNF-01)
+  - url: http://localhost:5000/api/v1
+    description: API Gateway en Docker Compose local / staging-local
+
+tags:
+  - name: Executions (Public)
+    description: Rutas públicas del Gateway consumidas por Web y Móvil.
+  - name: Predictions (Candidate Public)
+    description: Detalle de estimación persistida (actualmente en scientific; candidata a exposición directa en Gateway).
+  - name: Models (Candidate Public)
+    description: Consulta de modelos compatibles por lago requerida por EstimationForm en Web.
+  - name: Internal
+    description: Rutas internas servicio-a-servicio (prohibidas para Web y Móvil).
+
+paths:
+  /executions/jobs:
+    post:
+      summary: Crear un trabajo científico asíncrono (Web y Móvil)
+      description: >
+        Punto de entrada público del API Gateway (executions_bridge.py) para
+        encolar trabajos de entrenamiento o estimación. Requiere JWT válido y
+        membresía activa en la organización indicada en X-Organization-ID.
+      operationId: createPublicExecutionJob
+      tags:
+        - Executions (Public)
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationIdHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebExecutionJobCreate"
+      responses:
+        "202":
+          description: Trabajo aceptado y encolado en segundo plano (o reutilizado por idempotencia).
+          headers:
+            X-Correlation-ID:
+              $ref: "#/components/headers/CorrelationIdResponseHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "502":
+          $ref: "#/components/responses/BadGatewayError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+
+  /executions/{job_id}:
+    get:
+      summary: Consultar estado y resultado de un trabajo científico
+      description: >
+        Devuelve el estado actual del trabajo (queued, running, completed o
+        failed), metadatos de trazabilidad y el resultado estructurado de
+        entrenamiento o estimación. Responde 404 opaco si el trabajo no existe
+        o no pertenece a la organización del usuario.
+      operationId: getScientificJobStatus
+      tags:
+        - Executions (Public)
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobIdPath"
+        - $ref: "#/components/parameters/OrganizationIdHeader"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+      responses:
+        "200":
+          description: Estado y resultado del trabajo científico recuperados correctamente.
+          headers:
+            X-Correlation-ID:
+              $ref: "#/components/headers/CorrelationIdResponseHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobStatus"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+
+  /executions/{job_id}/artifact:
+    get:
+      summary: Solicitar acceso temporal al artefacto de un trabajo científico
+      description: >
+        Genera una URL firmada temporal para descargar el artefacto privado del
+        modelo entrenado, validando membresía activa en la organización.
+      operationId: getScientificJobArtifactAccess
+      tags:
+        - Executions (Public)
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/JobIdPath"
+        - $ref: "#/components/parameters/OrganizationIdHeader"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+      responses:
+        "200":
+          description: Enlace temporal generado correctamente.
+          headers:
+            Cache-Control:
+              description: Evita almacenamiento en caché de URLs firmadas.
+              schema:
+                type: string
+                example: no-store
+            X-Correlation-ID:
+              $ref: "#/components/headers/CorrelationIdResponseHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelArtifactAccess"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+
+  /predictions/{prediction_id}:
+    get:
+      summary: Obtener detalle completo y procedencia de una estimación persistida
+      description: >
+        Actualmente implementada en apps/scientific y candidata a exposición
+        directa en el API Gateway. Requiere membresía activa y rol autorizado
+        (admin, administrador, supervisor, investigador, auditor) o permiso
+        predictions:read / catalog:read.
+      operationId: getPredictionDetail
+      tags:
+        - Predictions (Candidate Public)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: prediction_id
+          in: path
+          required: true
+          description: Identificador UUID de la predicción persistida.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/OrganizationIdHeader"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+      responses:
+        "200":
+          description: Detalle de estimación científica con trazabilidad, advertencias y límites de uso.
+          headers:
+            X-Correlation-ID:
+              $ref: "#/components/headers/CorrelationIdResponseHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PredictionDetailResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "502":
+          $ref: "#/components/responses/BadGatewayError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+
+  /models:
+    get:
+      summary: Listar modelos compatibles para un lago (Candidata — Brecha Web)
+      description: >
+        Ruta consumida por apps/web/src/services/models.ts (EstimationForm.tsx),
+        pendiente de exposición formal en el API Gateway.
+      operationId: listModelsByLake
+      tags:
+        - Models (Candidate Public)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: lake_id
+          in: query
+          required: true
+          description: Identificador del lago para filtrar modelos aptos.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+      responses:
+        "200":
+          description: Lista de configuraciones de modelos disponibles para el lago.
+          headers:
+            X-Correlation-ID:
+              $ref: "#/components/headers/CorrelationIdResponseHeader"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ModelConfig"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+
+  /executions/:
+    post:
+      summary: Crear trabajo científico (Ruta interna servicio-a-servicio)
+      description: >
+        Exige X-Internal-Token además del JWT de usuario y X-Organization-ID.
+        No debe ser invocada directamente por clientes Web ni Móvil.
+      operationId: createInternalExecutionJob
+      tags:
+        - Internal
+      security:
+        - BearerAuth: []
+          InternalTokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationIdHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InternalJobCreate"
+      responses:
+        "202":
+          description: Trabajo aceptado y encolado.
+          headers:
+            X-Correlation-ID:
+              $ref: "#/components/headers/CorrelationIdResponseHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "502":
+          $ref: "#/components/responses/BadGatewayError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+
+  /predictions/:
+    post:
+      summary: Persistir predicción científica inmutable (Ruta interna)
+      description: >
+        Ruta interna de apps/scientific protegida con X-Internal-Token para
+        registrar resultados inmutables en scientific.predictions.
+      operationId: createInternalPrediction
+      tags:
+        - Internal
+      security:
+        - InternalTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PredictionCreate"
+      responses:
+        "201":
+          description: Predicción persistida correctamente.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PredictionResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "502":
+          $ref: "#/components/responses/BadGatewayError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    InternalTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+
+  parameters:
+    JobIdPath:
+      name: job_id
+      in: path
+      required: true
+      description: Identificador UUID del trabajo científico.
+      schema:
+        type: string
+        format: uuid
+    OrganizationIdHeader:
+      name: X-Organization-ID
+      in: header
+      required: true
+      description: Identificador UUID de la organización activa del usuario.
+      schema:
+        type: string
+        format: uuid
+    IdempotencyKeyHeader:
+      name: X-Idempotency-Key
+      in: header
+      required: false
+      description: Clave idempotente no vacía (máximo 255 caracteres) acotada a la organización.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+    CorrelationIdHeader:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      description: Identificador de trazabilidad propagado extremo a extremo.
+      schema:
+        type: string
+
+  headers:
+    CorrelationIdResponseHeader:
+      description: Identificador de correlación reflejado o generado por el servicio.
+      schema:
+        type: string
+
+  responses:
+    UnauthorizedError:
+      description: Sesión ausente, token inválido/expirado o credencial interna faltante.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    ForbiddenError:
+      description: Usuario autenticado sin membresía activa o sin permisos suficientes.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    NotFoundError:
+      description: Recurso no encontrado o fuera del ámbito de la organización solicitante.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    ConflictError:
+      description: Versión no publicada o clave de idempotencia reutilizada con payload distinto.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    ValidationError:
+      description: Parámetros, cabeceras o cuerpo de entrada inválidos.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationErrorResponse"
+    BadGatewayError:
+      description: Error de comunicación o persistencia en una dependencia aguas abajo.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    ServiceUnavailableError:
+      description: Dependencia no disponible (base de datos o microservicio aguas abajo).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+
+  schemas:
+    ApiErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          example: HTTP Error
+        message:
+          type: string
+        details:
+          nullable: true
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: array
+              items:
+                type: object
+                additionalProperties: true
+
+    ValidationErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+        - details
+      properties:
+        error:
+          type: string
+          example: Validation Error
+        message:
+          type: string
+          example: Parámetros de entrada inválidos
+        details:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    InferencePoint:
+      type: object
+      required:
+        - point_id
+      properties:
+        point_id:
+          type: string
+          minLength: 1
+        latitude:
+          type: number
+          format: float
+          minimum: -90
+          maximum: 90
+          nullable: true
+        longitude:
+          type: number
+          format: float
+          minimum: -180
+          maximum: 180
+          nullable: true
+        features:
+          type: object
+          additionalProperties:
+            type: number
+            format: float
+
+    TrainingConfig:
+      type: object
+      required:
+        - dataset_id
+        - version_id
+      properties:
+        dataset_id:
+          type: string
+          format: uuid
+        version_id:
+          type: string
+          format: uuid
+        epochs:
+          type: integer
+          minimum: 1
+          default: 100
+        learning_rate:
+          type: number
+          format: float
+          exclusiveMinimum: true
+          minimum: 0
+          default: 0.001
+
+    EstimationConfig:
+      type: object
+      required:
+        - model_id
+        - scene_id
+      properties:
+        model_id:
+          type: string
+          minLength: 1
+          description: UUID obligatorio en POST /api/v1/executions/jobs; string no vacío en ruta interna.
+        scene_id:
+          type: string
+          minLength: 1
+          description: UUID obligatorio en POST /api/v1/executions/jobs; string no vacío en ruta interna.
+        points:
+          type: array
+          minItems: 1
+          maxItems: 100
+          nullable: true
+          items:
+            $ref: "#/components/schemas/InferencePoint"
+        model_name:
+          type: string
+          minLength: 1
+          nullable: true
+        model_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        training_job_id:
+          type: string
+          format: uuid
+          nullable: true
+        dataset_id:
+          type: string
+          format: uuid
+          nullable: true
+        dataset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    WebExecutionJobCreate:
+      type: object
+      required:
+        - job_type
+      properties:
+        dataset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Alternativa a config.version_id en entrenamiento o config.dataset_version_id en estimación.
+        job_type:
+          type: string
+          enum: [training, estimation, TRAINING, ESTIMATION]
+        config:
+          type: object
+          additionalProperties: true
+          description: Objeto compatible con TrainingConfig (si training) o EstimationConfig (si estimation).
+
+    InternalJobCreate:
+      type: object
+      required:
+        - job_type
+        - config
+      properties:
+        job_type:
+          type: string
+          enum: [training, modeling, estimation]
+        config:
+          oneOf:
+            - $ref: "#/components/schemas/TrainingConfig"
+            - $ref: "#/components/schemas/EstimationConfig"
+            - type: object
+              additionalProperties: true
+
+    JobResponse:
+      type: object
+      required:
+        - job_id
+        - status
+        - status_url
+        - message
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          example: queued
+        status_url:
+          type: string
+          example: /api/v1/executions/99999999-9999-4999-8999-999999999999
+        message:
+          type: string
+          example: Trabajo encolado y en procesamiento.
+
+    TrainingMetrics:
+      type: object
+      required:
+        - mae
+        - rmse
+      properties:
+        mae:
+          type: number
+          format: float
+          minimum: 0
+        rmse:
+          type: number
+          format: float
+          minimum: 0
+
+    BaselineInfo:
+      type: object
+      required:
+        - strategy
+        - target_variable
+        - prediction_value
+        - train_sample_count
+        - validation_sample_count
+      properties:
+        strategy:
+          type: string
+          example: mean_clorofila_a
+        target_variable:
+          type: string
+          example: clorofila_a
+        prediction_value:
+          type: number
+          format: float
+        train_sample_count:
+          type: integer
+          minimum: 1
+        validation_sample_count:
+          type: integer
+          minimum: 1
+
+    TrainingPartitionMetadata:
+      type: object
+      required:
+        - strategy
+        - split_ratio
+        - train_sample_count
+        - validation_sample_count
+      properties:
+        strategy:
+          type: string
+          enum: [sequential]
+        split_ratio:
+          type: number
+          format: float
+          exclusiveMinimum: true
+          minimum: 0
+          exclusiveMaximum: true
+          maximum: 1
+        train_sample_count:
+          type: integer
+          minimum: 1
+        validation_sample_count:
+          type: integer
+          minimum: 1
+
+    ReproducibilityMetadata:
+      type: object
+      required:
+        - dataset_version_id
+        - partition
+        - seed
+        - configuration
+        - code_version
+        - environment
+      properties:
+        dataset_version_id:
+          type: string
+        partition:
+          $ref: "#/components/schemas/TrainingPartitionMetadata"
+        seed:
+          type: integer
+          nullable: true
+        configuration:
+          type: object
+          additionalProperties: true
+        code_version:
+          type: string
+          minLength: 1
+        environment:
+          type: string
+          minLength: 1
+
+    ProvenanceSource:
+      type: object
+      required:
+        - id
+        - checksum
+      properties:
+        id:
+          type: string
+        source_name:
+          type: string
+          nullable: true
+        checksum:
+          type: string
+        is_synthetic:
+          type: boolean
+          default: false
+        is_experimental:
+          type: boolean
+          default: false
+
+    DatasetProvenanceInfo:
+      type: object
+      required:
+        - dataset_id
+        - version_id
+        - version_number
+        - manifest_checksum
+        - origin
+      properties:
+        dataset_id:
+          type: string
+        version_id:
+          type: string
+        version_number:
+          type: string
+        manifest_checksum:
+          type: string
+        origin:
+          type: string
+          enum: [synthetic, real, mixed, unknown]
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProvenanceSource"
+        pilot_fixture:
+          type: object
+          nullable: true
+          additionalProperties: true
+
+    TrainingResult:
+      type: object
+      required:
+        - model
+        - baseline
+        - prediction_value
+        - predictions
+        - metrics
+        - status
+        - warnings
+      properties:
+        model:
+          type: string
+          example: baseline
+        baseline:
+          $ref: "#/components/schemas/BaselineInfo"
+        prediction_value:
+          type: number
+          format: float
+        predictions:
+          type: array
+          items:
+            type: number
+            format: float
+        metrics:
+          $ref: "#/components/schemas/TrainingMetrics"
+        version:
+          type: string
+          nullable: true
+        dataset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        model_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        reproducibility:
+          allOf:
+            - $ref: "#/components/schemas/ReproducibilityMetadata"
+          nullable: true
+        provenance:
+          allOf:
+            - $ref: "#/components/schemas/DatasetProvenanceInfo"
+          nullable: true
+        limitations:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        warnings:
+          type: array
+          items:
+            type: string
+
+    PointPredictionItem:
+      type: object
+      required:
+        - point_id
+        - predicted_value
+      properties:
+        point_id:
+          type: string
+        station_name:
+          type: string
+          nullable: true
+        station_code:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+          format: float
+          minimum: -90
+          maximum: 90
+          nullable: true
+        longitude:
+          type: number
+          format: float
+          minimum: -180
+          maximum: 180
+          nullable: true
+        predicted_value:
+          type: number
+          format: float
+          nullable: true
+        value:
+          type: number
+          format: float
+          nullable: true
+        unit:
+          type: string
+          nullable: true
+        warning:
+          type: string
+          nullable: true
+        warnings:
+          type: array
+          items:
+            type: string
+
+    EstimationJobResult:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        model_id:
+          type: string
+        model_name:
+          type: string
+          nullable: true
+        model_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        training_job_id:
+          type: string
+          format: uuid
+          nullable: true
+        dataset_id:
+          type: string
+          format: uuid
+          nullable: true
+        dataset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        scene_id:
+          type: string
+        model_type:
+          type: string
+          enum: [baseline, linear]
+        baseline:
+          type: string
+        artifact_checksum:
+          type: string
+        point_count:
+          type: integer
+          minimum: 0
+        unit:
+          type: string
+          nullable: true
+        warnings:
+          type: array
+          items:
+            type: string
+        predictions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PointPredictionItem"
+        message:
+          type: string
+          description: Presente únicamente en ejecuciones legacy sin points ni origen verificado.
+
+    TraceabilityEvidence:
+      type: object
+      required:
+        - job_id
+        - scene_id
+        - dataset_version_id
+        - model_id
+        - processing_id
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        scene_id:
+          type: string
+          format: uuid
+        dataset_version_id:
+          type: string
+          format: uuid
+        model_id:
+          type: string
+          minLength: 1
+        processing_id:
+          type: string
+          format: uuid
+
+    JobStatus:
+      type: object
+      required:
+        - job_id
+        - job_type
+        - status
+        - config
+        - created_at
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        job_type:
+          type: string
+          enum: [training, modeling, estimation]
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        config:
+          type: object
+          additionalProperties: true
+        result:
+          nullable: true
+          oneOf:
+            - $ref: "#/components/schemas/TrainingResult"
+            - $ref: "#/components/schemas/EstimationJobResult"
+            - type: object
+              additionalProperties: true
+        traceability_evidence:
+          allOf:
+            - $ref: "#/components/schemas/TraceabilityEvidence"
+          nullable: true
+        dataset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        model_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        scene_id:
+          type: string
+          format: uuid
+          nullable: true
+        requested_by:
+          type: string
+          format: uuid
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ModelArtifactAccess:
+      type: object
+      required:
+        - job_id
+        - download_url
+        - expires_in
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        download_url:
+          type: string
+          format: uri
+        expires_in:
+          type: integer
+          minimum: 1
+          example: 60
+        checksum:
+          type: string
+          nullable: true
+        size_bytes:
+          type: integer
+          minimum: 0
+          nullable: true
+
+    AppliedRule:
+      type: object
+      additionalProperties: false
+      required:
+        - rule_id
+        - version
+      properties:
+        rule_id:
+          type: string
+          minLength: 1
+          maxLength: 255
+        version:
+          type: string
+          minLength: 1
+          maxLength: 100
+        parameters:
+          type: object
+          additionalProperties: true
+
+    PredictionCreate:
+      type: object
+      additionalProperties: false
+      required:
+        - model_version_id
+        - scene_id
+        - result
+        - rules
+      properties:
+        model_version_id:
+          type: string
+          format: uuid
+        scene_id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+          nullable: true
+        result:
+          type: object
+          minProperties: 1
+          additionalProperties: true
+        rules:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/AppliedRule"
+
+    PredictionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - model_version_id
+        - scene_id
+        - result
+        - rules
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        model_version_id:
+          type: string
+          format: uuid
+        scene_id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+          nullable: true
+        result:
+          type: object
+          minProperties: 1
+          additionalProperties: true
+        rules:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/AppliedRule"
+        created_at:
+          type: string
+          format: date-time
+
+    EstimationPoint:
+      type: object
+      additionalProperties: false
+      required:
+        - value
+      properties:
+        point_id:
+          type: string
+          nullable: true
+        station_id:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+          format: float
+          minimum: -90
+          maximum: 90
+          nullable: true
+        longitude:
+          type: number
+          format: float
+          minimum: -180
+          maximum: 180
+          nullable: true
+        value:
+          type: number
+          format: float
+        label:
+          type: string
+          nullable: true
+        quality:
+          type: string
+          nullable: true
+
+    EstimationProvenance:
+      type: object
+      additionalProperties: false
+      required:
+        - model_version_id
+        - scene_id
+        - generated_at
+      properties:
+        model_version_id:
+          type: string
+          format: uuid
+        model_name:
+          type: string
+          nullable: true
+        training_job_id:
+          type: string
+          format: uuid
+          nullable: true
+        scene_id:
+          type: string
+          format: uuid
+        lake_id:
+          type: string
+          format: uuid
+          nullable: true
+        scene_identifier:
+          type: string
+          nullable: true
+        acquisition_date:
+          type: string
+          nullable: true
+        dataset_id:
+          type: string
+          format: uuid
+          nullable: true
+        dataset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/AppliedRule"
+        generated_at:
+          type: string
+          format: date-time
+
+    PredictionDetailResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - organization_id
+        - variable
+        - unit
+        - status
+        - points
+        - provenance
+        - warnings
+        - usage_limits
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        variable:
+          type: string
+          minLength: 1
+        unit:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          minLength: 1
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/EstimationPoint"
+        provenance:
+          $ref: "#/components/schemas/EstimationProvenance"
+        warnings:
+          type: array
+          items:
+            type: string
+        usage_limits:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ModelConfig:
+      type: object
+      required:
+        - id
+        - name
+        - version
+        - target_variable
+        - unit
+        - required_index
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        version:
+          type: string
+        target_variable:
+          type: string
+          example: chlorophyll_a
+        unit:
+          type: string
+          example: ug/L
+        required_index:
+          type: string
+          example: NDCI
+        status:
+          type: string
+          enum: [EXPERIMENTAL, VALIDATED, DEPRECATED, REJECTED]
+        min_index_value:
+          type: number
+          format: float
+        max_index_value:
+          type: number
+          format: float
+        model_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        training_job_id:
+          type: string
+          format: uuid
+          nullable: true
+        dataset_id:
+          type: string
+          format: uuid
+          nullable: true
+        dataset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+
+
