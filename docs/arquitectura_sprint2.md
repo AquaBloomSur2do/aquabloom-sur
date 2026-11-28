@@ -108,3 +108,91 @@ una versión publicada cuyo manifiesto identifique las fuentes, consultar el
 estado del trabajo y registrar la evidencia real observada (`job_id`,
 `dataset_id`, `version_id`, `origin`, `manifest_checksum`, `MAE`/`RMSE`,
 tamaños de partición y limitaciones científicas detectadas).
+## Datos mínimos del informe piloto (S3-09)
+
+Todo resultado de entrenamiento piloto incluye el objeto `result.pilot_report`,
+validado por el esquema `PilotReport` en
+`apps/scientific/app/domains/execution/schemas_execution.py` y documentado en
+`contracts/openapi/scientific.yaml`. El contrato exige cuatro secciones
+obligatorias de nivel superior:
+
+- `method`: algoritmo, estrategia, variable objetivo, partición (`split_strategy`, `split_ratio`), configuración y entorno de ejecución.
+- `results`: predicción puntual, vector de predicciones, métricas (`mae`, `rmse`) y tamaños de muestra de entrenamiento y validación.
+- `limitations`: lista no vacía de limitaciones metodológicas explícitas del experimento piloto.
+- `provenance`: vínculos de origen que identifican obligatoriamente `dataset_version_id` y `manifest` (`manifest_checksum` SHA-256 y `sources`).
+
+Ejemplo de `pilot_report` válido:
+
+```json
+{
+  "method": {
+    "model": "baseline",
+    "strategy": "mean_clorofila_a",
+    "target_variable": "clorofila_a",
+    "split_strategy": "sequential",
+    "split_ratio": 0.8,
+    "configuration": {
+      "algorithm": "baseline"
+    },
+    "code_version": "dev",
+    "environment": "test"
+  },
+  "results": {
+    "prediction_value": 15.0,
+    "predictions": [15.0],
+    "metrics": {
+      "mae": 15.0,
+      "rmse": 15.0
+    },
+    "train_sample_count": 2,
+    "validation_sample_count": 1
+  },
+  "limitations": [
+    "Modelo baseline de referencia basado en la media de clorofila_a de entrenamiento; no incorpora variables espectrales ni espaciales."
+  ],
+  "provenance": {
+    "dataset_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "dataset_version_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "model_version_id": null,
+    "manifest": {
+      "manifest_checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "storage_path": "datasets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/v1/manifest.json",
+      "sources": [
+        "sentinel-2:S2A_MSIL2A_20261120"
+      ]
+    }
+  }
+}
+```
+
+Ejemplo inválido (rechazado por omitir el campo obligatorio `provenance`):
+
+```json
+{
+  "method": {
+    "model": "baseline",
+    "strategy": "mean_clorofila_a",
+    "target_variable": "clorofila_a",
+    "split_strategy": "sequential",
+    "split_ratio": 0.8,
+    "configuration": {
+      "algorithm": "baseline"
+    },
+    "code_version": "dev",
+    "environment": "test"
+  },
+  "results": {
+    "prediction_value": 15.0,
+    "predictions": [15.0],
+    "metrics": {
+      "mae": 15.0,
+      "rmse": 15.0
+    },
+    "train_sample_count": 2,
+    "validation_sample_count": 1
+  },
+  "limitations": [
+    "Modelo baseline de referencia basado en la media de clorofila_a de entrenamiento; no incorpora variables espectrales ni espaciales."
+  ]
+}
+```

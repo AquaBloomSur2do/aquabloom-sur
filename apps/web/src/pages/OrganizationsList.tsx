@@ -10,6 +10,9 @@ interface OrganizationSummary {
   role: string;
 }
 
+const isForbiddenError = (error: unknown): boolean =>
+  Boolean(error && typeof error === 'object' && 'status' in error && error.status === 403);
+
 function renderRoleBadge(role: string) {
   const normalized = role.trim().toLowerCase();
   if (normalized.includes('admin')) {
@@ -42,13 +45,16 @@ export function OrganizationsList() {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [isForbidden, setIsForbidden] = useState(false);
 
   const fetchOrganizations = useCallback(async () => {
     try {
       const result = await apiClient.get<OrganizationSummary[]>('organizations/');
       setOrganizations(result);
       setError(null);
+      setIsForbidden(false);
     } catch (fetchError) {
+      setIsForbidden(isForbiddenError(fetchError));
       setError(
         fetchError instanceof Error
           ? fetchError.message
@@ -102,6 +108,8 @@ export function OrganizationsList() {
       isEmpty={false}
       emptyMessage="No tienes organizaciones visibles."
       onRetry={() => void fetchOrganizations()}
+      isForbidden={isForbidden}
+      forbiddenMessage="No tienes permisos para consultar las organizaciones."
     >
       <div style={{ display: 'grid', gap: '20px' }}>
         <form

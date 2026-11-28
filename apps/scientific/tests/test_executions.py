@@ -1750,3 +1750,93 @@ def test_estimation_does_not_persist_unverified_dataset_version(
 
     assert response.status_code == 202
     assert "dataset_version_id" not in fake_database.rows[0]
+
+
+def test_pilot_report_schema_validates_complete_and_rejects_missing_provenance():
+    """Valida un informe piloto completo y rechaza la omisión de provenance (S3-09)."""
+    from pydantic import ValidationError
+
+    from apps.scientific.app.domains.execution.schemas_execution import PilotReport
+
+    valid_payload = {
+        "method": {
+            "model": "baseline",
+            "strategy": "mean_clorofila_a",
+            "target_variable": "clorofila_a",
+            "split_strategy": "sequential",
+            "split_ratio": 0.8,
+            "configuration": {"algorithm": "baseline"},
+            "code_version": "dev",
+            "environment": "test",
+        },
+        "results": {
+            "prediction_value": 15.0,
+            "predictions": [15.0],
+            "metrics": {"mae": 15.0, "rmse": 15.0},
+            "train_sample_count": 2,
+            "validation_sample_count": 1,
+        },
+        "limitations": [
+            "Modelo baseline de referencia; no incorpora variables espectrales ni espaciales."
+        ],
+        "provenance": {
+            "dataset_id": DATASET_ID,
+            "dataset_version_id": VERSION_ID,
+            "model_version_id": None,
+            "manifest": {
+                "manifest_checksum": "a" * 64,
+                "storage_path": f"datasets/{DATASET_ID}/v1/manifest.json",
+                "sources": ["sentinel-2:S2A_MSIL2A_20261120"],
+            },
+        },
+    }
+
+    report = PilotReport.model_validate(valid_payload)
+    assert report.method.model == "baseline"
+    assert report.results.metrics.mae == 15.0
+    assert len(report.limitations) == 1
+    assert report.provenance.dataset_version_id == VERSION_ID
+    assert report.provenance.manifest.manifest_checksum == "a" * 64
+
+    invalid_payload = {
+        key: value for key, value in valid_payload.items() if key != "provenance"
+    }
+    with pytest.raises(ValidationError) as exc_info:
+        PilotReport.model_validate(invalid_payload)
+
+    assert any(err["loc"] == ("provenance",) for err in exc_info.value.errors())
+
+
+def test_training_execution_persists_validated_pilot_report(fake_database, monkeypatch):
+    """La ejecución de entrenamiento real genera pilot_report con los 4 bloques mínimos (S3-09)."""
+    from apps.scientific.app.domains.execution.schemas_execution import PilotReport
+
+    csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
+    checksum = hashlib.sha256(csv_data).hexdigest()
+    monkeypatch.setattr(
+        service_execution,
+        "fetch_training_file",
+        lambda _version_id, _organization_id, _user_id: (csv_data, checksum),
+    )
+
+    create_response = client.post(
+        "/api/v1/executions/",
+        json=training_payload(),
+        headers=HEADERS,
+    )
+    assert create_response.status_code == 202
+    job_id = create_response.json()["job_id"]
+
+    status_response = client.get(
+        f"/api/v1/executions/{job_id}",
+        headers=AUTH_HEADERS,
+    )
+    assert status_response.status_code == 200
+    pilot_report_data = status_response.json()["result"]["pilot_report"]
+    validated = PilotReport.model_validate(pilot_report_data)
+
+    assert validated.method.strategy == "mean_clorofila_a"
+    assert validated.results.prediction_value == 15.0
+    assert len(validated.limitations) >= 1
+    assert validated.provenance.dataset_version_id == VERSION_ID
+    assert validated.provenance.manifest.manifest_checksum == checksum

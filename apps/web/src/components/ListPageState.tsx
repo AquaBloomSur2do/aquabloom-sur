@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { PageState } from './PageState';
 
 interface ListPageStateProps {
   eyebrow: string;
@@ -10,6 +11,8 @@ interface ListPageStateProps {
   isEmpty: boolean;
   emptyMessage: string;
   onRetry: () => void;
+  isForbidden?: boolean;
+  forbiddenMessage?: string;
   children: ReactNode;
 }
 
@@ -23,6 +26,8 @@ export function ListPageState({
   isEmpty,
   emptyMessage,
   onRetry,
+  isForbidden = false,
+  forbiddenMessage = 'No tienes permisos para consultar este recurso.',
   children,
 }: ListPageStateProps) {
   return (
@@ -36,26 +41,13 @@ export function ListPageState({
       </header>
 
       {isLoading ? (
-        <div className="state-panel state-panel--loading state-container" role="status">
-          <div className="spinner" aria-hidden="true"></div>
-          <p>{loadingMessage}</p>
-        </div>
+        <PageState variant="loading" message={loadingMessage} />
+      ) : isForbidden ? (
+        <PageState variant="forbidden" message={forbiddenMessage} />
       ) : error ? (
-        <div className="state-panel state-panel--error state-container state-error" role="alert">
-          <h3 style={{ margin: '0 0 1rem 0' }}>
-            <span aria-hidden="true" style={{ marginRight: '8px' }}>⚠️</span>
-            Error de conexión
-          </h3>
-          <p>{error}</p>
-          <button type="button" className="btn btn-primary retry-button" onClick={onRetry}>
-            Reintentar
-          </button>
-        </div>
+        <PageState variant="error" message={error} onRetry={onRetry} />
       ) : isEmpty ? (
-        <div className="state-panel state-panel--empty state-container state-empty">
-          <span aria-hidden="true" style={{ fontSize: '2rem', marginBottom: '1rem' }}>📭</span>
-          <p>{emptyMessage}</p>
-        </div>
+        <PageState variant="empty" message={emptyMessage} />
       ) : (
         children
       )}

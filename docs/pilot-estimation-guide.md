@@ -1,5 +1,8 @@
 # Guía del recorrido piloto de estimación
 
+El ejemplo sintético que agrupa dataset, escena, modelo y ejecución está en el
+[manifiesto de evidencia del piloto](./manifiesto-evidencia-piloto.md).
+
 Esta guía muestra cómo localizar una escena, solicitar un trabajo de
 estimación y consultar su estado y, si ya existe una predicción persistida, su
 detalle. Los ejemplos usan el Gateway local en `http://localhost:5000`.
