@@ -1,0 +1,4 @@
+sample_id,lake_code,sample_date,clorofila_a_ug_l,turbidez_ntu,temperatura_c
+LIB-SYN-001,LAGO-VILLARRICA,2026-01-15,4.20,1.85,18.4
+LIB-SYN-002,LAGO-VILLARRICA,2026-02-15,5.10,2.10,19.1
+LIB-SYN-003,LAGO-LLANQUIHUE,2026-03-15,2.75,1.10,16.2

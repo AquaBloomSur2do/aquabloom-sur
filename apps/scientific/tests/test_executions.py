@@ -33,6 +33,9 @@ from apps.scientific.app.domains.execution.domain_execution import (
     parse_training_csv,
     resolve_job_timeout,
 )
+from apps.scientific.app.domains.execution.model_artifacts import (
+    save_model_artifact,
+)
 from apps.scientific.app.domains.execution.model_execution import (
     fetch_training_file,
 )
@@ -185,8 +188,7 @@ class FakeQuery:
             row
             for row in self.database.rows
             if all(
-                str(row.get(column)) == value
-                for column, value in self.filters.items()
+                str(row.get(column)) == value for column, value in self.filters.items()
             )
         ]
         return FakeResponse(rows)
@@ -243,6 +245,30 @@ def fake_database(monkeypatch):
     monkeypatch.setattr(
         "apps.scientific.app.domains.execution.service_execution.supabase",
         database,
+    )
+    monkeypatch.setattr(
+        service_execution,
+        "has_active_organization_membership",
+        lambda user_id, organization_id: any(
+            membership["user_id"] == str(user_id)
+            and membership["organization_id"] == str(organization_id)
+            and membership["status"] == "active"
+            and membership["organization_status"] == "active"
+            for membership in database.memberships
+        ),
+    )
+    monkeypatch.setattr(
+        service_execution,
+        "get_dataset_version_for_training",
+        lambda version_id, organization_id: next(
+            (
+                version
+                for version in database.versions
+                if version["id"] == str(version_id)
+                and str(organization_id) == ORGANIZATION_ID
+            ),
+            None,
+        ),
     )
     monkeypatch.setitem(
         app.dependency_overrides,
@@ -345,10 +371,12 @@ def test_get_job_status_returns_200(fake_database):
     assert response.status_code == 200
     data = response.json()
     assert data["job_id"] == job_id
+
     assert data["status"] == "completed"
     assert data["model_version_id"] == MODEL_VERSION_ID
     assert data["scene_id"] == SCENE_ID
     assert data["requested_by"] == USER_ID
+
     assert fake_database.rows[0]["organization_id"] == ORGANIZATION_ID
     assert fake_database.rows[0]["requested_by"] == USER_ID
     assert len(fake_database.rows) == 1
@@ -758,9 +786,7 @@ def test_training_requires_version_to_belong_to_dataset(fake_database):
     payload = training_payload(dataset_id="cccccccc-cccc-4ccc-8ccc-cccccccccccc")
     response = client.post("/api/v1/executions/", json=payload, headers=HEADERS)
     assert response.status_code == 422
-    assert (
-        response.json()["message"] == "La versión no pertenece al dataset indicado."
-    )
+    assert response.json()["message"] == "La versión no pertenece al dataset indicado."
     assert fake_database.rows == []
 
 
@@ -779,31 +805,27 @@ def mock_training_file(monkeypatch, csv_content: bytes, valid_checksum: bool = T
     return fetch_file
 
 
-def test_model_fetches_training_file_for_version():
+def test_model_fetches_training_file_for_version(monkeypatch):
     mock_client = MagicMock()
     expected_checksum = "a" * 64
     csv_content = b"clorofila_a\n10.0\n"
-    (
-        mock_client.schema.return_value.table.return_value.select.return_value.eq.return_value
-        .limit.return_value.execute.return_value.data
-    ) = [
-        {
-            "storage_path": f"versions/{VERSION_ID}/training.csv",
-            "checksum": expected_checksum,
-        }
-    ]
-    mock_client.storage.from_.return_value.download.return_value = csv_content
-
-    assert fetch_training_file(mock_client, VERSION_ID) == (
+    mock_client.download_training_file.return_value = (
         csv_content,
         expected_checksum,
     )
-    mock_client.schema.return_value.table.return_value.select.return_value.eq.assert_called_once_with(
-        "version_id", VERSION_ID
+    monkeypatch.setattr(
+        "apps.scientific.app.domains.execution.model_execution.CoreServiceClient",
+        lambda: mock_client,
     )
-    mock_client.storage.from_.assert_called_once_with("training_files")
-    mock_client.storage.from_.return_value.download.assert_called_once_with(
-        f"versions/{VERSION_ID}/training.csv"
+
+    assert fetch_training_file(VERSION_ID, ORGANIZATION_ID, USER_ID) == (
+        csv_content,
+        expected_checksum,
+    )
+    mock_client.download_training_file.assert_called_once_with(
+        VERSION_ID,
+        ORGANIZATION_ID,
+        USER_ID,
     )
 
 
@@ -819,7 +841,11 @@ def test_training_is_persisted_as_queued_and_returns_202(fake_database, monkeypa
     assert result["prediction_value"] == 15.0
     assert result["predictions"] == [15.0]
     assert result["metrics"] == {"mae": 15.0, "rmse": 15.0}
-    fetch_file.assert_called_once_with(fake_database, VERSION_ID)
+    fetch_file.assert_called_once_with(
+        VERSION_ID,
+        uuid.UUID(ORGANIZATION_ID),
+        uuid.UUID(USER_ID),
+    )
 
 
 def test_parse_training_csv_rechaza_checksum_invalido():
@@ -856,6 +882,7 @@ def test_baseline_evaluacion_no_modifica_media():
     assert result["prediction_value"] == 15.0
     assert result["predictions"] == [15.0, 15.0]
     assert result["metrics"]["mae"] == 135.0
+
 
 def test_baseline_falla_con_particiones_vacias():
     with pytest.raises(ValueError, match="entrenamiento vacío"):
@@ -921,6 +948,7 @@ def test_get_training_job_status_exposes_full_structured_result(
         "code_version": "test-build-158",
         "environment": "staging",
     }
+
 
 # =========================================================
 # PRUEBA S2-167: PERSISTENCIA Y RECUPERACIÓN TRAS REINICIO
@@ -1023,11 +1051,7 @@ class _PersistentSqliteQuery:
             return "dataset_versions", dict(self.filters)
         if self.table_name == "memberships":
             mapped = {
-                (
-                    "organization_status"
-                    if key == "organizations.status"
-                    else key
-                ): value
+                ("organization_status" if key == "organizations.status" else key): value
                 for key, value in self.filters.items()
             }
             return "memberships", mapped
@@ -1059,9 +1083,7 @@ class _PersistentSqliteQuery:
                 row.setdefault("created_at", datetime.now(UTC).isoformat())
                 row.setdefault("result", None)
                 columns = list(row.keys())
-                values = [
-                    self._serialize_value(col, row[col]) for col in columns
-                ]
+                values = [self._serialize_value(col, row[col]) for col in columns]
                 placeholders = ", ".join("?" for _ in columns)
                 col_names = ", ".join(columns)
                 conn.execute(
@@ -1071,9 +1093,7 @@ class _PersistentSqliteQuery:
                 return FakeResponse([row])
 
             where_clauses = [f"{col} = ?" for col in mapped_filters]
-            where_sql = (
-                f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
-            )
+            where_sql = f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
             filter_values = list(mapped_filters.values())
 
             if self.update_payload is not None:
@@ -1103,9 +1123,7 @@ class _PersistentSqliteQuery:
                 f"SELECT * FROM {sql_table}{where_sql}{limit_sql}",
                 filter_values,
             )
-            return FakeResponse(
-                [self._deserialize_row(r) for r in cursor.fetchall()]
-            )
+            return FakeResponse([self._deserialize_row(r) for r in cursor.fetchall()])
 
 
 class PersistentSqliteClient:
@@ -1125,9 +1143,7 @@ class PersistentSqliteClient:
         return _PersistentSqliteQuery(self.db_path, None, table_name)
 
 
-def test_job_status_and_result_persist_across_api_restart(
-    tmp_path, monkeypatch
-):
+def test_job_status_and_result_persist_across_api_restart(tmp_path, monkeypatch):
     """Tras reiniciar la API, el estado y resultado completados siguen disponibles (S2-167)."""
     db_path = tmp_path / "scientific_persistent.db"
     _init_persistent_sqlite_db(db_path)
@@ -1151,7 +1167,10 @@ def test_job_status_and_result_persist_across_api_restart(
             mp.setattr(
                 service_execution,
                 "fetch_training_file",
-                lambda _client, _version_id: (csv_data, checksum),
+                lambda _version_id, _organization_id, _user_id: (
+                    csv_data,
+                    checksum,
+                ),
             )
             with TestClient(first_app) as first_api_client:
                 create_response = first_api_client.post(
@@ -1219,4 +1238,483 @@ def test_job_status_and_result_persist_across_api_restart(
         first_app.dependency_overrides.clear()
         restarted_app.dependency_overrides.clear()
 
-        
+class _FileSystemBucket:
+    """Bucket de Storage simulado que escribe archivos reales en disco."""
+
+    def __init__(self, root: Path):
+        self.root = root
+
+    def upload(self, path: str, data: bytes, _file_options: dict[str, str]):
+        target = self.root / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        return {"path": path}
+
+    def remove(self, paths: list[str]):
+        for path in paths:
+            (self.root / path).unlink(missing_ok=True)
+        return {"removed": paths}
+
+    def download(self, path: str) -> bytes:
+        return (self.root / path).read_bytes()
+
+    def create_signed_url(self, path: str, expires_in: int):
+        if not (self.root / path).is_file():
+            raise FileNotFoundError(path)
+        return {"signedURL": f"https://storage.test/sign/{path}?exp={expires_in}"}
+
+
+class _FileSystemStorage:
+    def __init__(self, root: Path):
+        self.root = root
+
+    def from_(self, bucket: str) -> _FileSystemBucket:
+        return _FileSystemBucket(self.root / bucket)
+
+
+class _PersistentArtifactClient(PersistentSqliteClient):
+    """SQLite en disco más Storage simulado sobre el sistema de archivos."""
+
+    def __init__(self, db_path: Path, storage_root: Path):
+        super().__init__(db_path)
+        self.storage = _FileSystemStorage(storage_root)
+
+
+def test_model_artifact_file_and_access_persist_across_api_restart(
+    tmp_path, monkeypatch
+):
+    """Tras reiniciar la API, el archivo y su acceso autorizado siguen vigentes (S2-185)."""
+    db_path = tmp_path / "scientific_persistent.db"
+    storage_root = tmp_path / "storage"
+    _init_persistent_sqlite_db(db_path)
+
+    job_id = str(uuid.uuid4())
+    artifact_bytes = b"\x80\x04modelo-entrenado\x00"
+    expected_checksum = hashlib.sha256(artifact_bytes).hexdigest()
+    expected_path = f"models/{job_id}/model.pkl"
+    expected_reference = {
+        "job_id": job_id,
+        "bucket": "model_artifacts",
+        "storage_path": expected_path,
+        "checksum": expected_checksum,
+        "size_bytes": len(artifact_bytes),
+    }
+
+    first_app = create_app()
+    restarted_app = create_app()
+
+    try:
+        # 1. Primera instancia: trabajo completado y artefacto guardado en disco
+        first_client = _PersistentArtifactClient(db_path, storage_root)
+        first_client.table("scientific_jobs").insert(
+            {
+                "id": job_id,
+                "job_type": "training",
+                "config": {"dataset_id": DATASET_ID, "version_id": VERSION_ID},
+                "status": "completed",
+                "organization_id": ORGANIZATION_ID,
+                "requested_by": USER_ID,
+            }
+        ).execute()
+        reference = save_model_artifact(first_client, job_id, artifact_bytes)
+        assert reference.storage_path == expected_path
+        assert reference.checksum == expected_checksum
+
+        # 2. Reinicio: clientes nuevos sobre los mismos archivos de disco
+        first_app.dependency_overrides.clear()
+        restarted_client = _PersistentArtifactClient(db_path, storage_root)
+        monkeypatch.setattr(controller_execution, "supabase", restarted_client)
+        monkeypatch.setattr(service_execution, "supabase", restarted_client)
+        restarted_app.dependency_overrides[require_authenticated_user] = (
+            fake_authenticated_user
+        )
+
+        # 3. El archivo en sí persiste, íntegro, y coincide con el checksum guardado
+        persisted = restarted_client.storage.from_("model_artifacts").download(
+            expected_path
+        )
+        assert persisted == artifact_bytes
+        assert hashlib.sha256(persisted).hexdigest() == expected_checksum
+
+        with TestClient(restarted_app) as api_client:
+            # 4. La referencia al artefacto sigue en el resultado del trabajo
+            status_response = api_client.get(
+                f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS
+            )
+            assert status_response.status_code == 200
+            assert status_response.json()["result"]["model_artifact"] == (
+                expected_reference
+            )
+
+            # 5. Acceso autorizado: enlace temporal al archivo privado
+            access_response = api_client.get(
+                f"/api/v1/executions/{job_id}/artifact", headers=AUTH_HEADERS
+            )
+            assert access_response.status_code == 200
+            access_body = access_response.json()
+            assert expected_path in access_body["download_url"]
+            assert access_body["checksum"] == expected_checksum
+            assert access_body["expires_in"] == 60
+
+            # 6. Otra organización (el usuario es miembro de ambas) no accede
+            foreign_headers = {
+                "Authorization": AUTH_HEADERS["Authorization"],
+                "X-Organization-ID": OTHER_ORGANIZATION_ID,
+            }
+            foreign_artifact = api_client.get(
+                f"/api/v1/executions/{job_id}/artifact", headers=foreign_headers
+            )
+            assert foreign_artifact.status_code == 404
+            assert "storage.test" not in foreign_artifact.text
+            assert expected_path not in foreign_artifact.text
+
+            foreign_status = api_client.get(
+                f"/api/v1/executions/{job_id}", headers=foreign_headers
+            )
+            assert foreign_status.status_code == 404
+
+            # 7. Sin autenticación no hay acceso
+            anonymous = api_client.get(
+                f"/api/v1/executions/{job_id}/artifact",
+                headers={"X-Organization-ID": ORGANIZATION_ID},
+            )
+            assert anonymous.status_code == 401
+    finally:
+        first_app.dependency_overrides.clear()
+        restarted_app.dependency_overrides.clear()
+             
+def test_estimation_job_resolves_training_and_dataset_origin(fake_database):
+    training_job_id = "aaaaaaaa-1111-4111-8111-111111111111"
+    fake_database.rows.append(
+        {
+            "id": training_job_id,
+            "organization_id": ORGANIZATION_ID,
+            "job_type": "training",
+            "status": "completed",
+            "config": {"dataset_id": DATASET_ID, "version_id": VERSION_ID},
+            "result": {
+                "model": "baseline",
+                "model_version_id": MODEL_VERSION_ID,
+            },
+            "dataset_version_id": VERSION_ID,
+            "model_version_id": MODEL_VERSION_ID,
+        }
+    )
+
+    post_response = client.post(
+        "/api/v1/executions/",
+        json={
+            "job_type": "estimation",
+            "config": {
+                "model_id": MODEL_VERSION_ID,
+                "scene_id": SCENE_ID,
+                "training_job_id": training_job_id,
+            },
+        },
+        headers=HEADERS,
+    )
+    assert post_response.status_code == 202
+    job_id = post_response.json()["job_id"]
+
+    status_response = client.get(
+        f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS
+    )
+    assert status_response.status_code == 200
+    body = status_response.json()
+    assert body["status"] == "completed"
+    assert body["result"]["training_job_id"] == training_job_id
+    assert body["result"]["dataset_id"] == DATASET_ID
+    assert body["result"]["dataset_version_id"] == VERSION_ID
+    assert body["result"]["model_version_id"] == MODEL_VERSION_ID
+
+
+def test_estimation_job_fails_when_training_origin_is_missing(fake_database):
+    missing_training_id = "bbbbbbbb-2222-4222-8222-222222222222"
+    post_response = client.post(
+        "/api/v1/executions/",
+        json={
+            "job_type": "estimation",
+            "config": {
+                "model_id": MODEL_VERSION_ID,
+                "scene_id": SCENE_ID,
+                "training_job_id": missing_training_id,
+            },
+        },
+        headers=HEADERS,
+    )
+    assert post_response.status_code == 202
+    job_id = post_response.json()["job_id"]
+
+    status_response = client.get(
+        f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS
+    )
+    assert status_response.status_code == 200
+    body = status_response.json()
+    assert body["status"] == "failed"
+    assert body["error_message"] == (
+        "No se encontró el trabajo de entrenamiento de origen del modelo."
+    )
+
+
+@pytest.mark.parametrize(
+    ("origin_status", "origin_organization_id", "origin_config", "origin_version_id"),
+    [
+        ("failed", ORGANIZATION_ID, {"dataset_id": DATASET_ID}, VERSION_ID),
+        ("completed", OTHER_ORGANIZATION_ID, {"dataset_id": DATASET_ID}, VERSION_ID),
+        ("completed", ORGANIZATION_ID, {"dataset_id": DATASET_ID}, None),
+    ],
+)
+def test_estimation_rejects_unverified_training_origins(
+    fake_database,
+    origin_status,
+    origin_organization_id,
+    origin_config,
+    origin_version_id,
+):
+    training_job_id = "aaaaaaaa-3333-4333-8333-333333333333"
+    fake_database.rows.append(
+        {
+            "id": training_job_id,
+            "organization_id": origin_organization_id,
+            "job_type": "training",
+            "status": origin_status,
+            "config": origin_config,
+            "result": {},
+            "dataset_version_id": origin_version_id,
+        }
+    )
+
+    response = client.post(
+        "/api/v1/executions/",
+        json={
+            "job_type": "estimation",
+            "config": {
+                "model_id": MODEL_VERSION_ID,
+                "scene_id": SCENE_ID,
+                "training_job_id": training_job_id,
+            },
+        },
+        headers=HEADERS,
+    )
+    job_id = response.json()["job_id"]
+
+    status_response = client.get(
+        f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 202
+    assert status_response.status_code == 200
+    body = status_response.json()
+    assert body["status"] == "failed"
+    if origin_status != "completed":
+        assert "aún no está completado" in body["error_message"]
+    elif origin_organization_id != ORGANIZATION_ID:
+        assert "No se encontró el trabajo" in body["error_message"]
+    else:
+        assert "dataset y su versión" in body["error_message"]
+
+
+def test_estimation_finds_training_by_id_when_model_version_id_is_null(
+    fake_database,
+):
+    fake_database.rows.append(
+        {
+            "id": "bbbbbbbb-1111-4111-8111-111111111111",
+            "organization_id": ORGANIZATION_ID,
+            "job_type": "training",
+            "status": "failed",
+            "config": {"dataset_id": DATASET_ID, "version_id": VERSION_ID},
+            "result": {},
+            "dataset_version_id": VERSION_ID,
+            "model_version_id": MODEL_VERSION_ID,
+        }
+    )
+    fake_database.rows.append(
+        {
+            "id": MODEL_VERSION_ID,
+            "organization_id": ORGANIZATION_ID,
+            "job_type": "training",
+            "status": "completed",
+            "config": {"dataset_id": DATASET_ID, "version_id": VERSION_ID},
+            "result": {"model": "baseline"},
+            "dataset_version_id": VERSION_ID,
+            "model_version_id": None,
+        }
+    )
+
+    response = client.post(
+        "/api/v1/executions/",
+        json={
+            "job_type": "estimation",
+            "config": {"model_id": MODEL_VERSION_ID, "scene_id": SCENE_ID},
+        },
+        headers=HEADERS,
+    )
+    job_id = response.json()["job_id"]
+    status_response = client.get(
+        f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 202
+    assert status_response.json()["status"] == "completed"
+    assert status_response.json()["result"]["training_job_id"] == MODEL_VERSION_ID
+    assert status_response.json()["result"]["dataset_id"] == DATASET_ID
+    assert status_response.json()["result"]["dataset_version_id"] == VERSION_ID
+
+
+def test_estimation_rejects_mismatched_training_and_model_versions(fake_database):
+    training_job_id = "aaaaaaaa-4444-4444-8444-444444444444"
+    fake_database.rows.append(
+        {
+            "id": training_job_id,
+            "organization_id": ORGANIZATION_ID,
+            "job_type": "training",
+            "status": "completed",
+            "config": {"dataset_id": DATASET_ID, "version_id": VERSION_ID},
+            "result": {"model_version_id": MODEL_VERSION_ID},
+            "dataset_version_id": VERSION_ID,
+            "model_version_id": MODEL_VERSION_ID,
+        }
+    )
+
+    response = client.post(
+        "/api/v1/executions/",
+        json={
+            "job_type": "estimation",
+            "config": {
+                "model_id": MODEL_VERSION_ID,
+                "scene_id": SCENE_ID,
+                "training_job_id": training_job_id,
+                "model_version_id": OTHER_MODEL_VERSION_ID,
+            },
+        },
+        headers=HEADERS,
+    )
+    job_id = response.json()["job_id"]
+    status_response = client.get(
+        f"/api/v1/executions/{job_id}", headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 202
+    assert status_response.json()["status"] == "failed"
+    assert (
+        status_response.json()["error_message"]
+        == "El entrenamiento de origen no corresponde al modelo indicado."
+    )
+
+
+def test_estimation_does_not_persist_unverified_dataset_version(
+    fake_database, monkeypatch
+):
+    async def skip_worker(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        "apps.scientific.app.domains.execution.service_execution.process_scientific_job",
+        skip_worker,
+    )
+    response = client.post(
+        "/api/v1/executions/",
+        json={
+            "job_type": "estimation",
+            "config": {
+                "model_id": MODEL_VERSION_ID,
+                "scene_id": SCENE_ID,
+                "dataset_version_id": VERSION_ID,
+            },
+        },
+        headers=HEADERS,
+    )
+
+    assert response.status_code == 202
+    assert "dataset_version_id" not in fake_database.rows[0]
+
+
+def test_pilot_report_schema_validates_complete_and_rejects_missing_provenance():
+    """Valida un informe piloto completo y rechaza la omisión de provenance (S3-09)."""
+    from pydantic import ValidationError
+
+    from apps.scientific.app.domains.execution.schemas_execution import PilotReport
+
+    valid_payload = {
+        "method": {
+            "model": "baseline",
+            "strategy": "mean_clorofila_a",
+            "target_variable": "clorofila_a",
+            "split_strategy": "sequential",
+            "split_ratio": 0.8,
+            "configuration": {"algorithm": "baseline"},
+            "code_version": "dev",
+            "environment": "test",
+        },
+        "results": {
+            "prediction_value": 15.0,
+            "predictions": [15.0],
+            "metrics": {"mae": 15.0, "rmse": 15.0},
+            "train_sample_count": 2,
+            "validation_sample_count": 1,
+        },
+        "limitations": [
+            "Modelo baseline de referencia; no incorpora variables espectrales ni espaciales."
+        ],
+        "provenance": {
+            "dataset_id": DATASET_ID,
+            "dataset_version_id": VERSION_ID,
+            "model_version_id": None,
+            "manifest": {
+                "manifest_checksum": "a" * 64,
+                "storage_path": f"datasets/{DATASET_ID}/v1/manifest.json",
+                "sources": ["sentinel-2:S2A_MSIL2A_20261120"],
+            },
+        },
+    }
+
+    report = PilotReport.model_validate(valid_payload)
+    assert report.method.model == "baseline"
+    assert report.results.metrics.mae == 15.0
+    assert len(report.limitations) == 1
+    assert report.provenance.dataset_version_id == VERSION_ID
+    assert report.provenance.manifest.manifest_checksum == "a" * 64
+
+    invalid_payload = {
+        key: value for key, value in valid_payload.items() if key != "provenance"
+    }
+    with pytest.raises(ValidationError) as exc_info:
+        PilotReport.model_validate(invalid_payload)
+
+    assert any(err["loc"] == ("provenance",) for err in exc_info.value.errors())
+
+
+def test_training_execution_persists_validated_pilot_report(fake_database, monkeypatch):
+    """La ejecución de entrenamiento real genera pilot_report con los 4 bloques mínimos (S3-09)."""
+    from apps.scientific.app.domains.execution.schemas_execution import PilotReport
+
+    csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
+    checksum = hashlib.sha256(csv_data).hexdigest()
+    monkeypatch.setattr(
+        service_execution,
+        "fetch_training_file",
+        lambda _version_id, _organization_id, _user_id: (csv_data, checksum),
+    )
+
+    create_response = client.post(
+        "/api/v1/executions/",
+        json=training_payload(),
+        headers=HEADERS,
+    )
+    assert create_response.status_code == 202
+    job_id = create_response.json()["job_id"]
+
+    status_response = client.get(
+        f"/api/v1/executions/{job_id}",
+        headers=AUTH_HEADERS,
+    )
+    assert status_response.status_code == 200
+    pilot_report_data = status_response.json()["result"]["pilot_report"]
+    validated = PilotReport.model_validate(pilot_report_data)
+
+    assert validated.method.strategy == "mean_clorofila_a"
+    assert validated.results.prediction_value == 15.0
+    assert len(validated.limitations) >= 1
+    assert validated.provenance.dataset_version_id == VERSION_ID
+    assert validated.provenance.manifest.manifest_checksum == checksum

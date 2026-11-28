@@ -26,6 +26,9 @@ interface LakeStation {
   station: StationSummary;
 }
 
+const isForbiddenError = (error: unknown): boolean =>
+  Boolean(error && typeof error === 'object' && 'status' in error && error.status === 403);
+
 function renderStationStatus(status: string) {
   const normalized = status.trim().toLowerCase();
   if (normalized === 'active') {
@@ -46,6 +49,7 @@ export function StationsList() {
   const [stations, setStations] = useState<LakeStation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isForbidden, setIsForbidden] = useState(false);
 
   const fetchStations = useCallback(async (isRetry = false) => {
     if (isRetry) {
@@ -68,7 +72,9 @@ export function StationsList() {
 
       setStations(stationGroups.flat());
       setError(null);
+      setIsForbidden(false);
     } catch (fetchError) {
+      setIsForbidden(isForbiddenError(fetchError));
       setError(
         fetchError instanceof Error
           ? fetchError.message
@@ -95,6 +101,8 @@ export function StationsList() {
       isEmpty={stations.length === 0}
       emptyMessage="No hay estaciones activas registradas."
       onRetry={() => void fetchStations(true)}
+      isForbidden={isForbidden}
+      forbiddenMessage="No tienes permisos para consultar las estaciones."
     >
       <section className="card" aria-label="Listado de estaciones activas">
         <div className="card-head">

@@ -5,18 +5,22 @@ import pytest
 from postgrest.exceptions import APIError
 
 from apps.scientific.app.domains.execution.model_artifacts import (
+    ARTIFACT_URL_MAX_TTL_SECONDS,
     build_model_artifact_storage_path,
     calculate_sha256,
+    create_model_artifact_signed_url,
     save_model_artifact,
 )
 
 
 class FakeStorageBucket:
-    def __init__(self, remove_error=None, upload_error=None):
+    def __init__(self, remove_error=None, upload_error=None, sign_response=None):
         self.uploaded = []
         self.removed = []
+        self.signed = []
         self.remove_error = remove_error
         self.upload_error = upload_error
+        self.sign_response = sign_response
 
     def upload(self, path, data, file_options):
         self.uploaded.append((path, data, file_options))
@@ -30,6 +34,11 @@ class FakeStorageBucket:
         self.removed.extend(paths)
         return {"removed": paths}
 
+    def create_signed_url(self, path, expires_in):
+        self.signed.append((path, expires_in))
+        if self.sign_response is not None:
+            return self.sign_response
+        return {"signedURL": f"https://storage.test/sign/{path}?token=abc"}
 
 class FakeStorage:
     def __init__(self, bucket):
@@ -293,3 +302,97 @@ def test_save_model_artifact_rejects_invalid_bucket(bucket):
 
     with pytest.raises((TypeError, ValueError)):
         save_model_artifact(client, job_id, b"model-content", bucket=bucket)
+
+SIGNED_JOB_ID = "11111111-1111-4111-8111-111111111111"
+SIGNED_PATH = f"models/{SIGNED_JOB_ID}/model.pkl"
+
+
+def _artifact_reference(**overrides):
+    reference = {
+        "job_id": SIGNED_JOB_ID,
+        "bucket": "model_artifacts",
+        "storage_path": SIGNED_PATH,
+        "checksum": "a" * 64,
+        "size_bytes": 12,
+    }
+    reference.update(overrides)
+    return reference
+
+
+def test_signed_url_is_created_in_private_bucket_with_expiry():
+    client = FakeClient()
+
+    url = create_model_artifact_signed_url(client, _artifact_reference(), 45)
+
+    assert url == f"https://storage.test/sign/{SIGNED_PATH}?token=abc"
+    assert client.storage.requested_bucket == "model_artifacts"
+    assert client.storage.bucket.signed == [(SIGNED_PATH, 45)]
+
+
+def test_signed_url_accepts_alternative_response_key():
+    bucket = FakeStorageBucket(sign_response={"signedUrl": "https://storage.test/x"})
+    client = FakeClient(bucket=bucket)
+
+    url = create_model_artifact_signed_url(client, _artifact_reference())
+
+    assert url == "https://storage.test/x"
+
+
+@pytest.mark.parametrize(
+    "storage_path",
+    [
+        "models/22222222-2222-4222-8222-222222222222/model.pkl",
+        f"models/{SIGNED_JOB_ID}/../otro/model.pkl",
+        "otra/ruta/model.pkl",
+    ],
+)
+def test_signed_url_rejects_path_outside_the_job(storage_path):
+    client = FakeClient()
+
+    with pytest.raises(ValueError, match="no pertenece"):
+        create_model_artifact_signed_url(
+            client, _artifact_reference(storage_path=storage_path)
+        )
+
+    assert client.storage.bucket.signed == []
+
+
+@pytest.mark.parametrize("overrides", [{"bucket": ""}, {"storage_path": None}])
+def test_signed_url_rejects_incomplete_reference(overrides):
+    client = FakeClient()
+
+    with pytest.raises(ValueError, match="incompleta"):
+        create_model_artifact_signed_url(client, _artifact_reference(**overrides))
+
+    assert client.storage.bucket.signed == []
+
+
+@pytest.mark.parametrize("expires_in", [0, -1, ARTIFACT_URL_MAX_TTL_SECONDS + 1])
+def test_signed_url_rejects_out_of_range_expiry(expires_in):
+    client = FakeClient()
+
+    with pytest.raises(ValueError, match="rango"):
+        create_model_artifact_signed_url(client, _artifact_reference(), expires_in)
+
+    assert client.storage.bucket.signed == []
+
+
+@pytest.mark.parametrize("expires_in", [True, "60", 1.5])
+def test_signed_url_rejects_non_integer_expiry(expires_in):
+    with pytest.raises(TypeError, match="entero"):
+        create_model_artifact_signed_url(
+            FakeClient(), _artifact_reference(), expires_in
+        )
+
+
+def test_signed_url_rejects_non_dict_reference():
+    with pytest.raises(TypeError, match="referencia"):
+        create_model_artifact_signed_url(FakeClient(), "no-es-un-dict")
+
+
+def test_signed_url_fails_when_storage_returns_no_url():
+    client = FakeClient(bucket=FakeStorageBucket(sign_response={}))
+
+    with pytest.raises(ValueError, match="firmar"):
+        create_model_artifact_signed_url(client, _artifact_reference())
+        

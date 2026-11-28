@@ -31,11 +31,28 @@ function isInProgressStatus(status: JobStatusResponse['status']): boolean {
 }
 
 function resolveDatasetVersionId(job: JobStatusResponse): string | null {
-  if (job.dataset_version_id) return job.dataset_version_id;
-  const configVersionId = job.config?.version_id;
-  return typeof configVersionId === 'string' && configVersionId.trim()
-    ? configVersionId
-    : null;
+  const candidates = [
+    job.result?.dataset_version_id,
+    job.dataset_version_id,
+    job.config?.dataset_version_id,
+    job.config?.version_id,
+  ];
+  return (
+    candidates.find(
+      (candidate): candidate is string =>
+        typeof candidate === 'string' && candidate.trim().length > 0
+    )?.trim() ?? null
+  );
+}
+
+function resolveEvidenceId(value: unknown, fallback: unknown): string | null {
+  const candidates = [value, fallback];
+  return (
+    candidates.find(
+      (candidate): candidate is string =>
+        typeof candidate === 'string' && candidate.trim().length > 0
+    )?.trim() ?? null
+  );
 }
 
 const STRUCTURED_RESULT_KEYS = new Set([
@@ -52,6 +69,10 @@ const STRUCTURED_RESULT_KEYS = new Set([
   'unit',
   'point_count',
   'model_id',
+  'model_name',
+  'training_job_id',
+  'dataset_id',
+  'model_artifact',
   'artifact_checksum',
 ]);
 
@@ -185,6 +206,7 @@ export function ScientificJobDetail({
       if (isInitialLoad) {
         setLoading(true);
         setError(null);
+        setJob(null);
       }
 
       activeController = new AbortController();
@@ -324,6 +346,27 @@ export function ScientificJobDetail({
     job?.result?.dataset_version_id ??
     job?.model_version_id ??
     job?.dataset_version_id;
+  const resolvedModelId = job
+    ? resolveEvidenceId(
+        job.result?.model_id ?? job.result?.model_version_id,
+        job.model_version_id ?? job.config?.model_id
+      )
+    : null;
+  const resolvedModelName = job
+    ? resolveEvidenceId(
+        job.result?.model_name ?? job.result?.model,
+        job.config?.model_name
+      )
+    : null;
+  const resolvedTrainingJobId = job
+    ? resolveEvidenceId(
+        job.result?.training_job_id ?? job.result?.model_artifact?.job_id,
+        job.config?.training_job_id
+      )
+    : null;
+  const resolvedDatasetId = job
+    ? resolveEvidenceId(job.result?.dataset_id, job.config?.dataset_id)
+    : null;
 
   const resultStatusKey = job?.result?.status as
     JobStatusResponse['status'] | undefined;
@@ -472,6 +515,43 @@ export function ScientificJobDetail({
                 <h2>Resultado</h2>
               </div>
               <div className="card-body grid">
+                {job.job_type === 'estimation' && (
+                  <>
+                    <h3 className="detail-full">Evidencia de origen</h3>
+                    <div className="detail">
+                      <span>Modelo utilizado</span>
+                      <b>
+                        {resolvedModelName ?? 'Nombre no informado'}
+                        {resolvedModelId ? ` (${resolvedModelId})` : ''}
+                      </b>
+                    </div>
+                    <div className="detail">
+                      <span>Entrenamiento de origen</span>
+                      {resolvedTrainingJobId ? (
+                        <Link
+                          to={`/scientific/jobs/${encodeURIComponent(
+                            resolvedTrainingJobId
+                          )}`}
+                        >
+                          Ver entrenamiento {resolvedTrainingJobId}
+                        </Link>
+                      ) : (
+                        <b>No informado por la API</b>
+                      )}
+                    </div>
+                    <div className="detail">
+                      <span>Dataset de origen</span>
+                      <b>{resolvedDatasetId ?? 'No informado por la API'}</b>
+                    </div>
+                    <div className="detail">
+                      <span>Versión del dataset de origen</span>
+                      <b>
+                        {resolvedDatasetVersionId ?? 'No informada por la API'}
+                      </b>
+                    </div>
+                  </>
+                )}
+
                 {job.job_type === 'training' &&
                   isStructuredTrainingResult(job.result) && (
                     <>

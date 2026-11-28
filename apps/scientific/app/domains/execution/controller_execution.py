@@ -7,6 +7,7 @@ from fastapi import (
     Header,
     HTTPException,
     Request,
+    Response,
     status,
 )
 
@@ -22,10 +23,12 @@ from apps.scientific.app.domains.execution.schemas_execution import (
     JobCreate,
     JobResponse,
     JobStatus,
+    ModelArtifactAccess,
 )
 from apps.scientific.app.domains.execution.service_execution import (
     create_execution_job_service,
     get_job_status_service,
+    get_model_artifact_access_service,
     process_scientific_job,
 )
 
@@ -66,6 +69,30 @@ def get_job_status(
             detail="Token sin identificador de usuario válido.",
         ) from exc
     return get_job_status_service(client, job_id, user_id, organization_id)
+
+
+@router.get(
+    "/{job_id}/artifact",
+    response_model=ModelArtifactAccess,
+    status_code=status.HTTP_200_OK,
+    summary="Solicitar acceso temporal al artefacto de un trabajo científico",
+)
+def get_job_artifact_access(
+    job_id: UUID,
+    response: Response,
+    organization_id: UUID = Header(alias="X-Organization-ID"),  # noqa: B008
+    user: dict = Depends(require_authenticated_user),  # noqa: B008
+):
+    client = _require_database()
+    try:
+        user_id = UUID(str(user.get("sub")))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token sin identificador de usuario válido.",
+        ) from exc
+    response.headers["Cache-Control"] = "no-store"
+    return get_model_artifact_access_service(client, job_id, user_id, organization_id)
 
 
 @router.post(

@@ -14,7 +14,10 @@ os.environ.setdefault("SUPABASE_KEY", "test-service-key")
 
 from apps.scientific.app.core.config import settings
 from apps.scientific.app.core.dependencies import require_authenticated_user
-from apps.scientific.app.domains.prediction import controller_prediction
+from apps.scientific.app.domains.prediction import (
+    controller_prediction,
+    service_prediction,
+)
 from apps.scientific.app.main import app
 
 client = TestClient(app)
@@ -26,6 +29,7 @@ ORGANIZATION_ID = "33333333-3333-4333-8333-333333333333"
 OTHER_ORGANIZATION_ID = "44444444-4444-4444-8444-444444444444"
 LAKE_ID = "55555555-5555-4555-8555-555555555555"
 DATASET_VERSION_ID = "66666666-6666-4666-8666-666666666666"
+DATASET_ID = "77777777-7777-4777-8777-777777777777"
 MODEL_VERSION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 SCENE_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 
@@ -112,6 +116,17 @@ class FakePredictionQuery:
             ]
             return SimpleNamespace(data=rows)
 
+        if self.table_name == "scientific_jobs":
+            rows = [
+                row
+                for row in self.database.training_jobs
+                if all(
+                    row.get(key) is not None and str(row.get(key)) == str(value)
+                    for key, value in self.filters.items()
+                )
+            ]
+            return SimpleNamespace(data=rows)
+
         if self.schema_name != "scientific" or self.table_name != "predictions":
             raise AssertionError(
                 f"Unexpected query: {self.schema_name}.{self.table_name}"
@@ -119,9 +134,7 @@ class FakePredictionQuery:
 
         if self.insert_payload is not None:
             if self.database.fail_on_insert:
-                raise APIError(
-                    {"code": "23503", "message": "foreign key violation"}
-                )
+                raise APIError({"code": "23503", "message": "foreign key violation"})
             row = {
                 **self.insert_payload,
                 "id": str(uuid.uuid4()),
@@ -144,6 +157,7 @@ class FakePredictionQuery:
 class FakePredictionDatabase:
     def __init__(self):
         self.rows = []
+        self.training_jobs = []
         self.fail_on_insert = False
         self.memberships = [
             {
@@ -180,9 +194,7 @@ class FakePredictionDatabase:
 
     def schema(self, schema_name):
         return SimpleNamespace(
-            table=lambda table_name: FakePredictionQuery(
-                self, schema_name, table_name
-            )
+            table=lambda table_name: FakePredictionQuery(self, schema_name, table_name)
         )
 
     def table(self, table_name):
@@ -196,6 +208,40 @@ def prediction_payload():
         "result": {"chlorophyll_a": 12.5, "unit": "ug/L"},
         "rules": [{"rule_id": "cloud-mask", "version": "1.0"}],
     }
+
+
+def mock_prediction_service_contracts(monkeypatch, database):
+    def get_membership(user_id, organization_id):
+        for membership in database.memberships:
+            if (
+                membership["user_id"] == str(user_id)
+                and membership["organization_id"] == str(organization_id)
+                and membership["status"] == "active"
+                and membership["organization_status"] == "active"
+            ):
+                return {
+                    "organization_id": membership["organization_id"],
+                    "role": membership["role"],
+                    "status": membership["status"],
+                }
+        return None
+
+    def get_scene(scene_id):
+        return next(
+            (scene for scene in database.scenes if scene["id"] == str(scene_id)),
+            None,
+        )
+
+    monkeypatch.setattr(
+        service_prediction,
+        "get_active_membership_for_organization",
+        get_membership,
+    )
+    monkeypatch.setattr(
+        service_prediction,
+        "get_scene_metadata_in_db",
+        get_scene,
+    )
 
 
 def detailed_prediction_payload():
@@ -246,6 +292,7 @@ def detailed_prediction_payload():
 def test_create_prediction_appends_each_result(monkeypatch):
     database = FakePredictionDatabase()
     monkeypatch.setattr(controller_prediction, "supabase", database)
+    mock_prediction_service_contracts(monkeypatch, database)
     payload = prediction_payload()
 
     first = client.post("/api/v1/predictions/", json=payload, headers=HEADERS)
@@ -310,6 +357,7 @@ def test_get_prediction_detail_returns_full_contract_with_verified_permissions(
 ):
     database = FakePredictionDatabase()
     monkeypatch.setattr(controller_prediction, "supabase", database)
+    mock_prediction_service_contracts(monkeypatch, database)
 
     created = client.post(
         "/api/v1/predictions/",
@@ -319,9 +367,7 @@ def test_get_prediction_detail_returns_full_contract_with_verified_permissions(
     assert created.status_code == 201
     prediction_id = created.json()["id"]
 
-    response = client.get(
-        f"/api/v1/predictions/{prediction_id}", headers=AUTH_HEADERS
-    )
+    response = client.get(f"/api/v1/predictions/{prediction_id}", headers=AUTH_HEADERS)
 
     assert response.status_code == 200
     data = response.json()
@@ -343,10 +389,7 @@ def test_get_prediction_detail_returns_full_contract_with_verified_permissions(
     assert data["provenance"]["model_version_id"] == MODEL_VERSION_ID
     assert data["provenance"]["scene_id"] == SCENE_ID
     assert data["provenance"]["lake_id"] == LAKE_ID
-    assert (
-        data["provenance"]["scene_identifier"]
-        == "S2A_MSIL2A_20261120_VILLARRICA"
-    )
+    assert data["provenance"]["scene_identifier"] == "S2A_MSIL2A_20261120_VILLARRICA"
     assert data["provenance"]["acquisition_date"] == "2026-11-20"
     assert data["provenance"]["dataset_version_id"] == DATASET_VERSION_ID
     assert data["provenance"]["rules"] == [
@@ -365,20 +408,114 @@ def test_get_prediction_detail_returns_full_contract_with_verified_permissions(
     ]
 
 
+def test_prediction_origin_skips_invalid_result_uuids_and_failed_trainings(
+    monkeypatch,
+):
+    database = FakePredictionDatabase()
+    database.training_jobs.extend(
+        [
+            {
+                "id": "77777777-7777-4777-8777-777777777777",
+                "organization_id": ORGANIZATION_ID,
+                "job_type": "training",
+                "status": "failed",
+                "model_version_id": MODEL_VERSION_ID,
+                "config": {"dataset_id": "88888888-8888-4888-8888-888888888888"},
+                "dataset_version_id": "99999999-9999-4999-8999-999999999999",
+            },
+            {
+                "id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                "organization_id": ORGANIZATION_ID,
+                "job_type": "training",
+                "status": "completed",
+                "model_version_id": MODEL_VERSION_ID,
+                "config": {"dataset_id": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"},
+                "dataset_version_id": DATASET_VERSION_ID,
+            },
+        ]
+    )
+    monkeypatch.setattr(controller_prediction, "supabase", database)
+    mock_prediction_service_contracts(monkeypatch, database)
+    payload = detailed_prediction_payload()
+    payload["result"].update(
+        {
+            "training_job_id": "not-a-uuid",
+            "dataset_id": "not-a-uuid",
+            "dataset_version_id": "not-a-uuid",
+        }
+    )
+
+    created = client.post(
+        "/api/v1/predictions/",
+        json=payload,
+        headers=HEADERS,
+    )
+    response = client.get(
+        f"/api/v1/predictions/{created.json()['id']}",
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 200
+    provenance = response.json()["provenance"]
+    assert provenance["training_job_id"] == "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+    assert provenance["dataset_id"] == "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
+    assert provenance["dataset_version_id"] == DATASET_VERSION_ID
+
+
+def test_prediction_detail_does_not_link_an_explicit_failed_training(monkeypatch):
+    database = FakePredictionDatabase()
+    failed_training_id = "77777777-7777-4777-8777-777777777777"
+    database.training_jobs.append(
+        {
+            "id": failed_training_id,
+            "organization_id": ORGANIZATION_ID,
+            "job_type": "training",
+            "status": "failed",
+            "model_version_id": MODEL_VERSION_ID,
+            "config": {"dataset_id": DATASET_ID},
+            "dataset_version_id": DATASET_VERSION_ID,
+        }
+    )
+    monkeypatch.setattr(controller_prediction, "supabase", database)
+    mock_prediction_service_contracts(monkeypatch, database)
+    payload = detailed_prediction_payload()
+    payload["result"].update(
+        {
+            "training_job_id": failed_training_id,
+            "dataset_id": DATASET_ID,
+        }
+    )
+
+    created = client.post(
+        "/api/v1/predictions/",
+        json=payload,
+        headers=HEADERS,
+    )
+    response = client.get(
+        f"/api/v1/predictions/{created.json()['id']}",
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 200
+    provenance = response.json()["provenance"]
+    assert provenance["training_job_id"] is None
+    assert provenance["dataset_id"] is None
+    assert provenance["dataset_version_id"] is None
+
+
 def test_get_prediction_detail_supports_scalar_result_and_flags_experimental_scene(
     monkeypatch,
 ):
     database = FakePredictionDatabase()
     database.scenes[0]["is_experimental"] = True
     monkeypatch.setattr(controller_prediction, "supabase", database)
+    mock_prediction_service_contracts(monkeypatch, database)
 
     payload = {**prediction_payload(), "organization_id": ORGANIZATION_ID}
     created = client.post("/api/v1/predictions/", json=payload, headers=HEADERS)
     prediction_id = created.json()["id"]
 
-    response = client.get(
-        f"/api/v1/predictions/{prediction_id}", headers=AUTH_HEADERS
-    )
+    response = client.get(f"/api/v1/predictions/{prediction_id}", headers=AUTH_HEADERS)
 
     assert response.status_code == 200
     data = response.json()
@@ -398,6 +535,7 @@ def test_get_prediction_detail_flags_synthetic_data_and_respects_calibrated_unce
 ):
     database = FakePredictionDatabase()
     monkeypatch.setattr(controller_prediction, "supabase", database)
+    mock_prediction_service_contracts(monkeypatch, database)
     payload = {**prediction_payload(), "organization_id": ORGANIZATION_ID}
     payload["result"].update(
         {
@@ -421,6 +559,7 @@ def test_get_prediction_detail_flags_synthetic_data_and_respects_calibrated_unce
 def test_get_prediction_detail_requires_authentication(monkeypatch):
     database = FakePredictionDatabase()
     monkeypatch.setattr(controller_prediction, "supabase", database)
+    mock_prediction_service_contracts(monkeypatch, database)
 
     response = client.get(
         f"/api/v1/predictions/{uuid.uuid4()}",
@@ -433,6 +572,7 @@ def test_get_prediction_detail_requires_authentication(monkeypatch):
 def test_get_prediction_detail_rejects_user_without_active_membership(monkeypatch):
     database = FakePredictionDatabase()
     monkeypatch.setattr(controller_prediction, "supabase", database)
+    mock_prediction_service_contracts(monkeypatch, database)
 
     response = client.get(
         f"/api/v1/predictions/{uuid.uuid4()}",
@@ -449,6 +589,7 @@ def test_get_prediction_detail_rejects_user_without_active_membership(monkeypatc
 def test_get_prediction_detail_rejects_unauthorized_role(monkeypatch):
     database = FakePredictionDatabase()
     monkeypatch.setattr(controller_prediction, "supabase", database)
+    mock_prediction_service_contracts(monkeypatch, database)
 
     response = client.get(
         f"/api/v1/predictions/{uuid.uuid4()}",
@@ -465,6 +606,7 @@ def test_get_prediction_detail_rejects_unauthorized_role(monkeypatch):
 def test_get_prediction_detail_isolates_predictions_by_organization(monkeypatch):
     database = FakePredictionDatabase()
     monkeypatch.setattr(controller_prediction, "supabase", database)
+    mock_prediction_service_contracts(monkeypatch, database)
 
     created = client.post(
         "/api/v1/predictions/",
@@ -493,13 +635,9 @@ def test_get_prediction_detail_returns_404_when_prediction_does_not_exist(
 ):
     database = FakePredictionDatabase()
     monkeypatch.setattr(controller_prediction, "supabase", database)
+    mock_prediction_service_contracts(monkeypatch, database)
 
-    response = client.get(
-        f"/api/v1/predictions/{uuid.uuid4()}", headers=AUTH_HEADERS
-    )
+    response = client.get(f"/api/v1/predictions/{uuid.uuid4()}", headers=AUTH_HEADERS)
 
     assert response.status_code == 404
     assert response.json()["message"] == "No se encontró la estimación solicitada."
-
-
-

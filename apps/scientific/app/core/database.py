@@ -44,7 +44,7 @@ def check_supabase_connection() -> dict:
         }
 
     try:
-        supabase.table("profiles").select("id").limit(1).execute()
+        supabase.table("scientific_jobs").select("id").limit(1).execute()
         return {"status": "ok", "connection": "successful"}
     except Exception:  # noqa: BLE001
         return {"status": "error", "detail": "Fallo de red o permisos insuficientes."}

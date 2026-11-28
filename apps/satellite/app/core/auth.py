@@ -1,10 +1,11 @@
 import os
+import secrets
 from functools import lru_cache
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 import jwt
-from fastapi import APIRouter, HTTPException, Security, status
+from fastapi import APIRouter, Header, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
@@ -179,6 +180,24 @@ def require_admin(payload: dict = Security(verify_supabase_jwt)) -> dict:  # noq
             detail="Solo los administradores pueden realizar esta acción.",
         )
     return payload
+
+
+def require_internal_service(
+    token: Annotated[str | None, Header(alias="X-Internal-Token")] = None,
+) -> None:
+    configured_token = settings.internal_service_token
+    if configured_token is None or not configured_token.get_secret_value():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Autenticación interna no configurada.",
+        )
+    if token is None or not secrets.compare_digest(
+        token, configured_token.get_secret_value()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Autenticación interna requerida.",
+        )
 
 
 def require_catalog_create_permission(

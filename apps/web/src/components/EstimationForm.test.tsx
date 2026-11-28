@@ -95,8 +95,12 @@ describe('EstimationForm', () => {
     vi.mocked(modelsService.getModelsByLake).mockResolvedValue([
       {
         id: 'model-exp-1',
-        name: 'NDCI Regresión Piloto',
+        name: ' NDCI Regresión Piloto ',
         version: '1.0.0',
+        model_version_id: ' 11111111-1111-4111-8111-111111111111 ',
+        training_job_id: ' 22222222-2222-4222-8222-222222222222 ',
+        dataset_id: ' 33333333-3333-4333-8333-333333333333 ',
+        dataset_version_id: ' 44444444-4444-4444-8444-444444444444 ',
         target_variable: 'chlorophyll_a',
         unit: 'ug/L',
         required_index: 'NDCI',
@@ -126,11 +130,59 @@ describe('EstimationForm', () => {
         config: {
           model_id: 'model-exp-1',
           scene_id: 'scene-s2-01',
+          model_name: 'NDCI Regresión Piloto',
+          model_version_id: '11111111-1111-4111-8111-111111111111',
+          training_job_id: '22222222-2222-4222-8222-222222222222',
+          dataset_id: '33333333-3333-4333-8333-333333333333',
+          dataset_version_id: '44444444-4444-4444-8444-444444444444',
         },
       });
     });
 
     expect(mockNavigate).toHaveBeenCalledWith('/scientific/jobs/job-est-999');
+  });
+
+  it('omite metadatos de trazabilidad vacíos después de normalizarlos', async () => {
+    vi.mocked(modelsService.getModelsByLake).mockResolvedValue([
+      {
+        id: 'model-exp-1',
+        name: '   ',
+        version: '1.0.0',
+        model_version_id: '   ',
+        training_job_id: ' ',
+        dataset_id: '  ',
+        dataset_version_id: '\t',
+        target_variable: 'chlorophyll_a',
+        unit: 'ug/L',
+        required_index: 'NDCI',
+        status: 'EXPERIMENTAL',
+        created_at: '2026-11-10T00:00:00Z',
+      },
+    ]);
+    vi.mocked(executionsService.createJob).mockResolvedValue({
+      job_id: 'job-est-1000',
+      status: 'queued',
+    });
+
+    render(
+      <MemoryRouter>
+        <EstimationForm lakeId="lake-villarrica" sceneId="scene-s2-01" />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Generar Estimación/i })
+    );
+
+    await waitFor(() => {
+      expect(executionsService.createJob).toHaveBeenCalledWith({
+        job_type: 'ESTIMATION',
+        config: {
+          model_id: 'model-exp-1',
+          scene_id: 'scene-s2-01',
+        },
+      });
+    });
   });
 
   it('muestra alerta accesible si falla la creación del trabajo', async () => {

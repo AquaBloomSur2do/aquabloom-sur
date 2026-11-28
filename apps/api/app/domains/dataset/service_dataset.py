@@ -692,7 +692,11 @@ def update_version_state_service(
 
 
 def validate_training_file_access(
-    version_id: UUID, user_id: str, client, dataset_schema
+    version_id: UUID,
+    user_id: str,
+    client,
+    dataset_schema,
+    organization_id: UUID | None = None,
 ) -> dict:
     version_rows = fetch_rows(
         dataset_schema.table("versions")
@@ -720,6 +724,13 @@ def validate_training_file_access(
     if not dataset_rows:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Dataset no encontrado."
+        )
+    if organization_id is not None and str(dataset_rows[0]["organization_id"]) != str(
+        organization_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Versión no encontrada.",
         )
 
     membership = fetch_rows(
@@ -755,16 +766,47 @@ def validate_training_file_access(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Las variables del manifiesto de entrenamiento no son válidas.",
         )
-    if (
-        not isinstance(manifest.get("checksum"), str)
-        or len(manifest["checksum"]) != 64
-    ):
+    if not isinstance(manifest.get("checksum"), str) or len(manifest["checksum"]) != 64:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="El checksum del manifiesto de entrenamiento no es válido.",
         )
 
     return manifest
+
+
+def get_dataset_version_for_training(
+    client, version_id: UUID, organization_id: UUID
+) -> dict | None:
+    dataset_schema = client.schema("dataset")
+    version_rows = fetch_rows(
+        dataset_schema.table("versions")
+        .select("id, dataset_id, state")
+        .eq("id", str(version_id))
+        .limit(1)
+    )
+    if not version_rows:
+        return None
+
+    version = version_rows[0]
+    dataset_rows = fetch_rows(
+        dataset_schema.table("datasets")
+        .select("organization_id")
+        .eq("id", str(version["dataset_id"]))
+        .limit(1)
+    )
+    if (
+        not dataset_rows
+        or str(dataset_rows[0].get("organization_id")) != str(organization_id)
+    ):
+        return None
+
+    return {
+        "id": version["id"],
+        "dataset_id": version["dataset_id"],
+        "state": version["state"],
+        "status": version["state"],
+    }
 
 
 def download_and_verify_training_bytes(client, manifest: dict) -> bytes:
@@ -795,7 +837,7 @@ def build_version_manifest_service(
     client, dataset_id: UUID, version_id: str
 ) -> DatasetManifest:
     dataset_client = client.schema("dataset")
-    
+
     try:
         version_rows = fetch_rows(
             dataset_client.table("versions")
@@ -852,11 +894,7 @@ def build_version_manifest_service(
         )
         src_experimental = bool(src.get("is_experimental", False))
         is_pilot_source = bool(
-            pilot_id
-            and (
-                source_id == str(pilot_id)
-                or source_id == "src-fallback"
-            )
+            pilot_id and (source_id == str(pilot_id) or source_id == "src-fallback")
         )
 
         if is_pilot_source:
@@ -883,7 +921,7 @@ def build_version_manifest_service(
                 is_experimental=src_experimental,
             )
         )
-        
+
     observations = [
         ManifestItem(
             id=str(obs.get("id") or obs.get("scene_external_id") or f"obs-{idx + 1}"),

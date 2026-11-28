@@ -32,3 +32,137 @@ Se establecen los siguientes límites de despliegue y propiedad de datos:
 ## Consecuencias
 - Los microservicios no compartirán tablas de base de datos directamente (a excepción de las claves lógicas como UUIDs).
 - La comunicación entre el Core y los servicios científicos se hará mediante contratos OpenAPI estrictos a través del Gateway o vía asincronía.
+
+## Evidencia de trazabilidad de resultados científicos (S3-20)
+
+La respuesta de un trabajo puede incluir `traceability_evidence`, validada por el
+modelo Pydantic `TraceabilityEvidence` en
+`apps/scientific/app/domains/execution/schemas_execution.py`. Para conservar
+compatibilidad con trabajos históricos, el campo es opcional; al persistirlo,
+se almacena como `result.traceability_evidence` en el JSONB del resultado de
+`public.scientific_jobs`. El endpoint de estado lo proyecta como
+`traceability_evidence` en la respuesta.
+
+Los cinco identificadores se interpretan así:
+
+| Campo | Identidad que referencia | Contrato |
+| --- | --- | --- |
+| `job_id` | Trabajo científico (`public.scientific_jobs.id`) | UUID del trabajo aceptado por `/api/v1/executions/`. |
+| `scene_id` | Escena catalogada (`satellite.scenes.id`) | UUID de la escena, no su `scene_identifier` externo. Dataset memberships aún usan proveedor + identificador externo; el servicio debe resolverlos a este UUID. |
+| `dataset_version_id` | Versión inmutable (`dataset.versions.id`) | UUID de la versión realmente usada, equivalente a `TrainingConfig.version_id`. |
+| `model_id` | Modelo/versión exacta usada | Identificador no vacío; se conserva como texto porque `EstimationConfig.model_id` es texto y no hay aún una tabla de modelos con FK. Debe identificar una versión inmutable, no un alias mutable. |
+| `processing_id` | Intento individual de procesamiento | UUID distinto del trabajo; permite distinguir reintentos del mismo `job_id`. No existe hoy una tabla de intentos, por lo que queda registrado dentro de la evidencia JSONB. |
+
+Ejemplo de `result` almacenado y de la evidencia devuelta en el estado del
+trabajo:
+
+```json
+{
+  "accuracy": 0.98,
+  "processed_pixels": 102400,
+  "traceability_evidence": {
+    "job_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "scene_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "dataset_version_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    "model_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    "processing_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+  }
+}
+```
+
+La API ya valida y expone la evidencia persistida. El proceso científico actual
+no genera todavía estos cinco valores: en particular, `EstimationConfig.scene_id`
+es hoy texto libre, no exige `dataset_version_id`, y no se persiste un UUID por
+intento. Por tanto, los productores solo deben adjuntar evidencia cuando hayan
+resuelto la escena y utilizado efectivamente la versión/modelo identificados;
+el siguiente paso de integración es crear esos identificadores durante el
+procesamiento y persistirlos junto al resultado. No se infieren identificadores
+ni se presenta evidencia ficticia para resultados existentes.
+## Datos mínimos del informe piloto (S3-09)
+
+Todo resultado de entrenamiento piloto incluye el objeto `result.pilot_report`,
+validado por el esquema `PilotReport` en
+`apps/scientific/app/domains/execution/schemas_execution.py` y documentado en
+`contracts/openapi/scientific.yaml`. El contrato exige cuatro secciones
+obligatorias de nivel superior:
+
+- `method`: algoritmo, estrategia, variable objetivo, partición (`split_strategy`, `split_ratio`), configuración y entorno de ejecución.
+- `results`: predicción puntual, vector de predicciones, métricas (`mae`, `rmse`) y tamaños de muestra de entrenamiento y validación.
+- `limitations`: lista no vacía de limitaciones metodológicas explícitas del experimento piloto.
+- `provenance`: vínculos de origen que identifican obligatoriamente `dataset_version_id` y `manifest` (`manifest_checksum` SHA-256 y `sources`).
+
+Ejemplo de `pilot_report` válido:
+
+```json
+{
+  "method": {
+    "model": "baseline",
+    "strategy": "mean_clorofila_a",
+    "target_variable": "clorofila_a",
+    "split_strategy": "sequential",
+    "split_ratio": 0.8,
+    "configuration": {
+      "algorithm": "baseline"
+    },
+    "code_version": "dev",
+    "environment": "test"
+  },
+  "results": {
+    "prediction_value": 15.0,
+    "predictions": [15.0],
+    "metrics": {
+      "mae": 15.0,
+      "rmse": 15.0
+    },
+    "train_sample_count": 2,
+    "validation_sample_count": 1
+  },
+  "limitations": [
+    "Modelo baseline de referencia basado en la media de clorofila_a de entrenamiento; no incorpora variables espectrales ni espaciales."
+  ],
+  "provenance": {
+    "dataset_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "dataset_version_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "model_version_id": null,
+    "manifest": {
+      "manifest_checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "storage_path": "datasets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/v1/manifest.json",
+      "sources": [
+        "sentinel-2:S2A_MSIL2A_20261120"
+      ]
+    }
+  }
+}
+```
+
+Ejemplo inválido (rechazado por omitir el campo obligatorio `provenance`):
+
+```json
+{
+  "method": {
+    "model": "baseline",
+    "strategy": "mean_clorofila_a",
+    "target_variable": "clorofila_a",
+    "split_strategy": "sequential",
+    "split_ratio": 0.8,
+    "configuration": {
+      "algorithm": "baseline"
+    },
+    "code_version": "dev",
+    "environment": "test"
+  },
+  "results": {
+    "prediction_value": 15.0,
+    "predictions": [15.0],
+    "metrics": {
+      "mae": 15.0,
+      "rmse": 15.0
+    },
+    "train_sample_count": 2,
+    "validation_sample_count": 1
+  },
+  "limitations": [
+    "Modelo baseline de referencia basado en la media de clorofila_a de entrenamiento; no incorpora variables espectrales ni espaciales."
+  ]
+}
+```

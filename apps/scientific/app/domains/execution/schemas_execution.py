@@ -46,6 +46,11 @@ class EstimationConfig(BaseModel):
     model_id: str = Field(min_length=1)
     scene_id: str = Field(min_length=1)
     points: list[InferencePoint] | None = Field(default=None, min_length=1)
+    model_name: str | None = None
+    model_version_id: UUID | None = None
+    training_job_id: UUID | None = None
+    dataset_id: UUID | None = None
+    dataset_version_id: UUID | None = None
 
     @field_validator("model_id", "scene_id", mode="before")
     @classmethod
@@ -102,6 +107,69 @@ class ReproducibilityMetadata(BaseModel):
     environment: str = Field(min_length=1)
 
 
+class PilotManifestLink(BaseModel):
+    manifest_checksum: str = Field(min_length=64, max_length=64)
+    storage_path: str | None = None
+    sources: list[str] = Field(default_factory=list)
+
+    @field_validator("manifest_checksum")
+    @classmethod
+    def validate_manifest_checksum(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) != 64 or any(
+            ch not in "0123456789abcdefABCDEF" for ch in normalized
+        ):
+            raise ValueError(
+                "manifest_checksum debe ser un SHA-256 hexadecimal válido."
+            )
+        return normalized.lower()
+
+
+class PilotReportMethod(BaseModel):
+    model: str = Field(min_length=1)
+    strategy: str = Field(min_length=1)
+    target_variable: str = Field(min_length=1)
+    split_strategy: str = Field(min_length=1)
+    split_ratio: float = Field(gt=0, lt=1)
+    configuration: dict[str, Any] = Field(default_factory=dict)
+    code_version: str = Field(min_length=1)
+    environment: str = Field(min_length=1)
+
+
+class PilotReportResults(BaseModel):
+    prediction_value: float
+    predictions: list[float] = Field(min_length=1)
+    metrics: TrainingMetrics
+    train_sample_count: int = Field(ge=1)
+    validation_sample_count: int = Field(ge=1)
+
+
+class PilotReportProvenance(BaseModel):
+    dataset_id: str | None = None
+    dataset_version_id: str = Field(min_length=1)
+    model_version_id: str | None = None
+    manifest: PilotManifestLink
+
+
+class PilotReport(BaseModel):
+    method: PilotReportMethod
+    results: PilotReportResults
+    limitations: list[str] = Field(min_length=1)
+    provenance: PilotReportProvenance
+
+    @field_validator("limitations")
+    @classmethod
+    def validate_non_empty_limitations(cls, value: list[str]) -> list[str]:
+        cleaned = [
+            item.strip() for item in value if isinstance(item, str) and item.strip()
+        ]
+        if not cleaned:
+            raise ValueError(
+                "limitations debe contener al menos una limitación explícita."
+            )
+        return cleaned
+
+
 class TrainingResult(BaseModel):
     model: str = "baseline"
     baseline: BaselineInfo
@@ -112,8 +180,17 @@ class TrainingResult(BaseModel):
     dataset_version_id: str | None = None
     model_version_id: str | None = None
     reproducibility: ReproducibilityMetadata | None = None
+    pilot_report: PilotReport | None = None
     status: ScientificJobStatusEnum = ScientificJobStatusEnum.COMPLETED
     warnings: list[str] = Field(default_factory=list)
+
+
+class TraceabilityEvidence(BaseModel):
+    job_id: UUID
+    scene_id: UUID
+    dataset_version_id: UUID
+    model_id: str = Field(min_length=1)
+    processing_id: UUID
 
 
 class JobCreate(BaseModel):
@@ -154,6 +231,7 @@ class JobStatus(BaseModel):
     status: ScientificJobStatusEnum
     config: dict[str, Any]
     result: TrainingResult | dict[str, Any] | None = None
+    traceability_evidence: TraceabilityEvidence | None = None
     dataset_version_id: UUID | None = None
     model_version_id: UUID | None = None
     scene_id: UUID | None = None
@@ -219,3 +297,11 @@ class PilotMetricsResult(BaseModel):
     r2_computable: bool
     r2: float | None = None
     limitations: list[str] = Field(default_factory=list)
+
+class ModelArtifactAccess(BaseModel):
+    job_id: UUID
+    download_url: str
+    expires_in: int = Field(gt=0)
+    checksum: str | None = None
+    size_bytes: int | None = Field(default=None, ge=0)
+    

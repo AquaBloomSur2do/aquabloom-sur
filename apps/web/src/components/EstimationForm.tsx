@@ -3,12 +3,17 @@ import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { modelsService } from '../services/models';
 import { executionsService } from '../services/executions';
-import type { ModelConfig } from '../types/models';
+import type { EstimationConfig, ModelConfig } from '../types/models';
 import { ApiError } from '../services/apiClient';
 
 interface EstimationFormProps {
   lakeId: string;
   sceneId: string;
+}
+
+function normalizeOptionalMetadata(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized || undefined;
 }
 
 export function EstimationForm({ lakeId, sceneId }: EstimationFormProps) {
@@ -67,12 +72,26 @@ export function EstimationForm({ lakeId, sceneId }: EstimationFormProps) {
     setError(null);
 
     try {
+      const model = models.find(({ id }) => id === selectedModel);
+      const modelName = normalizeOptionalMetadata(model?.name);
+      const modelVersionId = normalizeOptionalMetadata(model?.model_version_id);
+      const trainingJobId = normalizeOptionalMetadata(model?.training_job_id);
+      const datasetId = normalizeOptionalMetadata(model?.dataset_id);
+      const datasetVersionId = normalizeOptionalMetadata(
+        model?.dataset_version_id
+      );
+      const config: EstimationConfig = {
+        model_id: selectedModel,
+        scene_id: sceneId,
+        ...(modelName ? { model_name: modelName } : {}),
+        ...(modelVersionId ? { model_version_id: modelVersionId } : {}),
+        ...(trainingJobId ? { training_job_id: trainingJobId } : {}),
+        ...(datasetId ? { dataset_id: datasetId } : {}),
+        ...(datasetVersionId ? { dataset_version_id: datasetVersionId } : {}),
+      };
       const response = await executionsService.createJob({
         job_type: 'ESTIMATION',
-        config: {
-          model_id: selectedModel,
-          scene_id: sceneId,
-        },
+        config: { ...config },
       });
       navigate(`/scientific/jobs/${response.job_id}`);
     } catch (err: unknown) {
