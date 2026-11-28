@@ -102,6 +102,12 @@ describe('DatasetReview', () => {
       if (url.includes('manifest')) {
         return Promise.resolve(mockManifest);
       }
+      if (url.includes('datasets/candidates')) {
+        return Promise.resolve([]);
+      }
+      if (url === 'lakes') {
+        return Promise.resolve({ items: [] });
+      }
       return Promise.resolve(reviewDatasets);
     });
   });
@@ -138,9 +144,9 @@ describe('DatasetReview', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar decisión' }));
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Respuesta guardada: Rechazada.'
-    );
+    expect(
+      await screen.findByText('Respuesta guardada: Rechazada.')
+    ).toBeInTheDocument();
     expect(mockPost).toHaveBeenCalledWith(
       'datasets/memberships/membership-1/decisions',
       { decision: 'rejected', reason: 'Nubes densas' }
@@ -184,9 +190,9 @@ describe('DatasetReview', () => {
     await screen.findByText('scene-pilot');
     fireEvent.click(screen.getByRole('button', { name: 'Publicar versión' }));
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Versión publicada. ID: version-1'
-    );
+    expect(
+      await screen.findByText('Versión publicada. ID: version-1')
+    ).toBeInTheDocument();
     expect(mockPublishVersion).toHaveBeenCalledWith('version-1');
     expect(
       screen.getByRole('button', { name: 'Versión publicada' })
@@ -214,5 +220,116 @@ describe('DatasetReview', () => {
     expect(screen.getByText('Experimental', { exact: true })).toBeInTheDocument();
 
     expect(screen.getByText(/Condición no informada/i)).toBeInTheDocument();
+  });
+
+  it('S3-47: filtra Panguipulli y solo muestra recursos visibles vinculados a ese lago', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('manifest')) {
+        return Promise.resolve(mockManifest);
+      }
+      if (url.includes('datasets/candidates')) {
+        return Promise.resolve([
+          {
+            id: 'candidate-panguipulli-approved',
+            lake_id: 'lake-panguipulli',
+            data_uri: 's3://ingest/panguipulli-visible.csv',
+            status: 'APPROVED',
+            submitted_at: '2026-10-27T00:00:00Z',
+          },
+          {
+            id: 'candidate-panguipulli-pending',
+            lake_id: 'lake-panguipulli',
+            data_uri: 's3://ingest/panguipulli-pending.csv',
+            status: 'PENDING',
+            submitted_at: '2026-10-27T00:00:00Z',
+          },
+          {
+            id: 'candidate-villarrica-approved',
+            lake_id: 'lake-villarrica',
+            data_uri: 's3://ingest/villarrica-visible.csv',
+            status: 'APPROVED',
+            submitted_at: '2026-10-27T00:00:00Z',
+          },
+          {
+            id: 'candidate-inactive-lake-approved',
+            lake_id: 'lake-hidden',
+            data_uri: 's3://ingest/inactive-lake.csv',
+            status: 'APPROVED',
+            submitted_at: '2026-10-27T00:00:00Z',
+          },
+        ]);
+      }
+      if (url === 'lakes') {
+        return Promise.resolve({
+          items: [
+            { id: 'lake-panguipulli', name: 'Panguipulli', status: 'active' },
+            { id: 'lake-villarrica', name: 'Villarrica', status: 'active' },
+            { id: 'lake-hidden', name: 'Lago no disponible', status: 'inactive' },
+          ],
+        });
+      }
+      return Promise.resolve(reviewDatasets);
+    });
+
+    render(<DatasetReview />);
+
+    await screen.findByRole('option', { name: 'Panguipulli' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar candidatos por lago' }), {
+      target: { value: 'lake-panguipulli' },
+    });
+
+    expect(
+      await screen.findByText('s3://ingest/panguipulli-visible.csv')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('s3://ingest/panguipulli-pending.csv')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('s3://ingest/villarrica-visible.csv')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('s3://ingest/inactive-lake.csv')
+    ).not.toBeInTheDocument();
+  });
+
+  it('muestra el estado vacío cuando Panguipulli no tiene recursos visibles vinculados', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('manifest')) {
+        return Promise.resolve(mockManifest);
+      }
+      if (url.includes('datasets/candidates')) {
+        return Promise.resolve([
+          {
+            id: 'candidate-panguipulli-pending',
+            lake_id: 'lake-panguipulli',
+            data_uri: 's3://ingest/panguipulli-pending.csv',
+            status: 'PENDING',
+            submitted_at: '2026-10-27T00:00:00Z',
+          },
+        ]);
+      }
+      if (url === 'lakes') {
+        return Promise.resolve({
+          items: [
+            { id: 'lake-panguipulli', name: 'Panguipulli', status: 'active' },
+          ],
+        });
+      }
+      return Promise.resolve(reviewDatasets);
+    });
+
+    render(<DatasetReview />);
+
+    await screen.findByRole('option', { name: 'Panguipulli' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar candidatos por lago' }), {
+      target: { value: 'lake-panguipulli' },
+    });
+
+    expect(
+      await screen.findByRole('status')
+    ).toHaveTextContent('No hay recursos visibles vinculados a Panguipulli.');
+    expect(
+      screen.queryByText('s3://ingest/panguipulli-pending.csv')
+    ).not.toBeInTheDocument();
   });
 });
