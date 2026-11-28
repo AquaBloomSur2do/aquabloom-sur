@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import Depends, FastAPI
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -32,6 +33,9 @@ from apps.api.app.domains.ingestion.controller_ingestion import (
 from apps.api.app.domains.internal.controller_internal import (
     router as internal_router,
 )
+from apps.api.app.domains.library.controller_library import (
+    router as library_router,
+)
 from apps.api.app.gateway.controller_gateway import router as gateway_router
 from apps.api.app.gateway.executions_bridge import (
     router as executions_bridge_router,
@@ -58,6 +62,7 @@ tags_metadata = [
     {"name": "Observations", "description": "Observaciones espectrales."},
     {"name": "Datasets", "description": "Versionado y manifiestos de datasets."},
     {"name": "Manifests", "description": "Trazabilidad y validación criptográfica."},
+    {"name": "Library", "description": "Versionado y atribución de recursos de biblioteca."},
 ]
 
 logger = logging.getLogger(__name__)
@@ -126,7 +131,7 @@ async def validation_exception_handler(request, exc):
         content={
             "error": "Validation Error",
             "message": "Parámetros de entrada inválidos",
-            "details": exc.errors(),
+            "details": jsonable_encoder(exc.errors()),
         },
     )
 
@@ -141,6 +146,7 @@ app.include_router(identity_router)
 app.include_router(catalog_router)
 app.include_router(ingestion_router)
 app.include_router(dataset_router, responses=COMMON_RESPONSES)
+app.include_router(library_router, responses=COMMON_RESPONSES)
 app.include_router(scenes_router)
 app.include_router(observations_router, responses=COMMON_RESPONSES)
 app.include_router(execution_router)
