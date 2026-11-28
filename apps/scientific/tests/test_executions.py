@@ -1146,21 +1146,56 @@ class PersistentSqliteClient:
 def test_terminal_job_status_result_and_error_persist_across_api_restart(
     tmp_path, monkeypatch
 ):
-    """Tras reiniciar la API, ambos estados terminales siguen disponibles."""
+    """Tras reiniciar la API, ambos estados terminales persisten en SQLite de disco.
+
+    Esta prueba reemplaza las funciones de servicio externas por consultas al
+    PersistentSqliteClient y se mantiene aislada del FakeDatabase en memoria
+    creado por el fixture autouse de la suite.
+    """
     db_path = tmp_path / "scientific_persistent.db"
     _init_persistent_sqlite_db(db_path)
+    persistent_db_client = PersistentSqliteClient(db_path)
 
     csv_data = b"clorofila_a\n10.0\n20.0\n30.0\n"
     checksum = hashlib.sha256(csv_data).hexdigest()
 
     first_app = create_app()
-    restarted_app = create_app()
+    restarted_app = None
 
     try:
         # 1. Primera instancia de la API conectada a almacenamiento persistente en disco
-        first_db_client = PersistentSqliteClient(db_path)
-        monkeypatch.setattr(controller_execution, "supabase", first_db_client)
-        monkeypatch.setattr(service_execution, "supabase", first_db_client)
+        monkeypatch.setattr(controller_execution, "supabase", persistent_db_client)
+        monkeypatch.setattr(service_execution, "supabase", persistent_db_client)
+        monkeypatch.setattr(
+            service_execution,
+            "has_active_organization_membership",
+            lambda user_id, organization_id: bool(
+                persistent_db_client.table("memberships")
+                .select("user_id")
+                .eq("user_id", str(user_id))
+                .eq("organization_id", str(organization_id))
+                .eq("status", "active")
+                .eq("organization_status", "active")
+                .execute()
+                .data
+            ),
+        )
+        monkeypatch.setattr(
+            service_execution,
+            "get_dataset_version_for_training",
+            lambda version_id, organization_id: next(
+                iter(
+                    persistent_db_client.schema("dataset")
+                    .table("versions")
+                    .select("id, dataset_id, state, status")
+                    .eq("id", str(version_id))
+                    .limit(1)
+                    .execute()
+                    .data
+                ),
+                None,
+            ),
+        )
         first_app.dependency_overrides[require_authenticated_user] = (
             fake_authenticated_user
         )
@@ -1199,9 +1234,7 @@ def test_terminal_job_status_result_and_error_persist_across_api_restart(
                         "config": {
                             "model_id": MODEL_VERSION_ID,
                             "scene_id": SCENE_ID,
-                            "training_job_id": (
-                                "bbbbbbbb-2222-4222-8222-222222222222"
-                            ),
+                            "training_job_id": ("bbbbbbbb-2222-4222-8222-222222222222"),
                         },
                     },
                     headers=HEADERS,
@@ -1221,11 +1254,12 @@ def test_terminal_job_status_result_and_error_persist_across_api_restart(
                     "No se encontró el trabajo de entrenamiento de origen del modelo."
                 )
 
-        # 2. Descartar la primera instancia y crear un cliente limpio tras el reinicio
+        # 2. Cerrar y descartar la primera instancia antes de simular el arranque limpio
         first_app.dependency_overrides.clear()
-        restarted_db_client = PersistentSqliteClient(db_path)
-        monkeypatch.setattr(controller_execution, "supabase", restarted_db_client)
-        monkeypatch.setattr(service_execution, "supabase", restarted_db_client)
+        first_app = None
+        restarted_app = create_app()
+        monkeypatch.setattr(controller_execution, "supabase", persistent_db_client)
+        monkeypatch.setattr(service_execution, "supabase", persistent_db_client)
         restarted_app.dependency_overrides[require_authenticated_user] = (
             fake_authenticated_user
         )
@@ -1276,7 +1310,7 @@ def test_terminal_job_status_result_and_error_persist_across_api_restart(
 
             for persisted_job_id in (job_id, failed_job_id):
                 persisted_job = (
-                    restarted_db_client.table("scientific_jobs")
+                    persistent_db_client.table("scientific_jobs")
                     .select("organization_id")
                     .eq("id", persisted_job_id)
                     .execute()
@@ -1294,9 +1328,25 @@ def test_terminal_job_status_result_and_error_persist_across_api_restart(
                 },
             )
             assert forbidden_response.status_code == 404
+
+            forbidden_failed_response = restarted_api_client.get(
+                f"/api/v1/executions/{failed_job_id}",
+                headers={
+                    "Authorization": AUTH_HEADERS["Authorization"],
+                    "X-Organization-ID": OTHER_ORGANIZATION_ID,
+                },
+            )
+            assert forbidden_failed_response.status_code == 404
+            assert "error_message" not in forbidden_failed_response.text
+            assert (
+                "No se encontró el trabajo de entrenamiento de origen del modelo."
+                not in forbidden_failed_response.text
+            )
     finally:
-        first_app.dependency_overrides.clear()
-        restarted_app.dependency_overrides.clear()
+        if first_app is not None:
+            first_app.dependency_overrides.clear()
+        if restarted_app is not None:
+            restarted_app.dependency_overrides.clear()
 
 class _FileSystemBucket:
     """Bucket de Storage simulado que escribe archivos reales en disco."""
