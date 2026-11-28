@@ -47,6 +47,7 @@ autenticada, decisión y motivo se define en
 
 - **`"decision": "approved"`:** transiciona la versión de `submitted` a `approved`, habilitando su posterior publicación por un `org_admin`.
 - **`"decision": "changes_requested"`:** transiciona la versión de `submitted` a `draft` con el motivo registrado para que el autor aplique correcciones y reenvíe.
+
 ---
 
 ## 4. Casos de transición rechazada
@@ -61,10 +62,13 @@ autenticada, decisión y motivo se define en
 
     ```json
     {
-      "detail": "Transición de estado no permitida: no se puede publicar una versión desde 'draft'; debe estar en estado 'approved'.",
-      "code": "INVALID_VERSION_TRANSITION",
-      "current_status": "draft",
-      "target_status": "published"
+      "error": "Conflict",
+      "message": "Transición de estado no permitida: no se puede publicar una versión desde 'draft'; debe estar en estado 'approved'.",
+      "details": {
+        "code": "INVALID_VERSION_TRANSITION",
+        "current_status": "draft",
+        "target_status": "published"
+      }
     }
     ```
 
