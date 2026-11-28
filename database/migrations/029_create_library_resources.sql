@@ -40,19 +40,22 @@ CREATE TABLE IF NOT EXISTS library.resource_versions (
                     author->>'status' = 'known'
                     AND jsonb_typeof(author->'name') = 'string'
                     AND length(BTRIM(author->>'name')) > 0
+                    AND (
+                        NOT (author ? 'orcid')
+                        OR author->'orcid' = 'null'::jsonb
+                        OR (
+                            jsonb_typeof(author->'orcid') = 'string'
+                            AND length(BTRIM(author->>'orcid')) > 0
+                        )
+                    )
                 )
                 OR (
                     author->>'status' = 'unknown'
                     AND author->'name' = 'null'::jsonb
-                    AND NOT (author ? 'orcid')
-                )
-            )
-            AND (
-                NOT (author ? 'orcid')
-                OR (
-                    author->>'status' = 'known'
-                    AND jsonb_typeof(author->'orcid') = 'string'
-                    AND length(BTRIM(author->>'orcid')) > 0
+                    AND (
+                        NOT (author ? 'orcid')
+                        OR author->'orcid' = 'null'::jsonb
+                    )
                 )
             )
         ),
@@ -66,6 +69,7 @@ CREATE TABLE IF NOT EXISTS library.resource_versions (
                 AND length(BTRIM(license->>'spdx_id')) > 0
                 AND (
                     NOT (license ? 'url')
+                    OR license->'url' = 'null'::jsonb
                     OR (
                         jsonb_typeof(license->'url') = 'string'
                         AND length(BTRIM(license->>'url')) > 0
@@ -99,9 +103,48 @@ CREATE INDEX IF NOT EXISTS library_resources_lake_id_idx
 ALTER TABLE library.resources ENABLE ROW LEVEL SECURITY;
 ALTER TABLE library.resource_versions ENABLE ROW LEVEL SECURITY;
 
-REVOKE ALL ON SCHEMA library FROM PUBLIC, anon, authenticated;
-GRANT USAGE ON SCHEMA library TO service_role;
+REVOKE ALL ON SCHEMA library FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA library FROM PUBLIC;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA library FROM PUBLIC;
 
-REVOKE ALL ON ALL TABLES IN SCHEMA library FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE
-    ON ALL TABLES IN SCHEMA library TO service_role;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        REVOKE ALL ON SCHEMA library FROM anon;
+        REVOKE ALL ON ALL TABLES IN SCHEMA library FROM anon;
+        REVOKE ALL ON ALL SEQUENCES IN SCHEMA library FROM anon;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA library
+            REVOKE ALL ON TABLES FROM anon;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA library
+            REVOKE ALL ON SEQUENCES FROM anon;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        REVOKE ALL ON SCHEMA library FROM authenticated;
+        REVOKE ALL ON ALL TABLES IN SCHEMA library FROM authenticated;
+        REVOKE ALL ON ALL SEQUENCES IN SCHEMA library FROM authenticated;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA library
+            REVOKE ALL ON TABLES FROM authenticated;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA library
+            REVOKE ALL ON SEQUENCES FROM authenticated;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        GRANT USAGE ON SCHEMA library TO service_role;
+        GRANT SELECT, INSERT, UPDATE, DELETE
+            ON ALL TABLES IN SCHEMA library TO service_role;
+        GRANT USAGE, SELECT
+            ON ALL SEQUENCES IN SCHEMA library TO service_role;
+
+        ALTER DEFAULT PRIVILEGES IN SCHEMA library
+            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO service_role;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA library
+            GRANT USAGE, SELECT ON SEQUENCES TO service_role;
+    END IF;
+
+    ALTER DEFAULT PRIVILEGES IN SCHEMA library
+        REVOKE ALL ON TABLES FROM PUBLIC;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA library
+        REVOKE ALL ON SEQUENCES FROM PUBLIC;
+END;
+$$;
